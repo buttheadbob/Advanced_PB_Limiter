@@ -1,7 +1,9 @@
 ﻿using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Advanced_PB_Limiter.Settings;
 using Sandbox.Game.Entities.Blocks;
+using Sandbox.Game.World;
 
 namespace Advanced_PB_Limiter.Utils
 {
@@ -9,18 +11,46 @@ namespace Advanced_PB_Limiter.Utils
     {
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance.Config;
         public MyProgrammableBlock? ProgrammableBlock { get; set; }
-        public ConcurrentQueue<double> RunTimesMS { get; set; } = new ();
+        private ConcurrentQueue<double> RunTimesMS { get; set; } = new ();
         public string? GridName { get; set; }
         public double PBStartTime { get; set; }
         public bool GracePeriodFinished { get; set; }
         public bool IsRecompiled { get; set; }
         public int Offences { get; set; }
         public int Recompiles { get; set; }
+        public double LastRunTimeMS { get; private set; }
 
-        public TrackedPBBlock(string? gridName)
+        public TrackedPBBlock(string? gridName, double lastRunTimeMs)
         {
             GridName = gridName;
             PBStartTime = Stopwatch.GetTimestamp();
+            LastRunTimeMS = lastRunTimeMs;
+            RunTimesMS.Enqueue(lastRunTimeMs);
+        }
+        
+        public void AddRuntimeData(double lastRunTimeMS)
+        {
+            LastRunTimeMS = lastRunTimeMS;
+            RunTimesMS.Enqueue(lastRunTimeMS);
+        }
+        
+        public List<double> GetRunTimesMS
+        {
+            get
+            {
+                List<double> total = new ();
+            
+                int count = 0;
+                foreach (double time in RunTimesMS)
+                {
+                    count++;
+                    total.Add(time);
+                    if (count >= Config.MaxRunsToTrack) break;
+                }
+
+                return total;
+            }
+            
         }
         
         public double RunTimeMSAvg
@@ -62,9 +92,13 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
         
-        public bool IsUnderGracePeriod()
+        public bool IsUnderGracePeriod(ulong SteamId)
         {
-            return (Stopwatch.GetTimestamp() - PBStartTime) / Stopwatch.Frequency < Config.GracePeriodSeconds;
+            ulong steamId = MySession.Static.Players.TryGetSteamId(ProgrammableBlock!.SlimBlock.OwnerId);
+            if (Config.PrivilegedPlayers.TryGetValue(steamId, out PrivilegedPlayer? privilegedPlayer))
+                return (Stopwatch.GetTimestamp() - PBStartTime) / Stopwatch.Frequency < privilegedPlayer.StartupAllowance;
+            
+            return (Stopwatch.GetTimestamp() - PBStartTime) / Stopwatch.Frequency < Config.GracefulShutDownRequestDelay;
         }
         
         public void ClearRunTimes()
@@ -79,6 +113,7 @@ namespace Advanced_PB_Limiter.Utils
                 }
             }
 
+            IsRecompiled = true;
             PBStartTime = 0;
             Offences = 0;
             Recompiles++;

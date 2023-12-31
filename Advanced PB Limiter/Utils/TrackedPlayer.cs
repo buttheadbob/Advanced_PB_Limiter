@@ -1,10 +1,12 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Timers;
 using Advanced_PB_Limiter.Manager;
 using Advanced_PB_Limiter.Settings;
 using Sandbox.Game.Entities.Blocks;
+using Sandbox.Game.World;
 
 namespace Advanced_PB_Limiter.Utils
 {
@@ -13,7 +15,8 @@ namespace Advanced_PB_Limiter.Utils
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance.Config;
         public string PlayerName { get; private set; }
         public long PlayerId { get; private set; }
-        public Dictionary<long, TrackedPBBlock> PBBlocks { get; private set; } = new();
+        private ConcurrentDictionary<long, TrackedPBBlock> PBBlocks { get; } = new();
+        public ulong SteamId { get; private set; }
         public long LastDataUpdateTick { get; set; }
         private readonly Timer _cleanupTimer = new (Config.RemoveInactivePBsAfterSeconds * 1000);
         private int _lastKnownCleanupInterval = Config.RemoveInactivePBsAfterSeconds * 1000;
@@ -24,46 +27,65 @@ namespace Advanced_PB_Limiter.Utils
             PlayerId = playerId;
             _cleanupTimer.Elapsed += (sender, args) => CleanUpOldPBBlocks();
             _cleanupTimer.Start();
+            SteamId = MySession.Static.Players.TryGetSteamId(playerId);
         }
         
         public int PBBlockCount => PBBlocks.Count;
         
-        public void UpdatePBBlockData(MyProgrammableBlock pbBlock, double lastRunTimeMS)
+        public async void UpdatePBBlockData(MyProgrammableBlock pbBlock, double lastRunTimeMS)
         {
             LastDataUpdateTick = Stopwatch.GetTimestamp();
             if (!PBBlocks.TryGetValue(pbBlock.EntityId, out TrackedPBBlock? trackedPBBlock))
             {
-                trackedPBBlock = new TrackedPBBlock(pbBlock.CubeGrid.DisplayName);
-                PBBlocks.Add(pbBlock.EntityId, trackedPBBlock);
+                trackedPBBlock = new TrackedPBBlock(pbBlock.CubeGrid.DisplayName, lastRunTimeMS);
+                PBBlocks.TryAdd(pbBlock.EntityId, trackedPBBlock);
             }
 
-            trackedPBBlock.RunTimesMS.Enqueue(lastRunTimeMS);
-            PunishmentManager.CheckForPunishment(this, trackedPBBlock, lastRunTimeMS);
+            trackedPBBlock.AddRuntimeData(lastRunTimeMS);
+            await PunishmentManager.CheckForPunishment(this, trackedPBBlock, lastRunTimeMS);
         }
         
-        public List<double> GetAllPBBlocksLastRunTimeMS()
+        public List<TrackedPBBlock> GetAllPBBlocks
         {
-            List<double> total = new ();
-            for (int index = PBBlocks.Count - 1; index >= 0; index--)
+            get
             {
-                for (int temp_i = PBBlocks[index].RunTimesMS.ToList().Count - 1; temp_i >= 0; temp_i--)
+                List<TrackedPBBlock> total = new();
+                foreach (TrackedPBBlock pbBlock in PBBlocks.Values)
                 {
-                    total.Add(PBBlocks[index].RunTimesMS.ToList()[temp_i]);
+                    if (pbBlock?.ProgrammableBlock is null) continue;
+                    total.Add(pbBlock);
                 }
-            }
 
-            return total;
+                return total;
+            }
         }
         
-        public List<double> GetAllPBBlocksLastRunTimeMSAvg()
+        public ReadOnlySpan<double> GetAllPBBlocksLastRunTimeMS
         {
-            List<double> total = new ();
-            for (int index = PBBlocks.Count - 1; index >= 0; index--)
+            get
             {
-                total.Add(PBBlocks[index].RunTimeMSAvg);
-            }
+                double[] total = new double[PBBlocks.Count];
+                for (int index = 0; index < PBBlocks.Count; index++)
+                {
+                    total[index] = PBBlocks[PBBlocks.Count - 1 - index].LastRunTimeMS;
+                }
 
-            return total;
+                return new ReadOnlySpan<double>(total);
+            }
+        }
+        
+        public ReadOnlySpan<double> GetAllPBBlocksMSAvg
+        {
+            get
+            {
+                double[] total = new double[PBBlocks.Count];
+                for (int index = 0; index < PBBlocks.Count; index++)
+                {
+                    total[index] = PBBlocks[PBBlocks.Count - 1 - index].RunTimeMSAvg;
+                }
+
+                return new ReadOnlySpan<double>(total);
+            }
         }
         
         private void CleanUpOldPBBlocks()
@@ -74,7 +96,7 @@ namespace Advanced_PB_Limiter.Utils
                 if (PBBlocks[index].ProgrammableBlock is null)
                     PBBlocks.Remove(index);
                 
-                if (PBBlocks[index].IsUnderGracePeriod()) continue;
+                if (PBBlocks[index].IsUnderGracePeriod(SteamId)) continue;
                 
                 PBBlocks.Remove(index);
             }

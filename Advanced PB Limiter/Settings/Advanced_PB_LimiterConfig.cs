@@ -8,9 +8,6 @@ namespace Advanced_PB_Limiter.Settings
     {
         private bool _AllowStartGracePeriod = true;
         public bool AllowStartGracePeriod { get => _AllowStartGracePeriod; set => SetValue(ref _AllowStartGracePeriod, value); }
-
-        private int _GracePeriodSeconds = 1;
-        public int GracePeriodSeconds { get => _GracePeriodSeconds; set => SetValue(ref _GracePeriodSeconds, value); }
         
         private int _RemoveInactivePBsAfterSeconds = 60;
         public int RemoveInactivePBsAfterSeconds { get => _RemoveInactivePBsAfterSeconds; set => SetValue(ref _RemoveInactivePBsAfterSeconds, value); }
@@ -23,9 +20,6 @@ namespace Advanced_PB_Limiter.Settings
         
         private bool _ClearHistoryOnRecompile = true;
         public bool ClearHistoryOnRecompile { get => _ClearHistoryOnRecompile; set => SetValue(ref _ClearHistoryOnRecompile, value); }
-        
-        private bool _IssueGracefulShutDownRequest = true;
-        public bool IssueGracefulShutDownRequest { get => _IssueGracefulShutDownRequest; set => SetValue(ref _IssueGracefulShutDownRequest, value); }
         
         private int _GracefulShutDownRequestDelay = 10;
         public int GracefulShutDownRequestDelay { get => _GracefulShutDownRequestDelay; set => SetValue(ref _GracefulShutDownRequestDelay, value); }
@@ -50,5 +44,17 @@ namespace Advanced_PB_Limiter.Settings
         
         private Enums.Punishment _Punishment = Enums.Punishment.TurnOff;
         public Enums.Punishment Punishment { get => _Punishment; set => SetValue(ref _Punishment, value); }
+        
+        private bool _CheckAllUserBlocksCombined = true;
+        public bool CheckAllUserBlocksCombined { get => _CheckAllUserBlocksCombined; set => SetValue(ref _CheckAllUserBlocksCombined, value); }
+        
+        private bool _PunishAllUserBlocksCombinedOnExcessLimits = true;
+        public bool PunishAllUserBlocksCombinedOnExcessLimits { get => _PunishAllUserBlocksCombinedOnExcessLimits; set => SetValue(ref _PunishAllUserBlocksCombinedOnExcessLimits, value); }
+        
+        private double _MaxAllBlocksCombinedRunTimeMS = 3.0;
+        public double MaxAllBlocksCombinedRunTimeMS { get => _MaxAllBlocksCombinedRunTimeMS; set => SetValue(ref _MaxAllBlocksCombinedRunTimeMS, value); }
+        
+        private double _MaxAllBlocksCombinedRunTimeMSAvg = 1.0;
+        public double MaxAllBlocksCombinedRunTimeMSAvg { get => _MaxAllBlocksCombinedRunTimeMSAvg; set => SetValue(ref _MaxAllBlocksCombinedRunTimeMSAvg, value); }
     }
 }
