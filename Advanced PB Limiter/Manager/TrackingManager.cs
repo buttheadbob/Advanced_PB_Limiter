@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Timers;
 using Advanced_PB_Limiter.Settings;
@@ -12,7 +13,7 @@ namespace Advanced_PB_Limiter.Manager
 {
     public static class TrackingManager
     {
-        private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance.Config;
+        private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
         private static ConcurrentDictionary<long,TrackedPlayer> PlayersTracked { get; } = new ();
         private static readonly Timer _cleanupTimer = new ();
         private static readonly int _lastKnownCleanupInterval = Config.RemoveInactivePBsAfterSeconds;
@@ -26,6 +27,11 @@ namespace Advanced_PB_Limiter.Manager
                 _cleanupTimer.Start();
                 Task.Run(CheckAllUserBlocksForCombinedLimits);
             }
+        }
+        
+        public static List<TrackedPlayer> GetTrackedPlayerData()
+        {
+            return PlayersTracked.Values.ToList();
         }
 
         private static void CleanUpOldPlayers()

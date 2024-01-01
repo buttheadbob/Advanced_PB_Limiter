@@ -64,7 +64,7 @@ namespace Advanced_PB_Limiter.Utils
                     count++;
                     total += time;
                     
-                    if (count >= Config.MaxPreviousRunsToCalculateMaxAvg)
+                    if (count >= Config.MaxRunsToTrack)
                     {
                         return total / RunTimesMS.Count;
                     }

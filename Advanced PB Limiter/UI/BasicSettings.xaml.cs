@@ -3,16 +3,14 @@ using Advanced_PB_Limiter.Settings;
 
 namespace Advanced_PB_Limiter.UI
 {
-    public partial class Advanced_PB_LimiterControl : UserControl
+    public partial class BasicSettings : UserControl
     {
         private Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance.Config;
-
-        public Advanced_PB_LimiterControl()
+        
+        public BasicSettings()
         {
             InitializeComponent();
             DataContext = Config;
-
-            MainSettingsTab.Content = new BasicSettings();
         }
     }
 }

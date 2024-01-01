@@ -6,8 +6,8 @@ namespace Advanced_PB_Limiter.Settings
 {
     public class Advanced_PB_LimiterConfig : ViewModel
     {
-        private bool _AllowStartGracePeriod = true;
-        public bool AllowStartGracePeriod { get => _AllowStartGracePeriod; set => SetValue(ref _AllowStartGracePeriod, value); }
+        private bool _Enabled = true;
+        public bool Enabled { get => _Enabled; set => SetValue(ref _Enabled, value); }
         
         private int _RemoveInactivePBsAfterSeconds = 60;
         public int RemoveInactivePBsAfterSeconds { get => _RemoveInactivePBsAfterSeconds; set => SetValue(ref _RemoveInactivePBsAfterSeconds, value); }
@@ -32,15 +32,15 @@ namespace Advanced_PB_Limiter.Settings
         
         private int _MaxOffencesBeforePunishment = 3;
         public int MaxOffencesBeforePunishment { get => _MaxOffencesBeforePunishment; set => SetValue(ref _MaxOffencesBeforePunishment, value); }
+
+        private int _OffenseDurationBeforeDeletion = 60;
+        public int OffenseDurationBeforeDeletion { get => _OffenseDurationBeforeDeletion; set => SetValue(ref _OffenseDurationBeforeDeletion, value); }
         
         private double _MaxRunTimeMS = 0.4;
         public double MaxRunTimeMS { get => _MaxRunTimeMS; set => SetValue(ref _MaxRunTimeMS, value); }
         
         private double _MaxRunTimeMSAvg = 0.3;
         public double MaxRunTimeMSAvg { get => _MaxRunTimeMSAvg; set => SetValue(ref _MaxRunTimeMSAvg, value); }
-        
-        private int _MaxPreviousRunsToCalculateMaxAvg = 100;
-        public int MaxPreviousRunsToCalculateMaxAvg { get => _MaxPreviousRunsToCalculateMaxAvg; set => SetValue(ref _MaxPreviousRunsToCalculateMaxAvg, value); }
         
         private Enums.Punishment _Punishment = Enums.Punishment.TurnOff;
         public Enums.Punishment Punishment { get => _Punishment; set => SetValue(ref _Punishment, value); }
