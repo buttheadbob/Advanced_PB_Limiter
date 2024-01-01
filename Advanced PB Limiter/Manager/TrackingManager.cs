@@ -11,14 +11,14 @@ using VRage.Game.VisualScripting.Utils;
 
 namespace Advanced_PB_Limiter.Manager
 {
-    public static class TrackingManager
+    internal static class TrackingManager
     {
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
         private static ConcurrentDictionary<long,TrackedPlayer> PlayersTracked { get; } = new ();
         private static readonly Timer _cleanupTimer = new ();
         private static readonly int _lastKnownCleanupInterval = Config.RemoveInactivePBsAfterSeconds;
 
-        public static void Init()
+        internal static void Init()
         {
             _cleanupTimer.Elapsed += (sender, args) => CleanUpOldPlayers();
             if (Config.RemovePlayersWithNoPBFrequencyInMinutes > 0)
@@ -29,13 +29,15 @@ namespace Advanced_PB_Limiter.Manager
             }
         }
         
-        public static List<TrackedPlayer> GetTrackedPlayerData()
+        internal static List<TrackedPlayer> GetTrackedPlayerData()
         {
             return PlayersTracked.Values.ToList();
         }
 
         private static void CleanUpOldPlayers()
         {
+            if (!Config.Enabled) return;
+            
             if (_lastKnownCleanupInterval != Config.RemovePlayersWithNoPBFrequencyInMinutes)
             {
                 if (_lastKnownCleanupInterval == 0)
@@ -53,8 +55,10 @@ namespace Advanced_PB_Limiter.Manager
             }
         }
 
-        public static void UpdateTrackingData(MyProgrammableBlock pb, double runTime)
+        internal static void UpdateTrackingData(MyProgrammableBlock pb, double runTime)
         {
+            if (!Config.Enabled) return;
+            
             if (PlayersTracked.TryGetValue(pb.OwnerId, out TrackedPlayer? player))
             {
                 player.UpdatePBBlockData(pb, runTime);
@@ -76,8 +80,10 @@ namespace Advanced_PB_Limiter.Manager
             }
         }
         
-        public static void PBRecompiled(MyProgrammableBlock pb)
+        internal static void PBRecompiled(MyProgrammableBlock pb)
         {
+            if (!Config.Enabled) return;
+            
             if (PlayersTracked.TryGetValue(pb.OwnerId, out TrackedPlayer? player))
             {
                 if (Config.ClearHistoryOnRecompile)
@@ -87,6 +93,8 @@ namespace Advanced_PB_Limiter.Manager
          
         private static void CheckAllUserBlocksForCombinedLimits()
         {
+            if (!Config.Enabled) return;
+            
             if (!Config.CheckAllUserBlocksCombined) return;
             
             foreach(KeyValuePair<long, TrackedPlayer> trackedPlayer in PlayersTracked)

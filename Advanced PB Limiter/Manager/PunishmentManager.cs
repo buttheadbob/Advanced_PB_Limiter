@@ -1,9 +1,7 @@
-﻿using System.Collections.Generic;
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
 using NLog;
-using Sandbox.Game.World;
 using Sandbox.ModAPI.Ingame;
 using VRage.Game;
 using VRageMath;
@@ -11,11 +9,11 @@ using static Advanced_PB_Limiter.Utils.Enums;
 
 namespace Advanced_PB_Limiter.Manager
 {
-    public static class PunishmentManager
+    internal static class PunishmentManager
     {
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
-        private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance.Config;
-        public enum PunishReason
+        private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
+        internal enum PunishReason
         {
             SingleRuntimeOverLimit,
             AverageRuntimeOverLimit,
@@ -23,8 +21,10 @@ namespace Advanced_PB_Limiter.Manager
             CombinedAverageRuntimeOverLimit
         }
         
-        public static async Task CheckForPunishment(TrackedPlayer player, TrackedPBBlock trackedPbBlock, double lastRunTimeMS)
+        internal static async Task CheckForPunishment(TrackedPlayer player, TrackedPBBlock trackedPbBlock, double lastRunTimeMS)
         {
+            if (!Config.Enabled) return;
+            
             if (!trackedPbBlock.GracePeriodFinished)
             {
                 if (trackedPbBlock.IsUnderGracePeriod(player.SteamId))
@@ -58,7 +58,7 @@ namespace Advanced_PB_Limiter.Manager
             }
         }
         
-        public static Task PunishPB(TrackedPlayer player, TrackedPBBlock trackedPbBlock, PunishReason reason, Punishment? punishment = null)
+        internal static Task PunishPB(TrackedPlayer player, TrackedPBBlock trackedPbBlock, PunishReason reason, Punishment? punishment = null)
         {
             if (trackedPbBlock.ProgrammableBlock is null)
             {

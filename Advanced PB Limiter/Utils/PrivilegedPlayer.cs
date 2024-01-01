@@ -11,6 +11,7 @@
         public bool NoCombinedLimits { get; set; }
         public Enums.Punishment Punishment { get; set; } = Enums.Punishment.TurnOff;
         public int GracefulShutDownRequestDelay { get; set; } = 10;
+        public int OffencesBeforePunishment { get; set; } = 6;
 
         public PrivilegedPlayer() { }
     }

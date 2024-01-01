@@ -14,7 +14,7 @@ using Torch.Utils.Reflected;
 namespace Advanced_PB_Limiter.Patches
 {
     [ReflectedLazy]
-    public static class ProfilerPatch
+    internal static class ProfilerPatch
     {
         /// <summary>
         /// Gracefully stolen (and modified by me) from the original PB Limiter, Credits to SirHamsterAlot and Equinox
@@ -29,7 +29,7 @@ namespace Advanced_PB_Limiter.Patches
         [ReflectedMethodInfo(typeof(MyProgrammableBlock), "Compile")]
         private static readonly MethodInfo? _programmableRecompile;
         
-        public static void Patch(PatchContext ctx)
+        internal static void Patch(PatchContext ctx)
         {
             ReflectedManager.Process(typeof(ProfilerPatch));
 

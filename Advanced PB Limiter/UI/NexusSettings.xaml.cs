@@ -3,18 +3,14 @@ using Advanced_PB_Limiter.Settings;
 
 namespace Advanced_PB_Limiter.UI
 {
-    public partial class Advanced_PB_LimiterControl
+    public partial class NexusSettings
     {
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
 
-        public Advanced_PB_LimiterControl()
+        public NexusSettings()
         {
             InitializeComponent();
             DataContext = Config;
-
-            MainSettingsTab.Content = new BasicSettings();
-            PrivilegedUsersTab.Content = new PrivilegedUsers();
-            NexusTab.Content = new NexusSettings();
         }
         
         private async Task Save()

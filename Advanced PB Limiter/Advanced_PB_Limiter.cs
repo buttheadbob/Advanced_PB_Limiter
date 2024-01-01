@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Threading.Tasks;
 using System.Windows.Controls;
 using Advanced_PB_Limiter.Manager;
 using Torch;
@@ -18,24 +19,24 @@ using Torch.Managers;
 
 namespace Advanced_PB_Limiter
 {
-    public class Advanced_PB_Limiter : TorchPluginBase, IWpfPlugin
+    internal class Advanced_PB_Limiter : TorchPluginBase, IWpfPlugin
     {
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
         private const string CONFIG_FILE_NAME = "Advanced_PB_LimiterConfig.cfg";
-        public static Advanced_PB_Limiter? Instance { get; private set; }
+        internal static Advanced_PB_Limiter? Instance { get; private set; }
         private Advanced_PB_LimiterControl? _control;
         public UserControl GetControl() => _control ?? (_control = new Advanced_PB_LimiterControl());
         private Persistent<Advanced_PB_LimiterConfig>? _config;
-        public Advanced_PB_LimiterConfig? Config => _config?.Data;
+        internal Advanced_PB_LimiterConfig? Config => _config?.Data;
         
         // Nexus stuff
-        public static NexusAPI? nexusAPI { get; private set; }
+        internal static NexusAPI? nexusAPI { get; private set; }
         private static readonly Guid NexusGUID = new ("28a12184-0422-43ba-a6e6-2e228611cca5");
-        public static bool NexusInstalled { get; private set; }
+        internal static bool NexusInstalled { get; private set; }
         // ReSharper disable once IdentifierTypo
-        public static bool NexusInited;
+        private static bool NexusInited;
 
-        public override void Init(ITorchBase torch)
+        public override async void Init(ITorchBase torch)
         {
             base.Init(torch);
             SetupConfig();
@@ -46,7 +47,7 @@ namespace Advanced_PB_Limiter
             else
                 Log.Warn("No session manager loaded!");
 
-            Save();
+            await Save();
             
             Instance = this;
         }
@@ -69,40 +70,38 @@ namespace Advanced_PB_Limiter
         
         private void ConnectNexus()
         {
-            if (!NexusInited)
-            {
-                PluginManager? _pluginManager = Torch.Managers.GetManager<PluginManager>();
-                if (_pluginManager is null)
-                    return;
+            if (NexusInited) return;
+            PluginManager? _pluginManager = Torch.Managers.GetManager<PluginManager>();
+            if (_pluginManager is null)
+                return;
                 
-                if (_pluginManager.Plugins.TryGetValue(NexusGUID, out ITorchPlugin? torchPlugin))
-                {
-                    if (torchPlugin is null)
-                        return;
+            if (_pluginManager.Plugins.TryGetValue(NexusGUID, out ITorchPlugin? torchPlugin))
+            {
+                if (torchPlugin is null)
+                    return;
                         
-                    Type? Plugin = torchPlugin.GetType();
-                    Type? NexusPatcher = Plugin != null! ? Plugin.Assembly.GetType("Nexus.API.PluginAPISync") : null;
-                    if (NexusPatcher != null)
+                Type? Plugin = torchPlugin.GetType();
+                Type? NexusPatcher = Plugin != null! ? Plugin.Assembly.GetType("Nexus.API.PluginAPISync") : null;
+                if (NexusPatcher != null)
+                {
+                    NexusPatcher.GetMethod("ApplyPatching", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, new object[]
                     {
-                        NexusPatcher.GetMethod("ApplyPatching", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, new object[]
-                        {
-                            typeof(NexusAPI), "SenX KoTH Plugin"
-                        });
-                        nexusAPI = new NexusAPI(8542);
-                        MyAPIGateway.Multiplayer.RegisterSecureMessageHandler(8542, new Action<ushort, byte[], ulong, bool>(NexusManager.HandleNexusMessage)); 
-                        NexusInstalled = true;
-                    }
+                        typeof(NexusAPI), "Advanced PB Limiter"
+                    });
+                    nexusAPI = new NexusAPI(8697);
+                    MyAPIGateway.Multiplayer.RegisterSecureMessageHandler(8697, NexusManager.HandleNexusMessage); 
+                    NexusInstalled = true;
                 }
-                NexusInited = true;
-                NexusAPI.Server thisServer = NexusAPI.GetThisServer();
-                NexusManager.SetServerData(thisServer);
             }
+            NexusInited = true;
+            NexusAPI.Server thisServer = NexusAPI.GetThisServer();
+            NexusManager.SetServerData(thisServer);
         }
 
-        public void UpdateConfigFromNexus(Advanced_PB_LimiterConfig config)
+        internal async Task UpdateConfigFromNexus(Advanced_PB_LimiterConfig config)
         {
             _config = new Persistent<Advanced_PB_LimiterConfig>(Path.Combine(StoragePath, CONFIG_FILE_NAME), config);
-            Save();
+             await Save();
         }
 
         private void SetupConfig()
@@ -121,7 +120,7 @@ namespace Advanced_PB_Limiter
             }
         }
 
-        public void Save()
+        internal Task Save()
         {
             try
             {
@@ -132,6 +131,8 @@ namespace Advanced_PB_Limiter
             {
                 Log.Warn(e, "Configuration failed to save");
             }
+            
+            return Task.CompletedTask;
         }
     }
 }

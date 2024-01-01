@@ -7,20 +7,20 @@ using Sandbox.Game.World;
 
 namespace Advanced_PB_Limiter.Utils
 {
-    public sealed class TrackedPBBlock
+    internal sealed class TrackedPBBlock
     {
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance.Config;
-        public MyProgrammableBlock? ProgrammableBlock { get; set; }
+        internal MyProgrammableBlock? ProgrammableBlock { get; set; }
         private ConcurrentQueue<double> RunTimesMS { get; set; } = new ();
-        public string? GridName { get; set; }
-        public double PBStartTime { get; set; }
-        public bool GracePeriodFinished { get; set; }
-        public bool IsRecompiled { get; set; }
-        public int Offences { get; set; }
-        public int Recompiles { get; set; }
-        public double LastRunTimeMS { get; private set; }
+        internal string? GridName { get; set; }
+        internal double PBStartTime { get; set; }
+        internal bool GracePeriodFinished { get; set; }
+        internal bool IsRecompiled { get; set; }
+        internal int Offences { get; set; }
+        internal int Recompiles { get; set; }
+        internal double LastRunTimeMS { get; private set; }
 
-        public TrackedPBBlock(string? gridName, double lastRunTimeMs)
+        internal TrackedPBBlock(string? gridName, double lastRunTimeMs)
         {
             GridName = gridName;
             PBStartTime = Stopwatch.GetTimestamp();
@@ -28,13 +28,13 @@ namespace Advanced_PB_Limiter.Utils
             RunTimesMS.Enqueue(lastRunTimeMs);
         }
         
-        public void AddRuntimeData(double lastRunTimeMS)
+        internal void AddRuntimeData(double lastRunTimeMS)
         {
             LastRunTimeMS = lastRunTimeMS;
             RunTimesMS.Enqueue(lastRunTimeMS);
         }
         
-        public List<double> GetRunTimesMS
+        internal List<double> GetRunTimesMS
         {
             get
             {
@@ -53,7 +53,7 @@ namespace Advanced_PB_Limiter.Utils
             
         }
         
-        public double RunTimeMSAvg
+        internal double RunTimeMSAvg
         {
             get
             {
@@ -75,7 +75,7 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
         
-        public double RunTimeMSMaxPeek
+        internal double RunTimeMSMaxPeek
         {
             get
             {
@@ -92,7 +92,7 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
         
-        public bool IsUnderGracePeriod(ulong SteamId)
+        internal bool IsUnderGracePeriod(ulong SteamId)
         {
             ulong steamId = MySession.Static.Players.TryGetSteamId(ProgrammableBlock!.SlimBlock.OwnerId);
             if (Config.PrivilegedPlayers.TryGetValue(steamId, out PrivilegedPlayer? privilegedPlayer))
@@ -101,7 +101,7 @@ namespace Advanced_PB_Limiter.Utils
             return (Stopwatch.GetTimestamp() - PBStartTime) / Stopwatch.Frequency < Config.GracefulShutDownRequestDelay;
         }
         
-        public void ClearRunTimes()
+        internal void ClearRunTimes()
         {
             // This allows the queue to be cleared without removing any new items that may have been added during the process.
             int initialCount = RunTimesMS.Count;

@@ -4,10 +4,13 @@ using Torch;
 
 namespace Advanced_PB_Limiter.Settings
 {
-    public class Advanced_PB_LimiterConfig : ViewModel
+    public partial class Advanced_PB_LimiterConfig : ViewModel
     {
         private bool _Enabled = true;
         public bool Enabled { get => _Enabled; set => SetValue(ref _Enabled, value); }
+        
+        private bool _AllowStaffCommands = true;
+        public bool AllowStaffCommands { get => _AllowStaffCommands; set => SetValue(ref _AllowStaffCommands, value); }
         
         private int _RemoveInactivePBsAfterSeconds = 60;
         public int RemoveInactivePBsAfterSeconds { get => _RemoveInactivePBsAfterSeconds; set => SetValue(ref _RemoveInactivePBsAfterSeconds, value); }

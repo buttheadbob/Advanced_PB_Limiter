@@ -10,18 +10,18 @@ using Sandbox.Game.World;
 
 namespace Advanced_PB_Limiter.Utils
 {
-    public sealed class TrackedPlayer
+    internal sealed class TrackedPlayer
     {
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance.Config;
-        public string PlayerName { get; private set; }
-        public long PlayerId { get; private set; }
+        internal string PlayerName { get; private set; }
+        internal long PlayerId { get; private set; }
         private ConcurrentDictionary<long, TrackedPBBlock> PBBlocks { get; } = new();
-        public ulong SteamId { get; private set; }
-        public long LastDataUpdateTick { get; set; }
+        internal ulong SteamId { get; private set; }
+        internal long LastDataUpdateTick { get; set; }
         private readonly Timer _cleanupTimer = new (Config.RemoveInactivePBsAfterSeconds * 1000);
         private int _lastKnownCleanupInterval = Config.RemoveInactivePBsAfterSeconds * 1000;
         
-        public TrackedPlayer(string playerName, long playerId)
+        internal TrackedPlayer(string playerName, long playerId)
         {
             PlayerName = playerName;
             PlayerId = playerId;
@@ -30,9 +30,9 @@ namespace Advanced_PB_Limiter.Utils
             SteamId = MySession.Static.Players.TryGetSteamId(playerId);
         }
         
-        public int PBBlockCount => PBBlocks.Count;
+        internal int PBBlockCount => PBBlocks.Count;
         
-        public async void UpdatePBBlockData(MyProgrammableBlock pbBlock, double lastRunTimeMS)
+        internal async void UpdatePBBlockData(MyProgrammableBlock pbBlock, double lastRunTimeMS)
         {
             LastDataUpdateTick = Stopwatch.GetTimestamp();
             if (!PBBlocks.TryGetValue(pbBlock.EntityId, out TrackedPBBlock? trackedPBBlock))
@@ -45,7 +45,7 @@ namespace Advanced_PB_Limiter.Utils
             await PunishmentManager.CheckForPunishment(this, trackedPBBlock, lastRunTimeMS);
         }
         
-        public List<TrackedPBBlock> GetAllPBBlocks
+        internal List<TrackedPBBlock> GetAllPBBlocks
         {
             get
             {
@@ -60,7 +60,7 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
         
-        public ReadOnlySpan<double> GetAllPBBlocksLastRunTimeMS
+        internal ReadOnlySpan<double> GetAllPBBlocksLastRunTimeMS
         {
             get
             {
@@ -74,7 +74,7 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
         
-        public ReadOnlySpan<double> GetAllPBBlocksMSAvg
+        internal ReadOnlySpan<double> GetAllPBBlocksMSAvg
         {
             get
             {
@@ -106,7 +106,7 @@ namespace Advanced_PB_Limiter.Utils
             _lastKnownCleanupInterval = Config.RemoveInactivePBsAfterSeconds;
         }
         
-        public void ResetPBBlockData(MyProgrammableBlock pbBlock)
+        internal void ResetPBBlockData(MyProgrammableBlock pbBlock)
         {
             PBBlocks[pbBlock.EntityId].ClearRunTimes();
         }

@@ -9,12 +9,13 @@ using Sandbox.ModAPI;
 
 namespace Advanced_PB_Limiter.Manager
 {
-    public static class NexusManager
+    internal static class NexusManager
     {
-        private static Advanced_PB_LimiterConfig? Config => Advanced_PB_Limiter.Instance?.Config;
-        private static Logger Log = LogManager.GetCurrentClassLogger();
-        private static NexusAPI.Server? ThisServer;
-        public enum NexusMessageType
+        private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
+        private static readonly Logger Log = LogManager.GetCurrentClassLogger();
+        internal static NexusAPI.Server? ThisServer { get; private set; }
+        
+        internal enum NexusMessageType
         {
             PrivilegedPlayerData,
             Settings,
@@ -22,10 +23,12 @@ namespace Advanced_PB_Limiter.Manager
             PlayerReport
         }
         
-        public static void SetServerData(NexusAPI.Server server)
+        internal static void SetServerData(NexusAPI.Server server)
         {
             ThisServer = server;
         }
+        
+        internal static int ConnectedNexusServers => NexusAPI.GetAllServers().Count;
         
         internal static void HandleNexusMessage(ushort handlerId, byte[] data, ulong steamID, bool fromServer)
         {
@@ -45,6 +48,7 @@ namespace Advanced_PB_Limiter.Manager
                     HandlePlayerReportRequest(message.FromServerID);
                     break;
                 case NexusMessageType.PlayerReport:
+                    HandlePlayerReports(message.FromServerID, message.MessageData);
                     break;
             }
         }
@@ -52,30 +56,72 @@ namespace Advanced_PB_Limiter.Manager
         private static void HandlePrivilegedPlayerData(byte[] data)
         {
             PrivilegedPlayer? privilegedPlayer = Converter.DeserializeFromByteArray<PrivilegedPlayer>(data);
-            if (privilegedPlayer == null || privilegedPlayer.SteamId == 0) return;
+            if (privilegedPlayer == null || privilegedPlayer.SteamId == 0)
+            {
+                Log.Warn("Received null or invalid privileged player data from nexus, ignoring it.");
+                return;
+            }
+
+            if (!Config.AllowNexusPrivilegedPlayerUpdates)
+            {
+                Log.Info("Received privileged player data from nexus, this server is set to not update privileged data from Nexus.");
+                return;
+            }
             
-            if (Config!.PrivilegedPlayers.ContainsKey(privilegedPlayer.SteamId))
+            if (Config.PrivilegedPlayers.ContainsKey(privilegedPlayer.SteamId))
                 Config.PrivilegedPlayers[privilegedPlayer.SteamId] = privilegedPlayer;
             else
                 Config.PrivilegedPlayers.TryAdd(privilegedPlayer.SteamId, privilegedPlayer);
         }
         
-        private static void HandleUpdatedSettings(byte[] data)
+        private static async void HandleUpdatedSettings(byte[] data)
         {
             Advanced_PB_LimiterConfig? newConfig = Converter.DeserializeFromByteArray<Advanced_PB_LimiterConfig>(data);
-            if (newConfig == null) return;
+            if (newConfig == null)
+            {
+                Log.Warn("Received null or invalid settings data from nexus, ignoring it.");
+                return;
+            }
             
-            Advanced_PB_Limiter.Instance?.UpdateConfigFromNexus(newConfig);
+            if (!Config.AllowNexusConfigUpdates)
+            {
+                Log.Info("Received settings data from nexus, this server is set to not update from Nexus.");
+                return;
+            }
+            
+            await Advanced_PB_Limiter.Instance!.UpdateConfigFromNexus(newConfig);
         }
-
-        private static void HandlePlayerReport(byte[] data)
+        
+        internal static List<NexusAPI.Server> GetNexusServers()
         {
-            // Need to do this shit still...
-            PlayerReport? playerReport = Converter.DeserializeFromByteArray<PlayerReport>(data);
-            if (playerReport == null) return;
+            return NexusAPI.GetAllServers();
+        }
+        
+        internal static NexusAPI.Server? GetServerFromId(int serverId)
+        {
+            for (int index = 0; index < NexusAPI.GetAllServers().Count; index++)
+            {
+                NexusAPI.Server server = NexusAPI.GetAllServers()[index];
+                if (server.ServerID == serverId)
+                    return server;
+            }
+
+            return null;
         }
 
-        public static Task<bool> UpdateNexusWithPrivilegedPlayerData(PrivilegedPlayer player)
+        private static void HandlePlayerReports(int fromServer, byte[] data)
+        {
+            List<PlayerReport>? playerReport = Converter.DeserializeFromByteArray<List<PlayerReport>>(data);
+            if (playerReport == null)
+            {
+                Log.Warn("Unable to deserialize player report data..");
+                return;
+            }
+            
+            ReportManager.AddOrUpdateReport(fromServer, playerReport);
+        }
+
+        internal static Task<bool> UpdateNexusWithPrivilegedPlayerData(PrivilegedPlayer player)
         {
             if (ThisServer is null)
             {
@@ -101,7 +147,7 @@ namespace Advanced_PB_Limiter.Manager
             return Task.FromResult(true);
         }
 
-        public static Task<bool> UpdateNexusWithSettingsData()
+        internal static Task<bool> UpdateNexusWithSettingsData()
         {
             if (ThisServer is null)
             {
@@ -127,22 +173,47 @@ namespace Advanced_PB_Limiter.Manager
             return Task.FromResult(true);
         }
 
-        private static bool HandlePlayerReportRequest(int fromServer)
+        private static void HandlePlayerReportRequest(int fromServer)
         {
-            byte[]? trackedPlayersData = Converter.SerializeToByteArray(TrackingManager.GetTrackedPlayerData());
-            if (trackedPlayersData == null)
+            List<PlayerReport> playerReports = new ();
+
+            List<TrackedPlayer> list = TrackingManager.GetTrackedPlayerData();
+            for (int index = 0; index < list.Count; index++)
             {
-                Log.Warn("Unable to serialize tracked player data to send to nexus.");
-                return false;
+                List<PBReport> pbReports = new();
+                for (int ii = 0; ii < list[index].GetAllPBBlocks.Count; ii++)
+                {
+                    if (list[index].GetAllPBBlocks[ii] is null || list[index].GetAllPBBlocks[ii].ProgrammableBlock == null) continue;
+                    
+                    PBReport pbReport = new(list[index].SteamId,
+                        list[index].GetAllPBBlocks[ii].ProgrammableBlock!.SlimBlock.CubeGrid.DisplayName,
+                        list[index].GetAllPBBlocks[ii].ProgrammableBlock!.DisplayName,
+                        ThisServer!.ServerID,
+                        list[index].GetAllPBBlocks[ii].LastRunTimeMS,
+                        list[index].GetAllPBBlocks[ii].RunTimeMSAvg,
+                        list[index].GetAllPBBlocks[ii].Offences,
+                        list[index].GetAllPBBlocks[ii].Recompiles);
+                    
+                    pbReports.Add(pbReport);
+                }
+                PlayerReport playerReport = new(list[index].SteamId, list[index].PlayerId, list[index].PlayerName, true, pbReports);
+
+                playerReports.Add(playerReport);
+            }
+
+            byte[]? FinishedReport = Converter.SerializeToByteArray(playerReports);
+            if (FinishedReport == null)
+            {
+                Log.Warn("Unable to serialize tracked player data to send through nexus.");
+                return;
             }
             
-            NexusMessage message = new(ThisServer!.ServerID, NexusMessageType.PlayerReport, trackedPlayersData);
+            NexusMessage message = new(ThisServer!.ServerID, NexusMessageType.PlayerReport, FinishedReport);
             byte[] data = MyAPIGateway.Utilities.SerializeToBinary(message);
             Advanced_PB_Limiter.nexusAPI?.SendMessageToServer(fromServer, data);
-            return true;
         }
         
-        public static Task<bool> RequestPlayerReports()
+        internal static Task<bool> RequestPlayerReports()
         {
             if (ThisServer is null)
             {
@@ -164,13 +235,13 @@ namespace Advanced_PB_Limiter.Manager
         }
     }
 
-    public sealed class NexusMessage
+    internal sealed class NexusMessage
     {
-        public readonly int FromServerID;
-        public readonly NexusManager.NexusMessageType MessageType;
-        public readonly byte[] MessageData;
+        internal readonly int FromServerID;
+        internal readonly NexusManager.NexusMessageType MessageType;
+        internal readonly byte[] MessageData;
 
-        public NexusMessage(int _fromServerId, NexusManager.NexusMessageType _messageType, byte[] messageData)
+        internal NexusMessage(int _fromServerId, NexusManager.NexusMessageType _messageType, byte[] messageData)
         {
             FromServerID = _fromServerId;
             MessageType = _messageType;
@@ -178,9 +249,9 @@ namespace Advanced_PB_Limiter.Manager
         }
     }
 
-    public static class Converter
+    internal static class Converter
     {
-        public static byte[]? SerializeToByteArray(object? obj)
+        internal static byte[]? SerializeToByteArray(object? obj)
         {
             if (obj == null)
             {
@@ -193,7 +264,7 @@ namespace Advanced_PB_Limiter.Manager
             return ms.ToArray();
         }
         
-        public static T? DeserializeFromByteArray<T>(byte[]? data)
+        internal static T? DeserializeFromByteArray<T>(byte[]? data)
         {
             if (data == null)
             {
