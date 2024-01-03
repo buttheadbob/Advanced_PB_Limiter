@@ -1,5 +1,8 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using Advanced_PB_Limiter.Utils;
+using ConcurrentObservableCollections.ConcurrentObservableDictionary;
 using Torch;
 
 namespace Advanced_PB_Limiter.Settings
@@ -27,8 +30,8 @@ namespace Advanced_PB_Limiter.Settings
         private int _GracefulShutDownRequestDelay = 10;
         public int GracefulShutDownRequestDelay { get => _GracefulShutDownRequestDelay; set => SetValue(ref _GracefulShutDownRequestDelay, value); }
         
-        private ConcurrentDictionary<ulong, PrivilegedPlayer> _PrivilegedPlayers = new ();
-        public ConcurrentDictionary<ulong, PrivilegedPlayer> PrivilegedPlayers { get => _PrivilegedPlayers; set => SetValue(ref _PrivilegedPlayers, value); }
+        private ConcurrentObservableDictionary<ulong, PrivilegedPlayer> _PrivilegedPlayers = new ();
+        public ConcurrentObservableDictionary<ulong, PrivilegedPlayer> PrivilegedPlayers { get => _PrivilegedPlayers; set => SetValue(ref _PrivilegedPlayers, value); }
         
         private int _PunishDamageAmount = 100;
         public int PunishDamageAmount { get => _PunishDamageAmount; set => SetValue(ref _PunishDamageAmount, value); }
@@ -59,5 +62,11 @@ namespace Advanced_PB_Limiter.Settings
         
         private double _MaxAllBlocksCombinedRunTimeMSAvg = 1.0;
         public double MaxAllBlocksCombinedRunTimeMSAvg { get => _MaxAllBlocksCombinedRunTimeMSAvg; set => SetValue(ref _MaxAllBlocksCombinedRunTimeMSAvg, value); }
+        
+        private bool _IgnoreNPCs = true;
+        public bool IgnoreNPCs { get => _IgnoreNPCs; set => SetValue(ref _IgnoreNPCs, value); }
+        
+        public IEnumerable<Enums.Punishment> MyPunishments => Enum.GetValues(typeof(Enums.Punishment)).Cast<Enums.Punishment>();
+
     }
 }

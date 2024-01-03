@@ -9,6 +9,7 @@ namespace Advanced_PB_Limiter.UI
         public PrivilegedUsers()
         {
             InitializeComponent();
+            DataContext = Config;
         }
         
         private async Task Save()

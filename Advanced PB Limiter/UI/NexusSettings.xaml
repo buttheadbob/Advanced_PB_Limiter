@@ -5,7 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:local="clr-namespace:Advanced_PB_Limiter.UI"
              mc:Ignorable="d"
-             d:DesignHeight="300" d:DesignWidth="300" Background="#FF1E1E1E">
+             d:DesignHeight="Auto" d:DesignWidth="Auto" Background="#FF1E1E1E">
     <UserControl.Resources>
         <Style TargetType="{x:Type TabControl}">
             <Setter Property="BorderThickness" Value="3"/>
@@ -77,7 +77,54 @@
         </Style>
     </UserControl.Resources>
     
-    <Grid>
-        
-    </Grid>
+    <GroupBox>
+        <GroupBox.Header>
+            <TextBlock>
+                <Span FontWeight="Bold">Nexus Settings</Span>
+            </TextBlock>
+        </GroupBox.Header>
+        <StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Server Name:" Margin="3"/>
+                <TextBlock Name="ServerNameText" Margin="3" Text="Waiting..." Background="Black"/>
+                
+                <TextBlock Text="Server IP:" Margin="3"/>
+                <TextBlock Name="ServerIPText" Margin="3" Text="Waiting..." Background="Black"/>
+                
+                <TextBlock Text="Server ID:" Margin="3"/>
+                <TextBlock Name="ServerIDText" Margin="3" Text="Waiting..." Background="Black"/>
+                
+                <TextBlock Text="Server Type:" Margin="3"/>
+                <TextBlock Name="ServerTypeText" Margin="3" Text="Waiting..." Background="Black"/>
+                
+                <Button Content="Save Settings" Margin="50,3,3,3" Click="SaveButton_OnClick"/>
+            </StackPanel>
+            <StackPanel>
+                <Rectangle Width="Auto" Height="1" Fill="Navy"/>
+            </StackPanel>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                
+                <TextBlock Grid.Row="0" Grid.Column="0" Margin="3" Text="Allow config updates"/>
+                <CheckBox Grid.Row="0" Grid.Column="1" Margin="3" VerticalAlignment="Center" IsChecked="{Binding AllowNexusConfigUpdates}"/>
+                <TextBlock Grid.Row="0" Grid.Column="2" Margin="3" Text="Allow configuration updates received through Nexus to overwrite current settings." TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="1" Grid.Column="0" Margin="3" Text="Allow privileged user updates"/>
+                <CheckBox Grid.Row="1" Grid.Column="1" Margin="3" VerticalAlignment="Center" IsChecked="{Binding AllowNexusPrivilegedPlayerUpdates}"/>
+                <TextBlock Grid.Row="1" Grid.Column="2" Margin="3" Text="Allow privileged user updates received through Nexus to overwrite/add to this servers privileged users." TextWrapping="Wrap"/>
+            </Grid>
+        </StackPanel>
+    </GroupBox>
 </UserControl>

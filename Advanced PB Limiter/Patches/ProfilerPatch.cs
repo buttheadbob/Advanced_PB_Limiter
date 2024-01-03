@@ -21,7 +21,7 @@ namespace Advanced_PB_Limiter.Patches
         /// </summary>
         
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
-        private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance.Config;
+        private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
         
         [ReflectedMethodInfo(typeof(MyProgrammableBlock), "ExecuteCode")]
         private static readonly MethodInfo? _programmableRunSandboxed;
@@ -48,12 +48,9 @@ namespace Advanced_PB_Limiter.Patches
         
         private static void SuffixProfilePb(MyProgrammableBlock? __instance, ref long __localTimingStart)
         {
-            if (__instance is not null)
-            {
-                double dtInMilliseconds = (Stopwatch.GetTimestamp() - __localTimingStart) * 1000.0 / Stopwatch.Frequency;
-            
-                TrackingManager.UpdateTrackingData(__instance, dtInMilliseconds);
-            }
+            if (__instance is null) return;
+            double dtInMilliseconds = (Stopwatch.GetTimestamp() - __localTimingStart) * 1000.0 / Stopwatch.Frequency;
+            TrackingManager.UpdateTrackingData(__instance, dtInMilliseconds);
         }
 
         private static void PrefixRecompilePb(MyProgrammableBlock? __instance)

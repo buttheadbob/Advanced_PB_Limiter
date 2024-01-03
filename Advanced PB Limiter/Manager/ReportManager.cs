@@ -301,7 +301,10 @@ namespace Advanced_PB_Limiter.Manager
             foreach (KeyValuePair<ulong,PlayerReport> playerReport in NexusReports)
             {
                 report.AppendLine($"    -  Player Name: {playerReport.Value.PlayerName}");
-                report.AppendLine($"    -  Player SteamID: {playerReport.Value.SteamId}");
+                if (playerReport.Value.IsPrivileged) report.AppendLine($"    -  Player is Privileged");
+                report.AppendLine(MySession.Static.Players.IdentityIsNpc(playerReport.Value.PlayerId)
+                    ? "    -  Player is NPC"
+                    : $"    -  Player SteamID: {playerReport.Value.SteamId}");
                 report.AppendLine($"    -  Player PB Count: {playerReport.Value.GetPBReports.Count}");
                 report.AppendLine($"    -  Player Total Offences: {playerReport.Value.TotalOffences}");
                 report.AppendLine($"    -  Player Total Recompiles: {playerReport.Value.TotalRecompiles}");

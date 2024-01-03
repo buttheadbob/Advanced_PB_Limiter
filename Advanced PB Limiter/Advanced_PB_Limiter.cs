@@ -3,7 +3,9 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
+using System.Timers;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using Advanced_PB_Limiter.Manager;
 using Torch;
 using Torch.API;
@@ -28,6 +30,8 @@ namespace Advanced_PB_Limiter
         public UserControl GetControl() => _control ?? (_control = new Advanced_PB_LimiterControl());
         private Persistent<Advanced_PB_LimiterConfig>? _config;
         internal Advanced_PB_LimiterConfig? Config => _config?.Data;
+        internal static Dispatcher Dispatcher { get; private set; } = Dispatcher.CurrentDispatcher;
+        private static Timer NexusConnectionChecker { get; set; } = new Timer(10000);
         
         // Nexus stuff
         internal static NexusAPI? nexusAPI { get; private set; }
@@ -50,6 +54,7 @@ namespace Advanced_PB_Limiter
             await Save();
             
             Instance = this;
+            NexusConnectionChecker.Elapsed += CheckNexusConnection;
         }
 
         private void SessionChanged(ITorchSession session, TorchSessionState state)
@@ -60,12 +65,21 @@ namespace Advanced_PB_Limiter
                     Log.Info("Session Loaded!");
                     ConnectNexus();
                     TrackingManager.Init();
+                    if (NexusInited)
+                        NexusConnectionChecker.Start();
                     break;
 
                 case TorchSessionState.Unloading:
                     Log.Info("Session Unloading!");
                     break;
             }
+        }
+        
+        private static void CheckNexusConnection(object sender, EventArgs e)
+        {
+            if (!NexusInstalled || !NexusInited || NexusManager.ThisServer is null) return;
+            if (!NexusAPI.IsServerOnline(NexusManager.ThisServer.ServerID))
+                NexusManager.RaiseNexusConnectedEvent(false);
         }
         
         private void ConnectNexus()
@@ -96,6 +110,7 @@ namespace Advanced_PB_Limiter
             NexusInited = true;
             NexusAPI.Server thisServer = NexusAPI.GetThisServer();
             NexusManager.SetServerData(thisServer);
+            NexusManager.RaiseNexusConnectedEvent(true);
         }
 
         internal async Task UpdateConfigFromNexus(Advanced_PB_LimiterConfig config)
@@ -135,4 +150,6 @@ namespace Advanced_PB_Limiter
             return Task.CompletedTask;
         }
     }
+    
+    
 }

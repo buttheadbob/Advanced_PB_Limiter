@@ -12,7 +12,7 @@ namespace Advanced_PB_Limiter.Utils
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance.Config;
         internal MyProgrammableBlock? ProgrammableBlock { get; set; }
         private ConcurrentQueue<double> RunTimesMS { get; set; } = new ();
-        internal string? GridName { get; set; }
+        internal string GridName { get; set; }
         internal double PBStartTime { get; set; }
         internal bool GracePeriodFinished { get; set; }
         internal bool IsRecompiled { get; set; }
@@ -20,7 +20,7 @@ namespace Advanced_PB_Limiter.Utils
         internal int Recompiles { get; set; }
         internal double LastRunTimeMS { get; private set; }
 
-        internal TrackedPBBlock(string? gridName, double lastRunTimeMs)
+        internal TrackedPBBlock(string gridName, double lastRunTimeMs)
         {
             GridName = gridName;
             PBStartTime = Stopwatch.GetTimestamp();

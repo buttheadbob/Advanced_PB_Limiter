@@ -1,4 +1,6 @@
 ﻿using System.Threading.Tasks;
+using System.Windows;
+using Advanced_PB_Limiter.Manager;
 using Advanced_PB_Limiter.Settings;
 
 namespace Advanced_PB_Limiter.UI
@@ -16,6 +18,17 @@ namespace Advanced_PB_Limiter.UI
         private async Task Save()
         {
             await Advanced_PB_Limiter.Instance!.Save();
+        }
+
+        private async void SaveLocallyButton_OnClick(object sender, RoutedEventArgs e)
+        {
+            await Save();
+        }
+
+        private async void SaveAndPush_OnClick(object sender, RoutedEventArgs e)
+        {
+            await Save();
+            await NexusManager.UpdateNexusWithSettingsData();
         }
     }
 }

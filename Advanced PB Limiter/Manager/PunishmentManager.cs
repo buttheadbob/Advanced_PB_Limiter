@@ -2,6 +2,7 @@
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
 using NLog;
+using Sandbox.Game.World;
 using Sandbox.ModAPI.Ingame;
 using VRage.Game;
 using VRageMath;
@@ -98,20 +99,23 @@ namespace Advanced_PB_Limiter.Manager
                     switch (Config.Punishment)
                     {
                         case Punishment.TurnOff:
-                            Chat.Send(CreateUserMessage(player, trackedPbBlock, reason), player.SteamId, Color.Red);
+                            string message1 = CreateUserMessage(player, trackedPbBlock, reason);
+                            if (message1.Length > 0) Chat.Send(message1, player.SteamId, Color.Red);
                             Log.Info($"Turning off {player.PlayerName} for excessive pb run time on grid {trackedPbBlock.ProgrammableBlock.CubeGrid.DisplayName}");
                             trackedPbBlock.ProgrammableBlock.Enabled = false;
                             break;
                 
                         case Punishment.Destroy:
-                            Chat.Send(CreateUserMessage(player, trackedPbBlock, reason), player.SteamId, Color.Red);
+                            string message2 = CreateUserMessage(player, trackedPbBlock, reason);
+                            if (message2.Length > 0) Chat.Send(message2, player.SteamId, Color.Red);
                             Log.Info($"Destroying {player.PlayerName} for excessive pb run time on grid {trackedPbBlock.ProgrammableBlock.CubeGrid.DisplayName}");
                             float damageAmount = trackedPbBlock.ProgrammableBlock.SlimBlock.Integrity - trackedPbBlock.ProgrammableBlock.SlimBlock.BuildIntegrity;
                             trackedPbBlock.ProgrammableBlock.SlimBlock.DecreaseMountLevel(damageAmount, null);
                             break;
                 
                         case Punishment.Damage:
-                            Chat.Send(CreateUserMessage(player, trackedPbBlock, reason), player.SteamId, Color.Red);
+                            string message3 = CreateUserMessage(player, trackedPbBlock, reason);
+                            if (message3.Length > 0) Chat.Send(message3, player.SteamId, Color.Red);
                             Log.Info($"Damaging {player.PlayerName} for excessive pb run time on grid {trackedPbBlock.ProgrammableBlock.CubeGrid.DisplayName}");
                             trackedPbBlock.ProgrammableBlock?.SlimBlock.DoDamage(Config.PunishDamageAmount, MyDamageType.Destruction);
                             break;
@@ -126,6 +130,12 @@ namespace Advanced_PB_Limiter.Manager
         
         private static string CreateUserMessage(TrackedPlayer player, TrackedPBBlock pbBlock, PunishReason reason )
         {
+            if (player.SteamId == 0 || MySession.Static.Players.IdentityIsNpc(player.PlayerId) || !MySession.Static.Players.IsPlayerOnline(player.PlayerId))
+            {
+                Log.Warn($"No punishment message was sent: SteamID[{player.SteamId}]  IsNPC[{MySession.Static.Players.IdentityIsNpc(player.PlayerId)}]  IsOnline[{MySession.Static.Players.IsPlayerOnline(player.PlayerId)}]  GridName[{pbBlock.GridName}]");
+                return "";
+            }
+            
             switch (reason)
             {
                 case PunishReason.AverageRuntimeOverLimit:

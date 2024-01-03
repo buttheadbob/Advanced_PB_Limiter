@@ -7,6 +7,7 @@ using System.Timers;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
 using Sandbox.Game.Entities.Blocks;
+using Sandbox.Game.World;
 using VRage.Game.VisualScripting.Utils;
 
 namespace Advanced_PB_Limiter.Manager
@@ -58,6 +59,10 @@ namespace Advanced_PB_Limiter.Manager
         internal static void UpdateTrackingData(MyProgrammableBlock pb, double runTime)
         {
             if (!Config.Enabled) return;
+            if (Config.IgnoreNPCs)
+            {
+                if (MySession.Static.Players.IdentityIsNpc(pb.OwnerId)) return;
+            }
             
             if (PlayersTracked.TryGetValue(pb.OwnerId, out TrackedPlayer? player))
             {

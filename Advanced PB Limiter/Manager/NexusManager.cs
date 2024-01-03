@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Threading.Tasks;
@@ -14,6 +15,8 @@ namespace Advanced_PB_Limiter.Manager
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
         internal static NexusAPI.Server? ThisServer { get; private set; }
+        internal delegate void NexusConnectedDelegate(object? sender, NexusConnectedEventArgs e);
+        
         
         internal enum NexusMessageType
         {
@@ -55,7 +58,7 @@ namespace Advanced_PB_Limiter.Manager
 
         private static void HandlePrivilegedPlayerData(byte[] data)
         {
-            PrivilegedPlayer? privilegedPlayer = Converter.DeserializeFromByteArray<PrivilegedPlayer>(data);
+            PrivilegedPlayer? privilegedPlayer = MySerializer.DeserializeFromByteArray<PrivilegedPlayer>(data);
             if (privilegedPlayer == null || privilegedPlayer.SteamId == 0)
             {
                 Log.Warn("Received null or invalid privileged player data from nexus, ignoring it.");
@@ -76,7 +79,7 @@ namespace Advanced_PB_Limiter.Manager
         
         private static async void HandleUpdatedSettings(byte[] data)
         {
-            Advanced_PB_LimiterConfig? newConfig = Converter.DeserializeFromByteArray<Advanced_PB_LimiterConfig>(data);
+            Advanced_PB_LimiterConfig? newConfig = MySerializer.DeserializeFromByteArray<Advanced_PB_LimiterConfig>(data);
             if (newConfig == null)
             {
                 Log.Warn("Received null or invalid settings data from nexus, ignoring it.");
@@ -111,7 +114,7 @@ namespace Advanced_PB_Limiter.Manager
 
         private static void HandlePlayerReports(int fromServer, byte[] data)
         {
-            List<PlayerReport>? playerReport = Converter.DeserializeFromByteArray<List<PlayerReport>>(data);
+            List<PlayerReport>? playerReport = MySerializer.DeserializeFromByteArray<List<PlayerReport>>(data);
             if (playerReport == null)
             {
                 Log.Warn("Unable to deserialize player report data..");
@@ -129,7 +132,7 @@ namespace Advanced_PB_Limiter.Manager
                 return Task.FromResult(false); // IF not properly configured, this could happen.
             }
             
-            byte[]? playerData = Converter.SerializeToByteArray(player);
+            byte[]? playerData = MySerializer.SerializeToByteArray(player);
             if (playerData == null)
             {
                 Log.Warn("Unable to serialize privileged player data to send to nexus.");
@@ -155,7 +158,7 @@ namespace Advanced_PB_Limiter.Manager
                 return Task.FromResult(false); // IF not properly configured, this could happen.
             }
             
-            byte[]? settingsData = Converter.SerializeToByteArray(Config);
+            byte[]? settingsData = MySerializer.SerializeToByteArray(Config);
             if (settingsData == null)
             {
                 Log.Warn("Unable to serialize privileged player data to send to nexus.");
@@ -201,7 +204,7 @@ namespace Advanced_PB_Limiter.Manager
                 playerReports.Add(playerReport);
             }
 
-            byte[]? FinishedReport = Converter.SerializeToByteArray(playerReports);
+            byte[]? FinishedReport = MySerializer.SerializeToByteArray(playerReports);
             if (FinishedReport == null)
             {
                 Log.Warn("Unable to serialize tracked player data to send through nexus.");
@@ -233,6 +236,13 @@ namespace Advanced_PB_Limiter.Manager
             
             return Task.FromResult(true);
         }
+        
+        internal static event NexusConnectedDelegate? NexusConnected;
+        internal static void RaiseNexusConnectedEvent(bool connected)
+        {
+            NexusConnectedEventArgs args = new (connected);
+            NexusConnected?.Invoke(null, args);
+        }
     }
 
     internal sealed class NexusMessage
@@ -249,7 +259,7 @@ namespace Advanced_PB_Limiter.Manager
         }
     }
 
-    internal static class Converter
+    internal static class MySerializer
     {
         internal static byte[]? SerializeToByteArray(object? obj)
         {
@@ -275,6 +285,16 @@ namespace Advanced_PB_Limiter.Manager
             BinaryFormatter bf = new ();
             object obj = bf.Deserialize(ms);
             return (T)obj;
+        }
+    }
+    
+    internal class NexusConnectedEventArgs : EventArgs
+    {
+        public bool Connected { get; set; }
+
+        public NexusConnectedEventArgs(bool connected)
+        {
+            Connected = connected;
         }
     }
 }

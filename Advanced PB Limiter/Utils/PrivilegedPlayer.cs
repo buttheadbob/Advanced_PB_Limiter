@@ -3,6 +3,7 @@
     public class PrivilegedPlayer
     {
         public ulong SteamId { get; set; }
+        public string Name { get; set; }
         public double RuntimeAllowance { get; set; }
         public double RuntimeAverageAllowance { get; set; }
         public double StartupAllowance { get; set; }

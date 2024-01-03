@@ -12,7 +12,7 @@ namespace Advanced_PB_Limiter.Utils
 {
     internal sealed class TrackedPlayer
     {
-        private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance.Config;
+        private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
         internal string PlayerName { get; private set; }
         internal long PlayerId { get; private set; }
         private ConcurrentDictionary<long, TrackedPBBlock> PBBlocks { get; } = new();
@@ -20,6 +20,7 @@ namespace Advanced_PB_Limiter.Utils
         internal long LastDataUpdateTick { get; set; }
         private readonly Timer _cleanupTimer = new (Config.RemoveInactivePBsAfterSeconds * 1000);
         private int _lastKnownCleanupInterval = Config.RemoveInactivePBsAfterSeconds * 1000;
+        internal int Offences { get; private set; }
         
         internal TrackedPlayer(string playerName, long playerId)
         {
