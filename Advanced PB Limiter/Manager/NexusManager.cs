@@ -10,15 +10,15 @@ using Sandbox.ModAPI;
 
 namespace Advanced_PB_Limiter.Manager
 {
-    internal static class NexusManager
+    public static class NexusManager
     {
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
-        internal static NexusAPI.Server? ThisServer { get; private set; }
-        internal delegate void NexusConnectedDelegate(object? sender, NexusConnectedEventArgs e);
+        public static NexusAPI.Server? ThisServer { get; private set; }
+        public delegate void NexusConnectedDelegate(object? sender, NexusConnectedEventArgs e);
         
         
-        internal enum NexusMessageType
+        public enum NexusMessageType
         {
             PrivilegedPlayerData,
             Settings,
@@ -26,14 +26,14 @@ namespace Advanced_PB_Limiter.Manager
             PlayerReport
         }
         
-        internal static void SetServerData(NexusAPI.Server server)
+        public static void SetServerData(NexusAPI.Server server)
         {
             ThisServer = server;
         }
         
-        internal static int ConnectedNexusServers => NexusAPI.GetAllServers().Count;
+        public static int ConnectedNexusServers => NexusAPI.GetAllServers().Count;
         
-        internal static void HandleNexusMessage(ushort handlerId, byte[] data, ulong steamID, bool fromServer)
+        public static void HandleNexusMessage(ushort handlerId, byte[] data, ulong steamID, bool fromServer)
         {
             NexusMessage? message = MyAPIGateway.Utilities.SerializeFromBinary<NexusMessage>(data);
             if (message == null) return;
@@ -71,10 +71,7 @@ namespace Advanced_PB_Limiter.Manager
                 return;
             }
             
-            if (Config.PrivilegedPlayers.ContainsKey(privilegedPlayer.SteamId))
-                Config.PrivilegedPlayers[privilegedPlayer.SteamId] = privilegedPlayer;
-            else
-                Config.PrivilegedPlayers.TryAdd(privilegedPlayer.SteamId, privilegedPlayer);
+            Config.PrivilegedPlayers[privilegedPlayer.SteamId] = privilegedPlayer;
         }
         
         private static async void HandleUpdatedSettings(byte[] data)
@@ -95,12 +92,12 @@ namespace Advanced_PB_Limiter.Manager
             await Advanced_PB_Limiter.Instance!.UpdateConfigFromNexus(newConfig);
         }
         
-        internal static List<NexusAPI.Server> GetNexusServers()
+        public static List<NexusAPI.Server> GetNexusServers()
         {
             return NexusAPI.GetAllServers();
         }
         
-        internal static NexusAPI.Server? GetServerFromId(int serverId)
+        public static NexusAPI.Server? GetServerFromId(int serverId)
         {
             for (int index = 0; index < NexusAPI.GetAllServers().Count; index++)
             {
@@ -124,7 +121,7 @@ namespace Advanced_PB_Limiter.Manager
             ReportManager.AddOrUpdateReport(fromServer, playerReport);
         }
 
-        internal static Task<bool> UpdateNexusWithPrivilegedPlayerData(PrivilegedPlayer player)
+        public static Task<bool> UpdateNexusWithPrivilegedPlayerData(PrivilegedPlayer player)
         {
             if (ThisServer is null)
             {
@@ -150,7 +147,7 @@ namespace Advanced_PB_Limiter.Manager
             return Task.FromResult(true);
         }
 
-        internal static Task<bool> UpdateNexusWithSettingsData()
+        public static Task<bool> UpdateNexusWithSettingsData()
         {
             if (ThisServer is null)
             {
@@ -194,7 +191,7 @@ namespace Advanced_PB_Limiter.Manager
                         ThisServer!.ServerID,
                         list[index].GetAllPBBlocks[ii].LastRunTimeMS,
                         list[index].GetAllPBBlocks[ii].RunTimeMSAvg,
-                        list[index].GetAllPBBlocks[ii].Offences,
+                        list[index].GetAllPBBlocks[ii].Offences.Count,
                         list[index].GetAllPBBlocks[ii].Recompiles);
                     
                     pbReports.Add(pbReport);
@@ -216,7 +213,7 @@ namespace Advanced_PB_Limiter.Manager
             Advanced_PB_Limiter.nexusAPI?.SendMessageToServer(fromServer, data);
         }
         
-        internal static Task<bool> RequestPlayerReports()
+        public static Task<bool> RequestPlayerReports()
         {
             if (ThisServer is null)
             {
@@ -237,21 +234,21 @@ namespace Advanced_PB_Limiter.Manager
             return Task.FromResult(true);
         }
         
-        internal static event NexusConnectedDelegate? NexusConnected;
-        internal static void RaiseNexusConnectedEvent(bool connected)
+        public static event NexusConnectedDelegate? NexusConnected;
+        public static void RaiseNexusConnectedEvent(bool connected)
         {
             NexusConnectedEventArgs args = new (connected);
             NexusConnected?.Invoke(null, args);
         }
     }
 
-    internal sealed class NexusMessage
+    public sealed class NexusMessage
     {
-        internal readonly int FromServerID;
-        internal readonly NexusManager.NexusMessageType MessageType;
-        internal readonly byte[] MessageData;
+        public readonly int FromServerID;
+        public readonly NexusManager.NexusMessageType MessageType;
+        public readonly byte[] MessageData;
 
-        internal NexusMessage(int _fromServerId, NexusManager.NexusMessageType _messageType, byte[] messageData)
+        public NexusMessage(int _fromServerId, NexusManager.NexusMessageType _messageType, byte[] messageData)
         {
             FromServerID = _fromServerId;
             MessageType = _messageType;
@@ -259,9 +256,9 @@ namespace Advanced_PB_Limiter.Manager
         }
     }
 
-    internal static class MySerializer
+    public static class MySerializer
     {
-        internal static byte[]? SerializeToByteArray(object? obj)
+        public static byte[]? SerializeToByteArray(object? obj)
         {
             if (obj == null)
             {
@@ -274,7 +271,7 @@ namespace Advanced_PB_Limiter.Manager
             return ms.ToArray();
         }
         
-        internal static T? DeserializeFromByteArray<T>(byte[]? data)
+        public static T? DeserializeFromByteArray<T>(byte[]? data)
         {
             if (data == null)
             {
@@ -288,7 +285,7 @@ namespace Advanced_PB_Limiter.Manager
         }
     }
     
-    internal class NexusConnectedEventArgs : EventArgs
+    public class NexusConnectedEventArgs : EventArgs
     {
         public bool Connected { get; set; }
 

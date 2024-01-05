@@ -3,7 +3,7 @@ using System.Reflection;
 
 namespace Advanced_PB_Limiter.Utils
 {
-    internal static class ReflectionUtils
+    public static class ReflectionUtils
     {
         /// <summary>
         /// Gracefully stolen from the original PB Limiter, Credits to SirHamsterAlot and Equinox
@@ -16,12 +16,12 @@ namespace Advanced_PB_Limiter.Utils
             return type.GetMethod(name, flags) ?? throw new Exception($"Couldn't find method {name} on {type}");
         }
 
-        internal static MethodInfo InstanceMethod(Type t, string name)
+        public static MethodInfo InstanceMethod(Type t, string name)
         {
             return Method(t, name, InstanceFlags);
         }
 
-        internal static MethodInfo StaticMethod(Type t, string name)
+        public static MethodInfo StaticMethod(Type t, string name)
         {
             return Method(t, name, StaticFlags);
         }

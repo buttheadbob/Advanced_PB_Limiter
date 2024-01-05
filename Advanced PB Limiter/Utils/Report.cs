@@ -5,17 +5,17 @@ using Advanced_PB_Limiter.Settings;
 
 namespace Advanced_PB_Limiter.Utils
 {
-    internal sealed class PlayerReport
+    public sealed class PlayerReport
     {
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
-        internal ulong SteamId { get; init; }
-        internal long PlayerId { get; init; }
-        internal string PlayerName { get; init; }
-        internal bool IsPrivileged { get; init; }
+        public ulong SteamId { get; init; }
+        public long PlayerId { get; init; }
+        public string PlayerName { get; init; }
+        public bool IsPrivileged { get; init; }
         private List<PBReport> PBReports { get; init;}
-        internal bool IsNexusReport { get; init; }
+        public bool IsNexusReport { get; init; }
 
-        internal PlayerReport(ulong steamId, long playerId, string playerName, bool isNexusReport, List<PBReport> pbReports)
+        public PlayerReport(ulong steamId, long playerId, string playerName, bool isNexusReport, List<PBReport> pbReports)
         {
             SteamId = steamId;
             PlayerId = playerId;
@@ -25,19 +25,19 @@ namespace Advanced_PB_Limiter.Utils
             PBReports = pbReports;
         }
         
-        internal List<PBReport> GetPBReports => PBReports;
+        public List<PBReport> GetPBReports => PBReports;
 
-        internal void AddPBReport(PBReport report)
+        public void AddPBReport(PBReport report)
         {
             PBReports.Add(report);
         }
         
-        internal void AddPBReportRange(IEnumerable<PBReport> reports)
+        public void AddPBReportRange(IEnumerable<PBReport> reports)
         {
             PBReports.AddRange(reports);
         }
 
-        internal int TotalOffences
+        public int TotalOffences
         {
             get
             {
@@ -51,7 +51,7 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
 
-        internal int TotalRecompiles
+        public int TotalRecompiles
         {
             get
             {
@@ -65,7 +65,7 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
 
-        internal double CombinedLastRunTimeMS
+        public double CombinedLastRunTimeMS
         {
             get
             {
@@ -79,7 +79,7 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
 
-        internal double CombinedRunTimeMSAvg
+        public double CombinedRunTimeMSAvg
         {
             get
             {
@@ -94,7 +94,7 @@ namespace Advanced_PB_Limiter.Utils
         }
     }
     
-    internal record PBReport(ulong OwnerSteamId, string GridName, string BlockName, int ServerId, double LastRunTimeMS, double RunTimeMSAvg, int Offences, int Recompiles)
+    public record PBReport(ulong OwnerSteamId, string GridName, string BlockName, int ServerId, double LastRunTimeMS, double RunTimeMSAvg, int Offences, int Recompiles)
     {
         
     }

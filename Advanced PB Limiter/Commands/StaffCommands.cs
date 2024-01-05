@@ -165,7 +165,7 @@ namespace Advanced_PB_Limiter.Commands
             }
             else
             {
-                Config.PrivilegedPlayers.TryAdd(steamId, new PrivilegedPlayer
+                Config.PrivilegedPlayers.Add(steamId, new PrivilegedPlayer
                 {
                     SteamId = steamId,
                     RuntimeAllowance = maxRunTimeMS,

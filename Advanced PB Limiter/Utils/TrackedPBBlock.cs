@@ -1,40 +1,59 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using Advanced_PB_Limiter.Settings;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.World;
 
 namespace Advanced_PB_Limiter.Utils
 {
-    internal sealed class TrackedPBBlock
+    public sealed class TrackedPBBlock
     {
-        private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance.Config;
-        internal MyProgrammableBlock? ProgrammableBlock { get; set; }
+        private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
+        public MyProgrammableBlock? ProgrammableBlock { get; set; }
         private ConcurrentQueue<double> RunTimesMS { get; set; } = new ();
-        internal string GridName { get; set; }
-        internal double PBStartTime { get; set; }
-        internal bool GracePeriodFinished { get; set; }
-        internal bool IsRecompiled { get; set; }
-        internal int Offences { get; set; }
-        internal int Recompiles { get; set; }
-        internal double LastRunTimeMS { get; private set; }
+        public string GridName { get; set; }
+        public double PBStartTime { get; set; }
+        public bool GracePeriodFinished { get; set; }
+        public bool IsRecompiled { get; set; }
+        public ConcurrentStack<long> Offences { get; set; } = new();
+        public int Recompiles { get; set; }
+        public double LastRunTimeMS { get; private set; }
+        
+        private long _lastOffenceTick;
+        public long LastOffenceTick
+        {
+            get => _lastOffenceTick;
+            set => Interlocked.Exchange(ref _lastOffenceTick, value);
+        }
+        
+        private long _lastUpdateTick;
+        public long LastUpdateTick
+        {
+            get => Interlocked.Read(ref _lastUpdateTick);
+            set => Interlocked.Exchange(ref _lastUpdateTick, value);
+        }
 
-        internal TrackedPBBlock(string gridName, double lastRunTimeMs)
+        public TrackedPBBlock(string gridName, double lastRunTimeMs, MyProgrammableBlock pbBlock)
         {
             GridName = gridName;
             PBStartTime = Stopwatch.GetTimestamp();
             LastRunTimeMS = lastRunTimeMs;
             RunTimesMS.Enqueue(lastRunTimeMs);
+            ProgrammableBlock = pbBlock;
+            LastUpdateTick = Stopwatch.GetTimestamp();
         }
         
-        internal void AddRuntimeData(double lastRunTimeMS)
+        public void AddRuntimeData(double lastRunTimeMS)
         {
             LastRunTimeMS = lastRunTimeMS;
             RunTimesMS.Enqueue(lastRunTimeMS);
+            LastUpdateTick = Stopwatch.GetTimestamp();
         }
         
-        internal List<double> GetRunTimesMS
+        public List<double> GetRunTimesMS
         {
             get
             {
@@ -53,7 +72,7 @@ namespace Advanced_PB_Limiter.Utils
             
         }
         
-        internal double RunTimeMSAvg
+        public double RunTimeMSAvg
         {
             get
             {
@@ -75,7 +94,7 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
         
-        internal double RunTimeMSMaxPeek
+        public double RunTimeMSMaxPeek
         {
             get
             {
@@ -92,16 +111,15 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
         
-        internal bool IsUnderGracePeriod(ulong SteamId)
+        public bool IsUnderGracePeriod(ulong SteamId)
         {
-            ulong steamId = MySession.Static.Players.TryGetSteamId(ProgrammableBlock!.SlimBlock.OwnerId);
-            if (Config.PrivilegedPlayers.TryGetValue(steamId, out PrivilegedPlayer? privilegedPlayer))
+            if (Config.PrivilegedPlayers.TryGetValue(SteamId, out PrivilegedPlayer privilegedPlayer))
                 return (Stopwatch.GetTimestamp() - PBStartTime) / Stopwatch.Frequency < privilegedPlayer.StartupAllowance;
             
-            return (Stopwatch.GetTimestamp() - PBStartTime) / Stopwatch.Frequency < Config.GracefulShutDownRequestDelay;
+            return (Stopwatch.GetTimestamp() - PBStartTime) / Stopwatch.Frequency < 2;
         }
         
-        internal void ClearRunTimes()
+        public void ClearRunTimes()
         {
             // This allows the queue to be cleared without removing any new items that may have been added during the process.
             int initialCount = RunTimesMS.Count;
@@ -115,7 +133,7 @@ namespace Advanced_PB_Limiter.Utils
 
             IsRecompiled = true;
             PBStartTime = 0;
-            Offences = 0;
+            Offences.Clear();
             Recompiles++;
             GracePeriodFinished = false;
         }

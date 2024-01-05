@@ -7,6 +7,7 @@ using System.Timers;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using Advanced_PB_Limiter.Manager;
+using Advanced_PB_Limiter.Patches;
 using Torch;
 using Torch.API;
 using Torch.API.Managers;
@@ -18,25 +19,29 @@ using Advanced_PB_Limiter.UI;
 using Advanced_PB_Limiter.Utils;
 using Sandbox.ModAPI;
 using Torch.Managers;
+using Torch.Managers.PatchManager;
 
 namespace Advanced_PB_Limiter
 {
-    internal class Advanced_PB_Limiter : TorchPluginBase, IWpfPlugin
+    public class Advanced_PB_Limiter : TorchPluginBase, IWpfPlugin
     {
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
         private const string CONFIG_FILE_NAME = "Advanced_PB_LimiterConfig.cfg";
-        internal static Advanced_PB_Limiter? Instance { get; private set; }
+        public static Advanced_PB_Limiter? Instance { get; private set; }
         private Advanced_PB_LimiterControl? _control;
         public UserControl GetControl() => _control ?? (_control = new Advanced_PB_LimiterControl());
         private Persistent<Advanced_PB_LimiterConfig>? _config;
-        internal Advanced_PB_LimiterConfig? Config => _config?.Data;
-        internal static Dispatcher Dispatcher { get; private set; } = Dispatcher.CurrentDispatcher;
+        public Advanced_PB_LimiterConfig? Config => _config?.Data;
+        public static Dispatcher Dispatcher { get; private set; } = Dispatcher.CurrentDispatcher;
         private static Timer NexusConnectionChecker { get; set; } = new Timer(10000);
+        public static bool GameOnline { get; set; }
+        public PatchManager? _pm;
+        public PatchContext? _context;
         
         // Nexus stuff
-        internal static NexusAPI? nexusAPI { get; private set; }
+        public static NexusAPI? nexusAPI { get; private set; }
         private static readonly Guid NexusGUID = new ("28a12184-0422-43ba-a6e6-2e228611cca5");
-        internal static bool NexusInstalled { get; private set; }
+        public static bool NexusInstalled { get; private set; }
         // ReSharper disable once IdentifierTypo
         private static bool NexusInited;
 
@@ -54,6 +59,9 @@ namespace Advanced_PB_Limiter
             await Save();
             
             Instance = this;
+            _pm = DependencyProviderExtensions.GetManager<PatchManager>(torch.Managers);
+            _context = _pm.AcquireContext();
+            ProfilerPatch.Patch(_context);
             NexusConnectionChecker.Elapsed += CheckNexusConnection;
         }
 
@@ -67,10 +75,12 @@ namespace Advanced_PB_Limiter
                     TrackingManager.Init();
                     if (NexusInited)
                         NexusConnectionChecker.Start();
+                    GameOnline = true;
                     break;
-
+                
                 case TorchSessionState.Unloading:
                     Log.Info("Session Unloading!");
+                    GameOnline = false;
                     break;
             }
         }
@@ -95,6 +105,7 @@ namespace Advanced_PB_Limiter
                     return;
                         
                 Type? Plugin = torchPlugin.GetType();
+                
                 Type? NexusPatcher = Plugin != null! ? Plugin.Assembly.GetType("Nexus.API.PluginAPISync") : null;
                 if (NexusPatcher != null)
                 {
@@ -105,15 +116,16 @@ namespace Advanced_PB_Limiter
                     nexusAPI = new NexusAPI(8697);
                     MyAPIGateway.Multiplayer.RegisterSecureMessageHandler(8697, NexusManager.HandleNexusMessage); 
                     NexusInstalled = true;
+                    
+                    NexusAPI.Server thisServer = NexusAPI.GetThisServer();
+                    NexusManager.SetServerData(thisServer);
+                    NexusManager.RaiseNexusConnectedEvent(true);
                 }
             }
             NexusInited = true;
-            NexusAPI.Server thisServer = NexusAPI.GetThisServer();
-            NexusManager.SetServerData(thisServer);
-            NexusManager.RaiseNexusConnectedEvent(true);
         }
 
-        internal async Task UpdateConfigFromNexus(Advanced_PB_LimiterConfig config)
+        public async Task UpdateConfigFromNexus(Advanced_PB_LimiterConfig config)
         {
             _config = new Persistent<Advanced_PB_LimiterConfig>(Path.Combine(StoragePath, CONFIG_FILE_NAME), config);
              await Save();
@@ -135,7 +147,7 @@ namespace Advanced_PB_Limiter
             }
         }
 
-        internal Task Save()
+        public Task Save()
         {
             try
             {

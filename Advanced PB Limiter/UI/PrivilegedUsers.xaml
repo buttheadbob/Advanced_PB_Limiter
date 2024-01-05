@@ -99,7 +99,7 @@
             <Setter Property="Background" Value="Transparent"/>
         </Style>
     </UserControl.Resources>
-    <StackPanel Orientation="Horizontal">
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
         <GroupBox MinWidth="250">
             <GroupBox.Header>
                 <TextBlock>

@@ -5,12 +5,12 @@ using VRageMath;
 
 namespace Advanced_PB_Limiter.Utils
 {
-    internal static class Chat
+    public static class Chat
     {
-        private const string Author = "PB Limiter";
-        private static Color ChatColor = Color.Green;
+        private const string Author = "Advanced PB Limiter";
+        private static readonly Color ChatColor = Color.Green;
 
-        internal static void Send(string message, ulong Target, Color? color = null)
+        public static void Send(string message, ulong Target, Color? color = null)
         {
             Color useColor = color ?? ChatColor;
             

@@ -11,7 +11,7 @@ using Torch.Commands;
 
 namespace Advanced_PB_Limiter.Manager
 {
-    internal static class ReportManager
+    public static class ReportManager
     {
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
         private static ConcurrentDictionary<ulong, PlayerReport> LocalReports { get; } = new();
@@ -23,7 +23,7 @@ namespace Advanced_PB_Limiter.Manager
         private static List<NexusAPI.Server> NexusServers = new();
         private static readonly ConcurrentDictionary<ulong, DateTime> LastPlayerReportRequest = new();
         
-        internal static void AddOrUpdateReport(int fromServer, List<PlayerReport> report)
+        public static void AddOrUpdateReport(int fromServer, List<PlayerReport> report)
         {
             for (int index = 0; index < report.Count; index++)
             {
@@ -41,7 +41,7 @@ namespace Advanced_PB_Limiter.Manager
         }
 
         // ALWAYS RUN THIS ASYNC
-        internal static async Task GetReport(CommandContext? context, bool createNexusReport = false)
+        public static async Task GetReport(CommandContext? context, bool createNexusReport = false)
         {
             if (context is null)
             {
@@ -349,7 +349,7 @@ namespace Advanced_PB_Limiter.Manager
                         myNexusId,
                         list[index].GetAllPBBlocks[ii].LastRunTimeMS,
                         list[index].GetAllPBBlocks[ii].RunTimeMSAvg,
-                        list[index].GetAllPBBlocks[ii].Offences,
+                        list[index].GetAllPBBlocks[ii].Offences.Count,
                         list[index].GetAllPBBlocks[ii].Recompiles);
                     
                     pbReports.Add(pbReport);
@@ -378,7 +378,7 @@ namespace Advanced_PB_Limiter.Manager
             return null;
         }
 
-        internal static async Task PlayerStatsRequest(CommandContext context)
+        public static async Task PlayerStatsRequest(CommandContext context)
         {
             if (!LastPlayerReportRequest.TryGetValue(context.Player.SteamUserId, out DateTime lastRequest))
                 LastPlayerReportRequest.TryAdd(context.Player.SteamUserId, DateTime.Now);

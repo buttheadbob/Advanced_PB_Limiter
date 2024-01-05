@@ -1,36 +1,38 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Timers;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
+using NLog;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.World;
 using VRage.Game.VisualScripting.Utils;
 
 namespace Advanced_PB_Limiter.Manager
 {
-    internal static class TrackingManager
+    public static class TrackingManager
     {
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
         private static ConcurrentDictionary<long,TrackedPlayer> PlayersTracked { get; } = new ();
         private static readonly Timer _cleanupTimer = new ();
         private static readonly int _lastKnownCleanupInterval = Config.RemoveInactivePBsAfterSeconds;
+        private static readonly Logger Log = LogManager.GetCurrentClassLogger();
 
-        internal static void Init()
+        public static void Init()
         {
             _cleanupTimer.Elapsed += (sender, args) => CleanUpOldPlayers();
             if (Config.RemovePlayersWithNoPBFrequencyInMinutes > 0)
             {
                 _cleanupTimer.Interval = Config.RemovePlayersWithNoPBFrequencyInMinutes * 60 * 1000;
                 _cleanupTimer.Start();
-                Task.Run(CheckAllUserBlocksForCombinedLimits);
             }
         }
         
-        internal static List<TrackedPlayer> GetTrackedPlayerData()
+        public static List<TrackedPlayer> GetTrackedPlayerData()
         {
             return PlayersTracked.Values.ToList();
         }
@@ -56,8 +58,11 @@ namespace Advanced_PB_Limiter.Manager
             }
         }
 
-        internal static void UpdateTrackingData(MyProgrammableBlock pb, double runTime)
+        public static void UpdateTrackingData(MyProgrammableBlock pb, double runTime)
         {
+            Stopwatch debugTimer = new();
+            debugTimer.Start();
+            
             if (!Config.Enabled) return;
             if (Config.IgnoreNPCs)
             {
@@ -67,12 +72,16 @@ namespace Advanced_PB_Limiter.Manager
             if (PlayersTracked.TryGetValue(pb.OwnerId, out TrackedPlayer? player))
             {
                 player.UpdatePBBlockData(pb, runTime);
+                debugTimer.Stop();
+                Log.Warn($"Warning: Updated PB Block Data.  Time Taken: [{debugTimer.Elapsed.TotalMilliseconds}]");
                 return;
             }
             
-            player = new TrackedPlayer(pb.CubeGrid.DisplayName, pb.OwnerId);
-            player.UpdatePBBlockData(pb, runTime);
+            player = new TrackedPlayer(pb.OwnerId);
             PlayersTracked.TryAdd(pb.OwnerId, player);
+            player.UpdatePBBlockData(pb, runTime);
+            debugTimer.Stop();
+            Log.Warn($"Warning: Added PB Block Data.  Time Taken: [{debugTimer.Elapsed.TotalMilliseconds}]");
         }
         
         private static void RemovePlayer(long Id)
@@ -85,9 +94,10 @@ namespace Advanced_PB_Limiter.Manager
             }
         }
         
-        internal static void PBRecompiled(MyProgrammableBlock pb)
+        public static void PBRecompiled(MyProgrammableBlock? pb)
         {
             if (!Config.Enabled) return;
+            if (pb is null) return;
             
             if (PlayersTracked.TryGetValue(pb.OwnerId, out TrackedPlayer? player))
             {
@@ -104,7 +114,7 @@ namespace Advanced_PB_Limiter.Manager
             
             foreach(KeyValuePair<long, TrackedPlayer> trackedPlayer in PlayersTracked)
             {
-                if (Config.PrivilegedPlayers.TryGetValue(trackedPlayer.Value.SteamId, out PrivilegedPlayer? privilegedPlayer))
+                if (Config.PrivilegedPlayers.TryGetValue(trackedPlayer.Value.SteamId, out PrivilegedPlayer privilegedPlayer))
                     if (!privilegedPlayer.NoCombinedLimits) continue;
 
                 double totalMS = 0;

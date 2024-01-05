@@ -1,17 +1,19 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Timers;
 using System.Windows;
 using System.Windows.Data;
 using Advanced_PB_Limiter.Manager;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
-using ConcurrentObservableCollections.ConcurrentObservableDictionary;
 using System.Windows.Forms;
 using System.Windows.Media;
 using MessageBox = System.Windows.MessageBox;
@@ -24,15 +26,18 @@ namespace Advanced_PB_Limiter.UI
     public partial class Reports
     {
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
-        private static readonly ConcurrentObservableDictionary<ulong, CustomPlayerReport> PlayerReports = new();
-        private static readonly ConcurrentObservableDictionary<long, CustomBlockReport> BlockReports = new();
+        private static readonly ConcurrentDictionary<ulong, CustomPlayerReport> PlayerReports = new();
+        private static readonly ConcurrentDictionary<long, CustomBlockReport> BlockReports = new();
         private static readonly Timer _refreshTimer = new ();
+        private static ObservableCollection<CustomBlockReport> datagrid_BlockReports = new();
+        private static ObservableCollection<CustomPlayerReport> datagrid_PlayerReports = new();
+        private const string fileTypes = "Text File (*.txt)|*.txt";
         
         public Reports()
         {
             InitializeComponent();
             DataContext = this;
-            _refreshTimer.Elapsed += (sender, args) => RefreshReportData();
+            _refreshTimer.Elapsed += TimedRefreshAsync;
         }
         
         private async Task Save()
@@ -40,15 +45,23 @@ namespace Advanced_PB_Limiter.UI
             await Advanced_PB_Limiter.Instance!.Save();
         }
         
+        private void TimedRefreshAsync(object sender, ElapsedEventArgs e)
+        {
+            Dispatcher.InvokeAsync(async () => await RefreshReportData());
+        }
+        
         private Task RefreshReportData()
         {
             PlayerReports.Clear();
             BlockReports.Clear();
+            PerPlayerDataGrid.ItemsSource = null;
+            PerPBDataGrid.ItemsSource = null;
             
             double lastRunTimeMs = 0;
             double avgMs = 0;
             double calculatedLastRunTimeMs;
             double calculatedAvgMs;
+            int recompiles = 0;
 
             List<TrackedPlayer> data = TrackingManager.GetTrackedPlayerData();
             for (int index = 0; index < data.Count; index++)
@@ -62,24 +75,31 @@ namespace Advanced_PB_Limiter.UI
                     (
                         data[index].SteamId, 
                         data[index].PlayerName, 
-                        data[index].GetAllPBBlocks[ii]!.ProgrammableBlock!.CubeGrid.DisplayName, 
+                        data[index].GetAllPBBlocks[ii].GridName, 
                         data[index].GetAllPBBlocks[ii]!.ProgrammableBlock!.DisplayName,
                         data[index].GetAllPBBlocks[ii].LastRunTimeMS, 
                         data[index].GetAllPBBlocks[ii].RunTimeMSAvg, 
-                        data[index].GetAllPBBlocks[ii].Offences,
+                        data[index].GetAllPBBlocks[ii].Offences.Count,
                         data[index].GetAllPBBlocks[ii].Recompiles
                     );
                     BlockReports.TryAdd(data[index].GetAllPBBlocks[ii].ProgrammableBlock!.EntityId, blockReport);
+                    
+                    recompiles += data[index].GetAllPBBlocks[ii].Recompiles;
                 }
 
                 calculatedAvgMs = avgMs / data[index].PBBlockCount;
                 calculatedLastRunTimeMs = lastRunTimeMs / data[index].PBBlockCount;
 
-                CustomPlayerReport report = new(data[index].SteamId, data[index].PlayerName, calculatedLastRunTimeMs, calculatedAvgMs, data[index].Offences, data[index].PBBlockCount);
+                CustomPlayerReport report = new(data[index].SteamId, data[index].PlayerName, calculatedLastRunTimeMs, calculatedAvgMs, data[index].Offences, data[index].PBBlockCount, recompiles);
                 PlayerReports.TryAdd(data[index].SteamId, report);
 
                 lastRunTimeMs = 0;
                 avgMs = 0;
+                
+                datagrid_BlockReports = new ObservableCollection<CustomBlockReport>(BlockReports.Values);
+                datagrid_PlayerReports = new ObservableCollection<CustomPlayerReport>(PlayerReports.Values);
+                PerPlayerDataGrid.ItemsSource = datagrid_PlayerReports;
+                PerPBDataGrid.ItemsSource = datagrid_BlockReports;
             }
 
             return Task.CompletedTask;
@@ -93,8 +113,9 @@ namespace Advanced_PB_Limiter.UI
             public double CombinedAvgMS { get; }
             public int Offences { get; }
             public int PbCount { get; }
+            public int Recompiles { get; }
 
-            public CustomPlayerReport(ulong steamId, string playerName, double combinedLastRunTimeMs, double combinedAvgMs, int offences, int pbCount)
+            public CustomPlayerReport(ulong steamId, string playerName, double combinedLastRunTimeMs, double combinedAvgMs, int offences, int pbCount, int recompiles)
             {
                 SteamId = steamId;
                 PlayerName = playerName;
@@ -102,6 +123,7 @@ namespace Advanced_PB_Limiter.UI
                 CombinedAvgMS = combinedAvgMs;
                 Offences = offences;
                 PbCount = pbCount;
+                Recompiles = recompiles;
             }
         }
         
@@ -131,14 +153,21 @@ namespace Advanced_PB_Limiter.UI
 
         private void EnableLiveViewButton_OnClick(object sender, RoutedEventArgs e)
         {
-            if (float.TryParse(RefreshRateTextBox.Text, out float refreshRate))
+            if (!Advanced_PB_Limiter.GameOnline)
             {
-                _refreshTimer.Interval = refreshRate * 1000;
+                MessageBox.Show("Game is not online, cannot enable live view.", "Game Offline", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            
+            if (double.TryParse(RefreshRateTextBox.Text, out double refreshRate))
+            {
+                _refreshTimer.Interval = TimeSpan.FromSeconds(refreshRate).TotalMilliseconds;
                 _refreshTimer.Start();
                 RefreshRateTextBox.Background = new SolidColorBrush(Colors.Transparent);
                 RefreshRateTextBox.Foreground = new SolidColorBrush(Colors.Aqua);
                 EnableLiveViewButton.Background = new SolidColorBrush(Colors.RosyBrown);
                 EnableLiveViewButton.Content = "Live View Active";
+                return;
             }
             
             RefreshRateTextBox.Background = new SolidColorBrush(Colors.Red);
@@ -161,7 +190,7 @@ namespace Advanced_PB_Limiter.UI
         private async void GenerateTextReport_OnClick(object sender, RoutedEventArgs e)
         {
             SaveFileDialog saveFileDialog = new();
-            saveFileDialog.Filter = "Text File (*.txt)|*.txt";
+            saveFileDialog.Filter = fileTypes;
 
             if (saveFileDialog.ShowDialog() != DialogResult.OK) return;
             await RefreshReportData();
@@ -173,7 +202,7 @@ namespace Advanced_PB_Limiter.UI
         private async void SaveCurrentReport_OnClick(object sender, RoutedEventArgs e)
         {
             SaveFileDialog saveFileDialog = new();
-            saveFileDialog.Filter = "Text File (*.txt)|*.txt";
+            saveFileDialog.Filter = fileTypes;
 
             if (saveFileDialog.ShowDialog() != DialogResult.OK) return;
             string report = await GenerateTextReportForSave();

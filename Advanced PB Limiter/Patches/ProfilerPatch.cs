@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Reflection;
+using System.Threading.Tasks;
 using Advanced_PB_Limiter.Manager;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
@@ -14,13 +15,13 @@ using Torch.Utils.Reflected;
 namespace Advanced_PB_Limiter.Patches
 {
     [ReflectedLazy]
-    internal static class ProfilerPatch
+    public static class ProfilerPatch
     {
         /// <summary>
         /// Gracefully stolen (and modified by me) from the original PB Limiter, Credits to SirHamsterAlot and Equinox
         /// </summary>
         
-        private static readonly Logger Log = LogManager.GetCurrentClassLogger();
+        private static readonly Logger Log = LogManager.GetLogger("Advanced PB Limiter Profile Patcher");
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
         
         [ReflectedMethodInfo(typeof(MyProgrammableBlock), "ExecuteCode")]
@@ -29,7 +30,7 @@ namespace Advanced_PB_Limiter.Patches
         [ReflectedMethodInfo(typeof(MyProgrammableBlock), "Compile")]
         private static readonly MethodInfo? _programmableRecompile;
         
-        internal static void Patch(PatchContext ctx)
+        public static void Patch(PatchContext ctx)
         {
             ReflectedManager.Process(typeof(ProfilerPatch));
 
@@ -49,8 +50,7 @@ namespace Advanced_PB_Limiter.Patches
         private static void SuffixProfilePb(MyProgrammableBlock? __instance, ref long __localTimingStart)
         {
             if (__instance is null) return;
-            double dtInMilliseconds = (Stopwatch.GetTimestamp() - __localTimingStart) * 1000.0 / Stopwatch.Frequency;
-            TrackingManager.UpdateTrackingData(__instance, dtInMilliseconds);
+            TrackingManager.UpdateTrackingData(__instance, (Stopwatch.GetTimestamp() - __localTimingStart) * 1000.0 / Stopwatch.Frequency); 
         }
 
         private static void PrefixRecompilePb(MyProgrammableBlock? __instance)
