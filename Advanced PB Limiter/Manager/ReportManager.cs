@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text;
 using System.Threading.Tasks;
 using Advanced_PB_Limiter.Utils;
@@ -393,18 +394,18 @@ namespace Advanced_PB_Limiter.Manager
             int waitCounter = 0;
             while (ReportGenerationInProgress)
             {
-                await Task.Delay(250);
+                await Task.Delay(50); // Originally 250 but a simple report can be done in less than 10ms - 15ms.
                 waitCounter++;
-                if (waitCounter > 20) // 250ms x 20 attempts = 5 seconds
-                {
-                    context.Respond("The server has too many reports being generated at once.  Please try again in a few minutes.");
-                    return;
-                }
+                if (waitCounter <= 20) continue; // 50ms x 100 attempts = 5 seconds
+                context.Respond("The server has too many reports being generated at once.  Please try again in a few minutes.");
+                return;
             }
             
             ReportGenerationInProgress = true;
+            
+            Stopwatch sw = Stopwatch.StartNew();
             await GenerateLocalReportData();
-            if (LocalReports.TryGetValue(context.Player.SteamUserId, out PlayerReport? playerReport))
+            if (LocalReports.TryGetValue(context.Player.SteamUserId, out PlayerReport playerReport))
             {
                 StringBuilder report = new();
                 report.AppendLine();
@@ -414,16 +415,16 @@ namespace Advanced_PB_Limiter.Manager
                 report.AppendLine("    -  PB Count: " + playerReport.GetPBReports.Count);
                 report.AppendLine("    -  Total Offences: " + playerReport.TotalOffences);
                 report.AppendLine("    -  Total Recompiles: " + playerReport.TotalRecompiles);
-                report.AppendLine("    -  Combined Runtime: " + playerReport.CombinedLastRunTimeMS);
-                report.AppendLine("    -  Combined Runtime Avg: " + playerReport.CombinedRunTimeMSAvg);
+                report.AppendLine("    -  Combined Runtime: " + Math.Round(playerReport.CombinedLastRunTimeMS, 4));
+                report.AppendLine("    -  Combined Runtime Avg: " + Math.Round(playerReport.CombinedRunTimeMSAvg, 4));
                 report.AppendLine("");
                 report.AppendLine(" >  Per Programmable Block Stats");
                 for (int index = 0; index < playerReport.GetPBReports.Count; index++)
                 {
                     report.AppendLine("    -  Grid Name: " + playerReport.GetPBReports[index].GridName);
                     report.AppendLine("    -  Block Name: " + playerReport.GetPBReports[index].BlockName);
-                    report.AppendLine("    -  Last Runtime: " + playerReport.GetPBReports[index].LastRunTimeMS);
-                    report.AppendLine("    -  Runtime Avg: " + playerReport.GetPBReports[index].RunTimeMSAvg);
+                    report.AppendLine("    -  Last Runtime: " + Math.Round(playerReport.GetPBReports[index].LastRunTimeMS, 4));
+                    report.AppendLine("    -  Runtime Avg: " + Math.Round(playerReport.GetPBReports[index].RunTimeMSAvg, 4));
                     report.AppendLine("    -  Offences: " + playerReport.GetPBReports[index].Offences);
                     report.AppendLine("    -  Recompiles: " + playerReport.GetPBReports[index].Recompiles);
                     report.AppendLine("");
@@ -431,7 +432,8 @@ namespace Advanced_PB_Limiter.Manager
                 report.AppendLine("-----------------------------");
                 report.AppendLine("END OF REPORT");
                 context.Respond(report.ToString());
-                
+                sw.Stop();
+                Log.Info($"{playerReport.PlayerName} requested a player report, generated in {Math.Round(sw.Elapsed.TotalMilliseconds, 4)}ms.");
                 LocalReports.Clear();
                 ReportGenerationInProgress = false;
                 return;

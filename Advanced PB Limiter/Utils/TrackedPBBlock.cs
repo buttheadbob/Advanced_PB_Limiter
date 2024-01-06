@@ -1,25 +1,22 @@
-﻿using System;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Advanced_PB_Limiter.Settings;
 using Sandbox.Game.Entities.Blocks;
-using Sandbox.Game.World;
 
 namespace Advanced_PB_Limiter.Utils
 {
     public sealed class TrackedPBBlock
     {
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
-        public MyProgrammableBlock? ProgrammableBlock { get; set; }
+        public MyProgrammableBlock? ProgrammableBlock { get; }
         private ConcurrentQueue<double> RunTimesMS { get; set; } = new ();
-        public string GridName { get; set; }
-        public double PBStartTime { get; set; }
+        public string GridName { get; }
+        private double PBStartTime { get; set; }
         public bool GracePeriodFinished { get; set; }
-        public bool IsRecompiled { get; set; }
-        public ConcurrentStack<long> Offences { get; set; } = new();
-        public int Recompiles { get; set; }
+        public ConcurrentStack<long> Offences { get; } = new();
+        public int Recompiles { get; private set; }
         public double LastRunTimeMS { get; private set; }
         
         private long _lastOffenceTick;
@@ -121,21 +118,14 @@ namespace Advanced_PB_Limiter.Utils
         
         public void ClearRunTimes()
         {
-            // This allows the queue to be cleared without removing any new items that may have been added during the process.
-            int initialCount = RunTimesMS.Count;
-            for (int i = 0; i < initialCount; i++)
-            {
-                if (!RunTimesMS.TryDequeue(out _))
-                {
-                    break; // Break if the queue is empty
-                }
-            }
-
-            IsRecompiled = true;
+            RunTimesMS = new ConcurrentQueue<double>();
+            LastRunTimeMS = 0;
             PBStartTime = 0;
             Offences.Clear();
             Recompiles++;
             GracePeriodFinished = false;
+            PBStartTime = Stopwatch.GetTimestamp();
+            _lastUpdateTick = Stopwatch.GetTimestamp();
         }
     }
 }

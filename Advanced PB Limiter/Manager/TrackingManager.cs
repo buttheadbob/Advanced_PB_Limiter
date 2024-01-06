@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Threading.Tasks;
 using System.Timers;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
@@ -25,11 +24,16 @@ namespace Advanced_PB_Limiter.Manager
         public static void Init()
         {
             _cleanupTimer.Elapsed += (sender, args) => CleanUpOldPlayers();
-            if (Config.RemovePlayersWithNoPBFrequencyInMinutes > 0)
-            {
-                _cleanupTimer.Interval = Config.RemovePlayersWithNoPBFrequencyInMinutes * 60 * 1000;
-                _cleanupTimer.Start();
-            }
+            if (Config.RemovePlayersWithNoPBFrequencyInMinutes <= 0) return;
+            _cleanupTimer.Interval = Config.RemovePlayersWithNoPBFrequencyInMinutes * 60 * 1000;
+            _cleanupTimer.Start();
+        }
+        
+        public static void StartPlayerCleanupTimer(int frequency)
+        {
+            if (frequency <= 0) return;
+            _cleanupTimer.Interval = TimeSpan.FromSeconds(frequency).TotalMilliseconds;
+            _cleanupTimer.Start();
         }
         
         public static List<TrackedPlayer> GetTrackedPlayerData()
@@ -43,7 +47,7 @@ namespace Advanced_PB_Limiter.Manager
             
             if (_lastKnownCleanupInterval != Config.RemovePlayersWithNoPBFrequencyInMinutes)
             {
-                if (_lastKnownCleanupInterval == 0)
+                if (_lastKnownCleanupInterval <= 0)
                 {
                     _cleanupTimer.Stop();
                     return;

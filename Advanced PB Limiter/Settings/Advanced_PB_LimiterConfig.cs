@@ -47,7 +47,7 @@ namespace Advanced_PB_Limiter.Settings
         private int _MaxOffencesBeforePunishment = 3;
         public int MaxOffencesBeforePunishment { get => _MaxOffencesBeforePunishment; set => SetValue(ref _MaxOffencesBeforePunishment, value); }
 
-        private int _OffenseDurationBeforeDeletion = 120; // In seconds
+        private int _OffenseDurationBeforeDeletion = 10; // In minutes
         public int OffenseDurationBeforeDeletion { get => _OffenseDurationBeforeDeletion; set => SetValue(ref _OffenseDurationBeforeDeletion, value); }
         
         private double _MaxRunTimeMS = 0.8;
@@ -73,6 +73,12 @@ namespace Advanced_PB_Limiter.Settings
         
         private bool _IgnoreNPCs = true;
         public bool IgnoreNPCs { get => _IgnoreNPCs; set => SetValue(ref _IgnoreNPCs, value); }
+        
+        private bool _AllowSelfTurnOnExploit = true;
+        public bool AllowSelfTurnOnExploit { get => _AllowSelfTurnOnExploit; set => SetValue(ref _AllowSelfTurnOnExploit, value); }
+        
+        private bool _AllowNPCToAutoTurnOn = true;
+        public bool AllowNPCToAutoTurnOn { get => _AllowNPCToAutoTurnOn; set => SetValue(ref _AllowNPCToAutoTurnOn, value); }
         
         public IEnumerable<Enums.Punishment> MyPunishments => Enum.GetValues(typeof(Enums.Punishment)).Cast<Enums.Punishment>();
 

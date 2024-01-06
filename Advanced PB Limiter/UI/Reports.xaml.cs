@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -16,9 +17,10 @@ using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
 using System.Windows.Forms;
 using System.Windows.Media;
+using Sandbox.Game.World;
 using MessageBox = System.Windows.MessageBox;
 using Timer = System.Timers.Timer;
-
+// ReSharper disable SpecifyACultureInStringConversionExplicitly
 // ReSharper disable TooWideLocalVariableScope
 
 namespace Advanced_PB_Limiter.UI
@@ -47,7 +49,7 @@ namespace Advanced_PB_Limiter.UI
         
         private void TimedRefreshAsync(object sender, ElapsedEventArgs e)
         {
-            Dispatcher.InvokeAsync(async () => await RefreshReportData());
+            Dispatcher.Invoke(async () => await RefreshReportData());
         }
         
         private Task RefreshReportData()
@@ -59,8 +61,9 @@ namespace Advanced_PB_Limiter.UI
             
             double lastRunTimeMs = 0;
             double avgMs = 0;
-            double calculatedLastRunTimeMs;
-            double calculatedAvgMs;
+            double calculatedLastRunTimeMs = 0;
+            double calculatedAvgMs = 0;
+            int offences = 0;
             int recompiles = 0;
 
             List<TrackedPlayer> data = TrackingManager.GetTrackedPlayerData();
@@ -85,12 +88,16 @@ namespace Advanced_PB_Limiter.UI
                     BlockReports.TryAdd(data[index].GetAllPBBlocks[ii].ProgrammableBlock!.EntityId, blockReport);
                     
                     recompiles += data[index].GetAllPBBlocks[ii].Recompiles;
+                    offences += data[index].GetAllPBBlocks[ii].Offences.Count;
                 }
 
-                calculatedAvgMs = avgMs / data[index].PBBlockCount;
-                calculatedLastRunTimeMs = lastRunTimeMs / data[index].PBBlockCount;
+                if (data[index].PBBlockCount is not 0) // Should prevent NaN showing up in the live report.
+                {
+                    calculatedAvgMs = avgMs / data[index].PBBlockCount;
+                    calculatedLastRunTimeMs = lastRunTimeMs / data[index].PBBlockCount;
+                }
 
-                CustomPlayerReport report = new(data[index].SteamId, data[index].PlayerName, calculatedLastRunTimeMs, calculatedAvgMs, data[index].Offences, data[index].PBBlockCount, recompiles);
+                CustomPlayerReport report = new(data[index].SteamId, data[index].PlayerName, calculatedLastRunTimeMs, calculatedAvgMs, offences, data[index].PBBlockCount, recompiles);
                 PlayerReports.TryAdd(data[index].SteamId, report);
 
                 lastRunTimeMs = 0;
@@ -119,8 +126,8 @@ namespace Advanced_PB_Limiter.UI
             {
                 SteamId = steamId;
                 PlayerName = playerName;
-                CombinedLastRunTimeMS = combinedLastRunTimeMs;
-                CombinedAvgMS = combinedAvgMs;
+                CombinedLastRunTimeMS = Math.Round(combinedLastRunTimeMs, 4);
+                CombinedAvgMS = Math.Round(combinedAvgMs, 4);
                 Offences = offences;
                 PbCount = pbCount;
                 Recompiles = recompiles;
@@ -132,7 +139,7 @@ namespace Advanced_PB_Limiter.UI
             public ulong SteamId { get; }
             public string PlayerName { get; }
             public string GridName { get; }
-            public string BlockName { get; }
+            public string? BlockName { get; }
             public double LastRunTimeMS { get; }
             public double AvgMS { get; }
             public int Offences { get; }
@@ -144,8 +151,8 @@ namespace Advanced_PB_Limiter.UI
                 PlayerName = playerName;
                 GridName = gridName;
                 BlockName = blockName;
-                LastRunTimeMS = lastRunTimeMs;
-                AvgMS = avgMs;
+                LastRunTimeMS = Math.Round(lastRunTimeMs, 4);
+                AvgMS = Math.Round(avgMs, 4);
                 Offences = offences;
                 Recompiles = recompiles;
             }
@@ -159,7 +166,7 @@ namespace Advanced_PB_Limiter.UI
                 return;
             }
             
-            if (double.TryParse(RefreshRateTextBox.Text, out double refreshRate))
+            if (double.TryParse(RefreshRateTextBox.Text.Replace(",","."), NumberStyles.Any, CultureInfo.InvariantCulture, out double refreshRate))
             {
                 _refreshTimer.Interval = TimeSpan.FromSeconds(refreshRate).TotalMilliseconds;
                 _refreshTimer.Start();
@@ -189,28 +196,47 @@ namespace Advanced_PB_Limiter.UI
 
         private async void GenerateTextReport_OnClick(object sender, RoutedEventArgs e)
         {
+            if (PlayerReports.Count == 0 || BlockReports.Count == 0)
+            {
+                MessageBox.Show("No data to save.  Start the live view first.", "No Data", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            
             SaveFileDialog saveFileDialog = new();
             saveFileDialog.Filter = fileTypes;
-
+            
             if (saveFileDialog.ShowDialog() != DialogResult.OK) return;
             await RefreshReportData();
+            
+            Stopwatch sw = new();
+            sw.Start();
             string report = await GenerateTextReportForSave();
+            sw.Start();
+            
             await WriteTextAsync(saveFileDialog.FileName, report);
-            MessageBox.Show("Report saved to: " + saveFileDialog.FileName, "Report Saved", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Report saved to: " + saveFileDialog.FileName, $"Report Generation Took {sw.Elapsed.TotalMilliseconds}ms", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private async void SaveCurrentReport_OnClick(object sender, RoutedEventArgs e)
         {
+            if (PlayerReports.Count == 0 || BlockReports.Count == 0)
+            {
+                MessageBox.Show("No data to save.  Start the live view first.", "No Data", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            Stopwatch sw = new();
+            sw.Start();
+            string report = await GenerateTextReportForSave(); // Create the report first, so we don't have to wait for the save dialog to show causing the results to be different.
+            sw.Stop();
             SaveFileDialog saveFileDialog = new();
             saveFileDialog.Filter = fileTypes;
 
             if (saveFileDialog.ShowDialog() != DialogResult.OK) return;
-            string report = await GenerateTextReportForSave();
             await WriteTextAsync(saveFileDialog.FileName, report);
-            MessageBox.Show("Report saved to: " + saveFileDialog.FileName, "Report Saved", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Report saved to: " + saveFileDialog.FileName, $"Report Generation Took {sw.Elapsed.TotalMilliseconds}ms", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         
-        private async Task WriteTextAsync(string filePath, string text)
+        private static async Task WriteTextAsync(string filePath, string text)
         {
             using StreamWriter writer = new (filePath, false);
             await writer.WriteAsync(text);
@@ -237,57 +263,36 @@ namespace Advanced_PB_Limiter.UI
             
             foreach (KeyValuePair<ulong, CustomPlayerReport> playerReport in playerReports)
             {
-                if (playerReport.Value.CombinedLastRunTimeMS > hottestPlayer.Item1)
+                if (hottestPlayer.Item2 is null || playerReport.Value.CombinedLastRunTimeMS > hottestPlayer.Item1)
                     hottestPlayer = new Tuple<double, ulong?>(playerReport.Value.CombinedLastRunTimeMS, playerReport.Key);
                 
-                if (playerReport.Value.CombinedAvgMS > hottestPlayerAvg.Item1)
+                if (hottestPlayerAvg.Item2 is null || playerReport.Value.CombinedAvgMS > hottestPlayerAvg.Item1)
                     hottestPlayerAvg = new Tuple<double, ulong?>(playerReport.Value.CombinedAvgMS, playerReport.Key);
                 
-                if (playerReport.Value.Offences > playerWithMostOffences.Item1)
+                if (playerWithMostOffences.Item2 is null || playerReport.Value.Offences > playerWithMostOffences.Item1)
                     playerWithMostOffences = new Tuple<int, ulong?>(playerReport.Value.Offences, playerReport.Key);
 
-                if (playerReport.Value.PbCount > playerWithMostPBs.Item1)
+                if (playerWithMostPBs.Item2 is null || playerReport.Value.PbCount > playerWithMostPBs.Item1)
                     playerWithMostPBs = new Tuple<int, ulong?, string?>(playerReport.Value.PbCount, playerReport.Key, playerReport.Value.PlayerName);
             }
             
             foreach (KeyValuePair<long, CustomBlockReport> blockReport in blockReports)
             {
-                if (blockReport.Value.LastRunTimeMS > hottestPb.Item1)
+                if (hottestPb.Item4 is null || blockReport.Value.LastRunTimeMS > hottestPb.Item1)
                     hottestPb = new Tuple<double, string?, ulong?, string?>(blockReport.Value.LastRunTimeMS, blockReport.Value.GridName, blockReport.Value.SteamId, blockReport.Value.PlayerName);
                 
-                if (blockReport.Value.Offences > pbWithMostOffences.Item1)
+                if (pbWithMostOffences.Item4 is null || blockReport.Value.Offences > pbWithMostOffences.Item1)
                     pbWithMostOffences = new Tuple<int, string?, ulong?, string?>(blockReport.Value.Offences, blockReport.Value.GridName, blockReport.Value.SteamId, blockReport.Value.PlayerName);
                 
-                if (blockReport.Value.Recompiles > pbWithMostRecompiles.Item1)
+                if (pbWithMostRecompiles.Item4 is null || blockReport.Value.Recompiles > pbWithMostRecompiles.Item1)
                     pbWithMostRecompiles = new Tuple<int, string?, ulong?, string?>(blockReport.Value.Recompiles, blockReport.Value.GridName, blockReport.Value.SteamId, blockReport.Value.PlayerName);
                 
                 ServerTotalMS.Add(blockReport.Value.LastRunTimeMS);
                 ServerTotalOffences += blockReport.Value.Offences;
             }
 
-            // Neat formatting, cause your a nerd!
-            // Get max column width
-            int maxColumnFound = 0;
-            // Check pb data widths
-            foreach (CustomBlockReport? item in perPBDataGrid) 
-            {
-                if (item is null) continue;
-                if (item.PlayerName.Length > maxColumnFound) maxColumnFound = item.PlayerName.Length;
-                if (item.SteamId.ToString().Length > maxColumnFound) maxColumnFound = item.SteamId.ToString().Length;
-                if (item.GridName.Length > maxColumnFound) maxColumnFound = item.GridName.Length;
-                if (item.BlockName.Length > maxColumnFound) maxColumnFound = item.BlockName.Length;
-                // Doubt any ms or offence values will be longer than 10 SteamID, but just in case.
-            }
-            // Check player data widths
-            foreach (CustomPlayerReport? item in perPlayerDataGrid) 
-            {
-                if (item is null) continue;
-                if (item.PlayerName.Length > maxColumnFound) maxColumnFound = item.PlayerName.Length;
-                if (item.SteamId.ToString().Length > maxColumnFound) maxColumnFound = item.SteamId.ToString().Length;
-                // Doubt any ms or offence values will be longer than 10 SteamID, but just in case.
-            }
-            // Add 26 for the longest label and a bit
-            maxColumnFound += 26;
+            
+            int ColumnWidth = 30;
             
             StringBuilder sb = new();
             sb.AppendLine("Advanced PB Limiter Report");
@@ -299,13 +304,15 @@ namespace Advanced_PB_Limiter.UI
             foreach (CustomBlockReport? item in perPBDataGrid) 
             {
                 if (item is null) continue;
-                sb.AppendLine($"{PaddingGenerator(8+item.PlayerName.Length, maxColumnFound)}Player: {item.PlayerName}{PaddingGenerator(8+item.PlayerName.Length, maxColumnFound)}||");
-                sb.Append($"{PaddingGenerator(9+item.SteamId.ToString().Length, maxColumnFound)}SteamID: {item.SteamId}{PaddingGenerator(9+item.SteamId.ToString().Length, maxColumnFound)}||");
-                sb.Append($"{PaddingGenerator(10+item.GridName.Length, maxColumnFound)}GridName: {item.GridName}{PaddingGenerator(10+item.GridName.Length, maxColumnFound)}||");
-                sb.Append($"{PaddingGenerator(11+item.BlockName.Length, maxColumnFound)}BlockName: {item.BlockName}{PaddingGenerator(11+item.BlockName.Length, maxColumnFound)}||");
-                sb.Append($"{PaddingGenerator(15+item.LastRunTimeMS.ToString(CultureInfo.InvariantCulture).Length, maxColumnFound)}LastRunTimeMS: {item.LastRunTimeMS}{PaddingGenerator(15+item.LastRunTimeMS.ToString(CultureInfo.InvariantCulture).Length, maxColumnFound)}||");
-                sb.Append($"{PaddingGenerator(7+item.AvgMS.ToString(CultureInfo.InvariantCulture).Length, maxColumnFound)}AvgMS: {item.AvgMS}{PaddingGenerator(7+item.AvgMS.ToString(CultureInfo.InvariantCulture).Length, maxColumnFound)}||");
-                sb.Append($"{PaddingGenerator(10+item.Offences.ToString().Length, maxColumnFound)}Offences: {item.Offences}");
+                sb.Append($"{PaddingGenerator(8+item.PlayerName.Length, ColumnWidth)}Player: {item.PlayerName}{PaddingGenerator(8+item.PlayerName.Length, ColumnWidth)}||");
+                sb.Append($"{PaddingGenerator(9+item.SteamId.ToString().Length, ColumnWidth)}SteamID: {item.SteamId}{PaddingGenerator(9+item.SteamId.ToString().Length, ColumnWidth)}||");
+                sb.Append($"{PaddingGenerator(10+item.GridName.Length, ColumnWidth)}GridName: {item.GridName}{PaddingGenerator(10+item.GridName.Length, ColumnWidth)}||");
+                if (item.BlockName is not null)
+                    sb.Append($"{PaddingGenerator(11+item.BlockName.Length, ColumnWidth)}BlockName: {item.BlockName}{PaddingGenerator(11+item.BlockName.Length, ColumnWidth)}||");
+                sb.Append($"{PaddingGenerator(15+item.LastRunTimeMS.ToString().Length, ColumnWidth)}LastRunTimeMS: {item.LastRunTimeMS}{PaddingGenerator(15+item.LastRunTimeMS.ToString().Length, ColumnWidth)}||");
+                sb.Append($"{PaddingGenerator(7+item.AvgMS.ToString().Length, ColumnWidth)}AvgMS: {item.AvgMS}{PaddingGenerator(7+item.AvgMS.ToString().Length, ColumnWidth)}||");
+                sb.Append($"{PaddingGenerator(10+item.Offences.ToString().Length, ColumnWidth)}Offences: {item.Offences}{PaddingGenerator(10+item.Offences.ToString().Length, ColumnWidth)}||");
+                sb.AppendLine($"{PaddingGenerator(12+item.Recompiles.ToString().Length, ColumnWidth)}Recompiles: {item.Recompiles}");
             }
             sb.AppendLine();
             sb.AppendLine();
@@ -314,26 +321,38 @@ namespace Advanced_PB_Limiter.UI
             foreach (CustomPlayerReport? item in perPlayerDataGrid) 
             {
                 if (item is null) continue;
-                sb.AppendLine($"{PaddingGenerator(8+item.PlayerName.Length, maxColumnFound)}Player: {item.PlayerName}{PaddingGenerator(8+item.PlayerName.Length, maxColumnFound)}||");
-                sb.Append($"{PaddingGenerator(9+item.SteamId.ToString().Length, maxColumnFound)}SteamID: {item.SteamId}{PaddingGenerator(9+item.SteamId.ToString().Length, maxColumnFound)}||");
-                sb.Append($"{PaddingGenerator(23+item.CombinedLastRunTimeMS.ToString(CultureInfo.InvariantCulture).Length, maxColumnFound)}CombinedLastRunTimeMS: {item.CombinedLastRunTimeMS}{PaddingGenerator(23+item.CombinedLastRunTimeMS.ToString(CultureInfo.InvariantCulture).Length, maxColumnFound)}||");
-                sb.Append($"{PaddingGenerator(15+item.CombinedAvgMS.ToString(CultureInfo.InvariantCulture).Length, maxColumnFound)}CombinedAvgMS: {item.CombinedAvgMS}{PaddingGenerator(15+item.CombinedAvgMS.ToString(CultureInfo.InvariantCulture).Length, maxColumnFound)}||");
-                sb.Append($"{PaddingGenerator(10+item.Offences.ToString().Length, maxColumnFound)}Offences: {item.Offences}");
+                sb.Append($"{PaddingGenerator(8+item.PlayerName.Length, ColumnWidth)}Player: {item.PlayerName}{PaddingGenerator(8+item.PlayerName.Length, ColumnWidth)}||");
+                sb.Append($"{PaddingGenerator(9+item.SteamId.ToString().Length, ColumnWidth)}SteamID: {item.SteamId}{PaddingGenerator(9+item.SteamId.ToString().Length, ColumnWidth)}||");
+                sb.Append($"{PaddingGenerator(19+item.CombinedLastRunTimeMS.ToString().Length, ColumnWidth)}CombinedRunTimeMS: {item.CombinedLastRunTimeMS}{PaddingGenerator(19+item.CombinedLastRunTimeMS.ToString().Length, ColumnWidth)}||");
+                sb.Append($"{PaddingGenerator(15+item.CombinedAvgMS.ToString().Length, ColumnWidth)}CombinedAvgMS: {item.CombinedAvgMS}{PaddingGenerator(15+item.CombinedAvgMS.ToString().Length, ColumnWidth)}||");
+                sb.Append($"{PaddingGenerator(10+item.Offences.ToString().Length, ColumnWidth)}Offences: {item.Offences}{PaddingGenerator(10+item.Offences.ToString().Length, ColumnWidth)}||");
+                sb.Append($"{PaddingGenerator(12+item.Recompiles.ToString().Length, ColumnWidth)}Recompiles: {item.Recompiles}{PaddingGenerator(12+item.Recompiles.ToString().Length, ColumnWidth)}||");
+                sb.AppendLine($"{PaddingGenerator(6+item.PbCount.ToString().Length, ColumnWidth)}PB's: {item.PbCount}");
             }
             sb.AppendLine();
             sb.AppendLine();
             sb.AppendLine("> Quick Stats");
             sb.AppendLine("-----------------------");
             sb.AppendLine("Server Total Avg MS: " + ServerTotalMS.Sum()/ServerTotalMS.Count + "     ***NOTE: This is an average of all the pb's last run time.  Not all pb's run on the same tick, keep this in mind!");
-            sb.AppendLine("Hottest Player: " + hottestPlayer.Item2 + " with " + hottestPlayer.Item1 + "ms");
-            sb.AppendLine("Hottest Player Avg: " + hottestPlayerAvg.Item2 + " with " + hottestPlayerAvg.Item1 + "ms");
-            sb.AppendLine("Player With Most PBs: " + playerWithMostPBs.Item2 + " (" + playerWithMostPBs.Item3 + ") with " + playerWithMostPBs.Item1 + " PBs");
-            sb.AppendLine("Total Players Tracked: " + playerReports.Length);
-            sb.AppendLine("Total Programmable Blocks Tracked: " + blockReports.Length);
-            sb.AppendLine("Total Offences: " + ServerTotalOffences);
-            sb.AppendLine("Hottest Block: " + hottestPb.Item2 + " on " + hottestPb.Item3 + " (" + hottestPb.Item4 + ") with " + hottestPb.Item1 + "ms");
-            sb.AppendLine("Most Recompiled Block: " + pbWithMostRecompiles.Item2 + " on " + pbWithMostRecompiles.Item3 + " (" + pbWithMostRecompiles.Item4 + ") with " + pbWithMostRecompiles.Item1 + " recompiles");
-            sb.AppendLine("Block With Most Offenses: " + pbWithMostOffences.Item2 + " on " + pbWithMostOffences.Item3 + " (" + pbWithMostOffences.Item4 + ") with " + pbWithMostOffences.Item1 + " offences");
+            sb.AppendLine(hottestPlayer.Item2 is not null
+                ? $"Hottest Player: {hottestPlayer.Item2} ({MySession.Static.Players.TryGetIdentityNameFromSteamId((ulong)hottestPlayer.Item2)}) with {hottestPlayer.Item1}ms"
+                : $"Hottest Player: {hottestPlayer.Item2} with {hottestPlayer.Item1}ms");
+            sb.AppendLine(hottestPlayerAvg.Item2 is not null
+                ? $"Hottest Player Avg: {hottestPlayerAvg.Item2} ({MySession.Static.Players.TryGetIdentityNameFromSteamId((ulong)hottestPlayerAvg.Item2)}) with {hottestPlayerAvg.Item1}ms"
+                : $"Hottest Player Avg: {hottestPlayerAvg.Item2} with {hottestPlayerAvg.Item1}ms");
+            sb.AppendLine(playerWithMostPBs.Item2 is not null
+                ? $"Player With Most PBs: {playerWithMostPBs.Item2} ({playerWithMostPBs.Item3}) with {playerWithMostPBs.Item1} PBs" 
+                : $"Player With Most PBs: {playerWithMostPBs.Item2} with {playerWithMostPBs.Item1} PBs");
+            sb.AppendLine($"Total Players Tracked: {playerReports.Length}");
+            sb.AppendLine($"Total Programmable Blocks Tracked: {blockReports.Length}");
+            sb.AppendLine($"Total Offences: {ServerTotalOffences}");
+            sb.AppendLine($"Hottest Block: {hottestPb.Item2} on {hottestPb.Item3} ({hottestPb.Item4}) with {hottestPb.Item1}ms");
+            sb.AppendLine(pbWithMostRecompiles.Item4 is not null
+                ? $"Most Recompiled Block: {pbWithMostRecompiles.Item2} on {pbWithMostRecompiles.Item3} ({pbWithMostRecompiles.Item4}) with {pbWithMostRecompiles.Item1} recompiles"
+                : $"Most Recompiled Block: {pbWithMostRecompiles.Item2} with {pbWithMostRecompiles.Item1} recompiles");
+            sb.AppendLine(pbWithMostOffences.Item4 is not null
+                ? $"Block With Most Offenses: {pbWithMostOffences.Item2} on {pbWithMostOffences.Item3} ({pbWithMostOffences.Item4}) with {pbWithMostOffences.Item1} offences"
+                : $"Block With Most Offenses: {pbWithMostOffences.Item2} with {pbWithMostOffences.Item1} offences");
             sb.AppendLine();
             sb.AppendLine();
             sb.AppendLine("-----------------------");

@@ -1,11 +1,11 @@
 ﻿using System.Diagnostics;
 using System.Reflection;
-using System.Threading.Tasks;
 using Advanced_PB_Limiter.Manager;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
 using NLog;
 using Sandbox.Game.Entities.Blocks;
+using Sandbox.Game.World;
 using Torch.Managers.PatchManager;
 using Torch.Utils;
 using Torch.Utils.Reflected;
@@ -18,7 +18,7 @@ namespace Advanced_PB_Limiter.Patches
     public static class ProfilerPatch
     {
         /// <summary>
-        /// Gracefully stolen (and modified by me) from the original PB Limiter, Credits to SirHamsterAlot and Equinox
+        /// Gracefully stolen (and modified by me) from the original PB Limiter, Credits to HaE, SirHamsterAlot, and Equinox
         /// </summary>
         
         private static readonly Logger Log = LogManager.GetLogger("Advanced PB Limiter Profile Patcher");
@@ -29,6 +29,9 @@ namespace Advanced_PB_Limiter.Patches
 
         [ReflectedMethodInfo(typeof(MyProgrammableBlock), "Compile")]
         private static readonly MethodInfo? _programmableRecompile;
+
+        [ReflectedMethodInfo(typeof(MyProgrammableBlock), "UpdateStorage")]
+        private static readonly MethodInfo? _programmableSaveMethod;
         
         public static void Patch(PatchContext ctx)
         {
@@ -37,6 +40,7 @@ namespace Advanced_PB_Limiter.Patches
             ctx.GetPattern(_programmableRunSandboxed).Prefixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch), nameof(PrefixProfilePb)));
             ctx.GetPattern(_programmableRunSandboxed).Suffixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch), nameof(SuffixProfilePb)));
             ctx.GetPattern(_programmableRecompile).Suffixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch), nameof(PrefixRecompilePb)));
+            ctx.GetPattern(_programmableSaveMethod).Prefixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch), nameof(PrefixSaveMethod)));
 
             Log.Info("Finished Patching!");
         }
@@ -62,6 +66,22 @@ namespace Advanced_PB_Limiter.Patches
             }
             
             TrackingManager.PBRecompiled(__instance);
+        }
+        
+        private static bool PrefixSaveMethod(MyProgrammableBlock? __instance)
+        {
+            if (__instance is null)
+            {
+                Log.Warn("PB is null!");
+                return false;
+            }
+
+            if (__instance.Enabled) return false;
+            
+            if (!MySession.Static.Players.IdentityIsNpc(__instance.OwnerId) && Config.AllowSelfTurnOnExploit) return true;
+            if (MySession.Static.Players.IdentityIsNpc(__instance.OwnerId) && !Config.AllowNPCToAutoTurnOn) return true;
+
+            return false;
         }
     }
 }

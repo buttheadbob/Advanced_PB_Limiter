@@ -1,10 +1,13 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using System.Globalization;
+using System.Reflection;
 using System.Threading.Tasks;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
 using NLog;
 using Sandbox;
+using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.World;
 using Sandbox.ModAPI.Ingame;
 using VRage.Game;
@@ -17,6 +20,8 @@ namespace Advanced_PB_Limiter.Manager
     {
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
+        private static FieldInfo? needsInstansiationField;
+        private static MethodInfo? Terminate;
         public enum PunishReason
         {
             SingleRuntimeOverLimit,
@@ -44,79 +49,67 @@ namespace Advanced_PB_Limiter.Manager
                 
                 trackedPbBlock.GracePeriodFinished = true;
             }
-
-            double allowedRunTime = Config.MaxRunTimeMS;
-            double allowedRunTimeAvg = Config.MaxRunTimeMSAvg;
-            if (Config.PrivilegedPlayers.TryGetValue(player.SteamId, out PrivilegedPlayer? privilegedPlayer))
-            {
-                allowedRunTime = privilegedPlayer.RuntimeAllowance;
-                allowedRunTimeAvg = privilegedPlayer.RuntimeAverageAllowance;
-            }
             
             // InstaKill
             if (lastRunTimeMS >= Config.InstantKillThreshold)
             {
                 await PunishPB(player, trackedPbBlock, PunishReason.ExtremeUsage, Punishment.Destroy, "[" + lastRunTimeMS.ToString(CultureInfo.InvariantCulture) + "ms]");
-                Log.Error($"INSTANT KILL TRIGGERED: {player.PlayerName} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} with a run time of {lastRunTimeMS}ms");
+                Log.Error($"INSTANT KILL TRIGGERED: {player.PlayerName} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} with a run-time of {lastRunTimeMS}ms");
                 return;
             }
-            
-            if (lastRunTimeMS > allowedRunTime)
+
+            double allowedRunTime = Config.MaxRunTimeMS;
+            double allowedRunTimeAvg = Config.MaxRunTimeMSAvg;
+            int allowedOffenses = Config.MaxOffencesBeforePunishment;
+            bool combinedLimitRestriction = Config.CheckAllUserBlocksCombined;
+
+            if (Config.PrivilegedPlayers.TryGetValue(player.SteamId, out PrivilegedPlayer privilegedPlayer))
             {
-                if (trackedPbBlock.Offences.TryPeek(out long lastOffence))
-                {
-                    if ((Stopwatch.GetTimestamp() - lastOffence) / Stopwatch.Frequency <= Config.GraceAfterOffence)
-                        return;
-                    
-                    trackedPbBlock.Offences.Push(Stopwatch.GetTimestamp());
-                    Log.Trace($"PB Block: {trackedPbBlock.ProgrammableBlock?.EntityId} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} has exceeded the run time limit.  Last Run Time: {lastRunTimeMS}ms  Allowed Run Time: {allowedRunTime}ms  Offenses: {trackedPbBlock.Offences.Count}");
-                }
-                
-                // Clean up old offences
-                long[] offences = trackedPbBlock.Offences.ToArray();
-                
-                foreach (long offence in offences)
-                {
-                    if ((Stopwatch.GetTimestamp() - offence) / Stopwatch.Frequency > Config.OffenseDurationBeforeDeletion)
-                        trackedPbBlock.Offences.TryPop(out _);
-                    else
-                        break;
-                }
-                    
-                // Check if we have enough offences to punish
-                if ((Stopwatch.GetTimestamp() - lastOffence) / Stopwatch.Frequency <= 5) return;
-                    
-                trackedPbBlock.Offences.Push(Stopwatch.GetTimestamp());
-                if (offences.Length < Config.MaxOffencesBeforePunishment) return;
-                await PunishPB(player, trackedPbBlock, PunishReason.SingleRuntimeOverLimit, null, "[" +trackedPbBlock.LastRunTimeMS.ToString(CultureInfo.InvariantCulture) + "ms]");
+                allowedRunTime = privilegedPlayer.RuntimeAllowance;
+                allowedRunTimeAvg = privilegedPlayer.RuntimeAverageAllowance;
+                allowedOffenses = privilegedPlayer.OffencesBeforePunishment;
+                combinedLimitRestriction = privilegedPlayer.NoCombinedLimits;
             }
             
-            if (trackedPbBlock.RunTimeMSAvg > allowedRunTimeAvg)
+            // Clean up old offenses
+            while (true)
             {
-                if (trackedPbBlock.Offences.TryPeek(out long lastOffence))
-                {
-                    if ((Stopwatch.GetTimestamp() - lastOffence) / Stopwatch.Frequency <= Config.GraceAfterOffence)
-                        return;
+                if (trackedPbBlock.Offences.TryPeek(out long lastOffense_cleanup))
+                {                                                                           // Limit is in minutes
+                    if (((Stopwatch.GetTimestamp() - lastOffense_cleanup) / Stopwatch.Frequency) / 60 > Config.OffenseDurationBeforeDeletion)
+                        if (trackedPbBlock.Offences.TryPop(out _)) continue;
                     
-                    trackedPbBlock.Offences.Push(Stopwatch.GetTimestamp());
-                    Log.Trace($"PB Block: {trackedPbBlock.ProgrammableBlock?.EntityId} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} has exceeded the average run time limit.  Last Run Time: {lastRunTimeMS}ms  Average Run Time: {trackedPbBlock.RunTimeMSAvg}ms");
+                }
+
+                break;
+            }
+
+            // Check if enough time since last offense has passed.
+            trackedPbBlock.Offences.TryPeek(out long lastOffense);
+            if ((Stopwatch.GetTimestamp() - lastOffense) / Stopwatch.Frequency <= Config.GraceAfterOffence)
+                return;
+            
+            if (allowedRunTime != 0 && lastRunTimeMS > allowedRunTime)
+            {
+                trackedPbBlock.Offences.Push(Stopwatch.GetTimestamp());
+                Log.Trace($"PB Block: {trackedPbBlock.ProgrammableBlock?.EntityId} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} has exceeded the run-time limit.  Last Run Time: {lastRunTimeMS}ms  Allowed Run Time: {allowedRunTime}ms  Offenses: {trackedPbBlock.Offences.Count}");
+                
+                if (trackedPbBlock.Offences.Count <= allowedOffenses)
+                {
+                    Chat.Send($"You have received an offense [{trackedPbBlock.Offences.Count} of {allowedOffenses}] for exceeding your run-time limit [{allowedRunTime}] on grid {trackedPbBlock.GridName}.  Please reduce the run time of your Programmable Block or it will be punished.", player.SteamId, Color.Red);
+                    return;
                 }
                 
-                // Clean up old offences
-                long[] offences = trackedPbBlock.Offences.ToArray();
-                foreach (long offence in offences)
-                {
-                    if ((Stopwatch.GetTimestamp() - offence) / Stopwatch.Frequency > Config.OffenseDurationBeforeDeletion)
-                        trackedPbBlock.Offences.TryPop(out _);
-                    else
-                        break;
-                }
-                    
-                // Check if we have enough offences to punish
-                if ((Stopwatch.GetTimestamp() - lastOffence) / Stopwatch.Frequency <= 5) return;
-                    
+                await PunishPB(player, trackedPbBlock, PunishReason.SingleRuntimeOverLimit, null, "[" +trackedPbBlock.LastRunTimeMS.ToString(CultureInfo.InvariantCulture) + "ms]");
+                return; // Block is punished, no need to punish again with average run-time violations.
+            }
+            
+            if (combinedLimitRestriction && trackedPbBlock.RunTimeMSAvg > allowedRunTimeAvg)
+            {
                 trackedPbBlock.Offences.Push(Stopwatch.GetTimestamp());
-                if (offences.Length < Config.MaxOffencesBeforePunishment) return;
+                Log.Trace($"PB Block: {trackedPbBlock.ProgrammableBlock?.EntityId} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} has exceeded the average run-time limit.  Last Run-Time: {lastRunTimeMS}ms  Average Run Time: {trackedPbBlock.RunTimeMSAvg}ms");
+                
+                if (trackedPbBlock.Offences.Count < Config.MaxOffencesBeforePunishment) return;
                 await PunishPB(player, trackedPbBlock, PunishReason.AverageRuntimeOverLimit, null, "[" +trackedPbBlock.RunTimeMSAvg.ToString(CultureInfo.InvariantCulture) + "ms]");
             }
         }
@@ -129,24 +122,24 @@ namespace Advanced_PB_Limiter.Manager
                 return Task.CompletedTask;
             }
             
-            if ((Stopwatch.GetTimestamp() - trackedPbBlock.LastOffenceTick)/Stopwatch.Frequency <= 1 )
-                return Task.CompletedTask;
-            
             int gracePeriodSeconds = Config.GracefulShutDownRequestDelay;
-            if (Config.PrivilegedPlayers.TryGetValue(player.SteamId, out PrivilegedPlayer? privilegedPlayer))
+            if (Config.PrivilegedPlayers.TryGetValue(player.SteamId, out PrivilegedPlayer privilegedPlayer))
                 gracePeriodSeconds = privilegedPlayer.GracefulShutDownRequestDelay;
-            
-            if (gracePeriodSeconds > 0)
+            MySandboxGame.Static.Invoke(() => // Not sure if this actually needs to be on the game thread, but it's better to be safe than sorry.
             {
                 trackedPbBlock.ProgrammableBlock.Run($"GracefulShutDown::{gracePeriodSeconds}", UpdateType.Script);
-                Task.Delay(Config.GracefulShutDownRequestDelay * 1000).ContinueWith(_ =>
-                {
-                    PerformPunish(trackedPbBlock, player, reason, null, notes);
-                });
+            }, "Advanced_PB_Limiter");
+            
+            if (reason == PunishReason.ExtremeUsage)
+            {
+                PerformPunish(trackedPbBlock, player, reason, punishment, notes);
                 return Task.CompletedTask;
             }
             
-            PerformPunish(trackedPbBlock, player, reason, punishment, notes);
+            Task.Delay(gracePeriodSeconds * 1000).ContinueWith(_ =>
+            {
+                PerformPunish(trackedPbBlock, player, reason, null, notes);
+            });
             return Task.CompletedTask;
         }
 
@@ -160,68 +153,81 @@ namespace Advanced_PB_Limiter.Manager
             
             Log.Trace($"Punishing PB Block: {trackedPbBlock.ProgrammableBlock.EntityId} on grid {trackedPbBlock.ProgrammableBlock.CubeGrid.DisplayName} for {reason}. {notes}");
             trackedPbBlock.LastOffenceTick = Stopwatch.GetTimestamp();
+
+            punishment ??= Config.Punishment;
             
             switch (punishment)
             {
-                case null:
-                    switch (Config.Punishment)
-                    {
-                        case Punishment.TurnOff:
-                            string message1 = CreateUserMessage(player, trackedPbBlock, reason, notes);
-                            if (message1.Length > 0) Chat.Send(message1, player.SteamId, Color.Red);
-                            Log.Info($"Turning off {player.PlayerName} for excessive pb run time on grid {trackedPbBlock.ProgrammableBlock.CubeGrid.DisplayName}");
-                            
-                            MySandboxGame.Static.Invoke(() =>
-                            {
-                                trackedPbBlock.ProgrammableBlock.Enabled = false;
-                            }, "Advanced_PB_Limiter");
-                            break;
-                
-                        case Punishment.Destroy:
-                            string message2 = CreateUserMessage(player, trackedPbBlock, reason, notes);
-                            if (message2.Length > 0) Chat.Send(message2, player.SteamId, Color.Red);
-                            Log.Info($"Destroying {player.PlayerName} for excessive pb run time on grid {trackedPbBlock.ProgrammableBlock.CubeGrid.DisplayName}");
-                            float damageAmount = trackedPbBlock.ProgrammableBlock.SlimBlock.Integrity - 1;
-                            
-                            MySandboxGame.Static.Invoke(() =>
-                            {
-                                trackedPbBlock.ProgrammableBlock.SlimBlock.DecreaseMountLevel(damageAmount, null);
-                            }, "Advanced_PB_Limiter");
-                            break;
-                
-                        case Punishment.Damage:
-                            string message3 = CreateUserMessage(player, trackedPbBlock, reason, notes);
-                            if (message3.Length > 0) Chat.Send(message3, player.SteamId, Color.Red);
-                            Log.Info($"Damaging {player.PlayerName} for excessive pb run time on grid {trackedPbBlock.ProgrammableBlock.CubeGrid.DisplayName}");
-                            
-                            MySandboxGame.Static.Invoke(() =>
-                            {
-                                trackedPbBlock.ProgrammableBlock?.SlimBlock.DoDamage(Config.PunishDamageAmount, MyDamageType.Destruction);
-                            }, "Advanced_PB_Limiter");
-                            break;
-                    }
-                    break;
-                
-                // Punishments that are not the default punishment
                 case Punishment.TurnOff:
-                    string message4 = CreateUserMessage(player, trackedPbBlock, reason, notes);
-                    if (message4.Length > 0) Chat.Send(message4, player.SteamId, Color.Red);
-                    MySandboxGame.Static.Invoke(() =>
-                    {
-                        trackedPbBlock.ProgrammableBlock.Enabled = false;
-                    }, "Advanced_PB_Limiter");    
-                    break;
+                    PerformPunishment_TurnOff(player, trackedPbBlock, reason, notes);
+                    return;
                 
                 case Punishment.Destroy:
-                    string message5 = CreateUserMessage(player, trackedPbBlock, reason, notes);
-                    if (message5.Length > 0) Chat.Send(message5, player.SteamId, Color.Red);
-                    MySandboxGame.Static.Invoke(() =>
-                    {
-                        trackedPbBlock.ProgrammableBlock.SlimBlock.DecreaseMountLevel(trackedPbBlock.ProgrammableBlock.SlimBlock.Integrity - 1, null);
-                    }, "Advanced_PB_Limiter");
-                    
-                    break;
+                    PerformPunishment_Destroy(player, trackedPbBlock, reason, notes);
+                    return;
+                
+                case Punishment.Damage:
+                    PerformPunishment_Damage(player, trackedPbBlock, reason, notes);
+                    return;
             }
+        }
+
+        private static void PerformPunishment_TurnOff(TrackedPlayer player, TrackedPBBlock trackedPbBlock, PunishReason reason, string? notes = null)
+        {
+            Chat.Send(CreateUserMessage(player, trackedPbBlock, reason, notes), player.SteamId, Color.Red);
+            // Reflect only when needed.
+            needsInstansiationField = typeof(MyProgrammableBlock).GetField("m_needsInstantiation", BindingFlags.NonPublic | BindingFlags.Instance);
+            Terminate = typeof(MyProgrammableBlock).GetMethod("OnProgramTermination", BindingFlags.NonPublic | BindingFlags.Instance);
+            
+            // Turn off the block
+            if (trackedPbBlock.ProgrammableBlock is not null)
+                MySandboxGame.Static.Invoke(() =>
+                {
+                    needsInstansiationField?.SetValue(trackedPbBlock.ProgrammableBlock, false);
+                    Terminate?.Invoke(trackedPbBlock.ProgrammableBlock, new object[] {  MyProgrammableBlock.ScriptTerminationReason.InstructionOverflow});
+                    trackedPbBlock.ProgrammableBlock.Enabled = false;
+                }, "Advanced_PB_Limiter");    
+        }
+        
+        private static void PerformPunishment_Destroy(TrackedPlayer player, TrackedPBBlock trackedPbBlock, PunishReason reason, string? notes = null)
+        {
+            Chat.Send(CreateUserMessage(player, trackedPbBlock, reason, notes), player.SteamId, Color.Red);
+            // Reflect only when needed.
+            needsInstansiationField = typeof(MyProgrammableBlock).GetField("m_needsInstantiation", BindingFlags.NonPublic | BindingFlags.Instance);
+            Terminate = typeof(MyProgrammableBlock).GetMethod("OnProgramTermination", BindingFlags.NonPublic | BindingFlags.Instance);
+            
+            // Destroy the block
+            if (trackedPbBlock.ProgrammableBlock is not null)
+                MySandboxGame.Static.Invoke(() =>
+                {
+                    try
+                    { 
+                        needsInstansiationField?.SetValue(trackedPbBlock.ProgrammableBlock, false);
+                        trackedPbBlock.ProgrammableBlock.SlimBlock.DoDamage(trackedPbBlock.ProgrammableBlock.SlimBlock.BuildIntegrity - 1, MyDamageType.Unknown, true, null, 0);
+                    }
+                    catch (Exception e)
+                    {
+                        Log.Error("Error while destroying a programmable block: " + e);
+                    }
+                    
+                }, "Advanced_PB_Limiter");
+        }
+        
+        private static void PerformPunishment_Damage(TrackedPlayer player, TrackedPBBlock trackedPbBlock, PunishReason reason, string? notes = null)
+        {
+            Chat.Send(CreateUserMessage(player, trackedPbBlock, reason, notes), player.SteamId, Color.Red);
+            // Reflect only when needed.
+            needsInstansiationField = typeof(MyProgrammableBlock).GetField("m_needsInstantiation", BindingFlags.NonPublic | BindingFlags.Instance);
+            Terminate = typeof(MyProgrammableBlock).GetMethod("OnProgramTermination", BindingFlags.NonPublic | BindingFlags.Instance);
+            
+            // Damage the block
+            if (trackedPbBlock.ProgrammableBlock is not null)
+                MySandboxGame.Static.Invoke(() =>
+                {
+                    needsInstansiationField?.SetValue(trackedPbBlock.ProgrammableBlock, false);
+                    Terminate?.Invoke(trackedPbBlock.ProgrammableBlock, new object[] {  MyProgrammableBlock.ScriptTerminationReason.InstructionOverflow});
+                    trackedPbBlock.ProgrammableBlock.SlimBlock.DoDamage(Config.PunishDamageAmount, MyDamageType.Radioactivity, true, null, 0);
+                }, "Advanced_PB_Limiter");
         }
         
         private static string CreateUserMessage(TrackedPlayer player, TrackedPBBlock pbBlock, PunishReason reason, string? message = null )

@@ -126,7 +126,7 @@
                     <Span FontWeight="Bold">Per Programming Block</Span>
                 </TextBlock>
             </GroupBox.Header>
-            <DataGrid Name="PerPBDataGrid" ItemsSource="{Binding datagrid_BlockReports}" AutoGenerateColumns="False">
+            <DataGrid Name="PerPBDataGrid" ItemsSource="{Binding datagrid_BlockReports}" AutoGenerateColumns="False" SelectionMode="Single" IsReadOnly="True">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Player SteamID" Binding="{Binding SteamId}"/>
                     <DataGridTextColumn Header="Player Name" Binding="{Binding PlayerName}"/>
@@ -146,7 +146,7 @@
                     <Span FontWeight="Bold">Per Player</Span>
                 </TextBlock>
             </GroupBox.Header>
-            <DataGrid Name="PerPlayerDataGrid" ItemsSource="{Binding datagrid_PlayerReports}" AutoGenerateColumns="False">
+            <DataGrid Name="PerPlayerDataGrid" ItemsSource="{Binding datagrid_PlayerReports}" AutoGenerateColumns="False" SelectionMode="Single" IsReadOnly="True">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Player SteamID" Binding="{Binding SteamId}"/>
                     <DataGridTextColumn Header="Player Name" Binding="{Binding PlayerName}"/>
