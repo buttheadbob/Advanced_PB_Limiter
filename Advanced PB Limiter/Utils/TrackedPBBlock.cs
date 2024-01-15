@@ -14,10 +14,10 @@ namespace Advanced_PB_Limiter.Utils
         private ConcurrentQueue<double> RunTimesMS { get; set; } = new ();
         public string GridName { get; }
         private double PBStartTime { get; set; }
-        public bool GracePeriodFinished { get; set; }
-        public ConcurrentStack<long> Offences { get; } = new();
+        public ConcurrentQueue<long> Offences { get; private set; } = new();
         public int Recompiles { get; private set; }
         public double LastRunTimeMS { get; private set; }
+        private double RunTimesSum = 0;
         
         private long _lastOffenceTick;
         public long LastOffenceTick
@@ -32,62 +32,58 @@ namespace Advanced_PB_Limiter.Utils
             get => Interlocked.Read(ref _lastUpdateTick);
             set => Interlocked.Exchange(ref _lastUpdateTick, value);
         }
+        
+        // Internal Usage
+        private double total = 0;
+        private int count = 0;
 
-        public TrackedPBBlock(string gridName, double lastRunTimeMs, MyProgrammableBlock pbBlock)
+        public TrackedPBBlock(string gridName, MyProgrammableBlock pbBlock)
         {
             GridName = gridName;
             PBStartTime = Stopwatch.GetTimestamp();
-            LastRunTimeMS = lastRunTimeMs;
-            RunTimesMS.Enqueue(lastRunTimeMs);
             ProgrammableBlock = pbBlock;
             LastUpdateTick = Stopwatch.GetTimestamp();
         }
-        
-        public void AddRuntimeData(double lastRunTimeMS)
+
+        public void AddRuntimeData(double lastRunTimeMS, ulong steamId)
         {
+            if (IsUnderGracePeriod(steamId)) return;
+            
             LastRunTimeMS = lastRunTimeMS;
+            if (RunTimesMS.Count >= Config.MaxRunsToTrack)
+                if (RunTimesMS.TryDequeue(out double oldRunTimeMS))
+                    RunTimesSum -= oldRunTimeMS;
+            
             RunTimesMS.Enqueue(lastRunTimeMS);
+            RunTimesSum += lastRunTimeMS;
             LastUpdateTick = Stopwatch.GetTimestamp();
         }
         
-        public List<double> GetRunTimesMS
+        public double[] GetRunTimesMS
         {
             get
             {
-                List<double> total = new ();
-            
-                int count = 0;
-                foreach (double time in RunTimesMS)
-                {
-                    count++;
-                    total.Add(time);
-                    if (count >= Config.MaxRunsToTrack) break;
-                }
+                double[] runTimes = new double[RunTimesMS.Count];
+                int index = 0;
 
-                return total;
+                using IEnumerator<double> enumerator = RunTimesMS.GetEnumerator();
+                while (enumerator.MoveNext())
+                {
+                    runTimes[index++] = enumerator.Current;
+                }
+                return runTimes;
             }
-            
         }
         
         public double RunTimeMSAvg
         {
             get
             {
-                double total = 0;
-                int count = 0;
-                foreach (double time in RunTimesMS)
-                {
-                    count++;
-                    total += time;
-                    
-                    if (count >= Config.MaxRunsToTrack)
-                    {
-                        return total / RunTimesMS.Count;
-                    }
-                }
-
                 // If the queue doesnt have enough samples to calculate the average, return 0
-                return 0;
+                if (RunTimesMS.Count < Config.MaxRunsToTrack)
+                    return 0;
+                
+                return RunTimesSum / RunTimesMS.Count;
             }
         }
         
@@ -95,16 +91,15 @@ namespace Advanced_PB_Limiter.Utils
         {
             get
             {
-                double total = 0;
-                foreach (double time in RunTimesMS)
+                double[] runTimes = GetRunTimesMS;
+                double max = 0;
+                for (int index = 0; index < runTimes.Length; index++)
                 {
-                    if (time > total)
-                    {
-                        total = time;
-                    }
+                    if (runTimes[index] > max)
+                        max = runTimes[index];
                 }
 
-                return total / RunTimesMS.Count;
+                return max;
             }
         }
         
@@ -113,17 +108,16 @@ namespace Advanced_PB_Limiter.Utils
             if (Config.PrivilegedPlayers.TryGetValue(SteamId, out PrivilegedPlayer privilegedPlayer))
                 return (Stopwatch.GetTimestamp() - PBStartTime) / Stopwatch.Frequency < privilegedPlayer.StartupAllowance;
             
-            return (Stopwatch.GetTimestamp() - PBStartTime) / Stopwatch.Frequency < 2;
+            return (Stopwatch.GetTimestamp() - PBStartTime) / Stopwatch.Frequency < 10;
         }
         
         public void ClearRunTimes()
         {
             RunTimesMS = new ConcurrentQueue<double>();
             LastRunTimeMS = 0;
-            PBStartTime = 0;
-            Offences.Clear();
+            RunTimesSum = 0;
+            Offences = new ConcurrentQueue<long>();
             Recompiles++;
-            GracePeriodFinished = false;
             PBStartTime = Stopwatch.GetTimestamp();
             _lastUpdateTick = Stopwatch.GetTimestamp();
         }

@@ -106,7 +106,7 @@
                     <Span FontWeight="Bold">Privileged Players</Span>
                 </TextBlock>
             </GroupBox.Header>
-            <DataGrid HeadersVisibility="Column">
+            <DataGrid Name="PrivilegedPlayersGrid" HeadersVisibility="Column" ItemsSource="{Binding PrivilegedPlayers.Values}" AutoGenerateColumns="False" IsReadOnly="True">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Player Name"
                                         Width="160"
@@ -144,6 +144,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
             
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Player Name: " Margin="3"/>
@@ -156,8 +157,8 @@
                 <TextBox Grid.Row="2" Grid.Column="1" Name="GracefulShutdownBox" Margin="3" Background="Transparent" Foreground="Aqua"/>
                 
                 <TextBlock Grid.Row="3" Grid.Column="0" Text="Punishment: " Margin="3"/>
-                <ComboBox Grid.Row="3" Grid.Column="1" Name="PunishmentBox" Margin="3" Background="Transparent" Foreground="Aqua">
-                    <ComboBoxItem Content="Turn Off"/>
+                <ComboBox Grid.Row="3" Grid.Column="1" Name="PunishmentBox" Margin="3" Background="Transparent" >
+                    <ComboBoxItem Content="TurnOff"/>
                     <ComboBoxItem Content="Damage"/>
                     <ComboBoxItem Content="Destroy"/>
                 </ComboBox>
@@ -186,9 +187,10 @@
                 <TextBlock Grid.Row="11" Grid.Column="0" Text="Startup Time: " Margin="3" ToolTip="The amount of time a pb is ignored before tracking and punishing."/>
                 <TextBox Grid.Row="11" Grid.Column="1" Name="StartupBox" Margin="3" Background="Transparent" Foreground="Aqua"/>
                 
-                <Button Grid.Row="12" Grid.Column="0" Grid.ColumnSpan="2" Content="Load Privileged Player Data" Name="LoadPrivilegedPlayerDataButton" Margin="3" Background="Wheat"/>
-                <Button Grid.Row="13" Grid.Column="0" Grid.ColumnSpan="2" Content="Add/Update Privileged User" Name="AddOrUpdateButton" Margin="3" Background="Chartreuse"/>
-                <Button Grid.Row="14" Grid.Column="0" Grid.ColumnSpan="2" Content="Remove Privileged User" Name="RemoveButton" Margin="3" Background="OrangeRed"/>
+                <Button Grid.Row="12" Grid.Column="0" Grid.ColumnSpan="2" Content="Load Privileged Player Data" Name="LoadPrivilegedPlayerDataButton" Margin="3" Background="Wheat" Click="LoadPrivilegedPlayerDataButton_OnClick"/>
+                <Button Grid.Row="13" Grid.Column="0" Grid.ColumnSpan="2" Content="Add/Update Privileged User" Name="AddOrUpdateButton" Margin="3" Background="Chartreuse" Click="AddOrUpdateButton_OnClick"/>
+                <Button Grid.Row="14" Grid.Column="0" Grid.ColumnSpan="2" Content="Push Selected Player To Nexus" Name="PushToNexusButton" Margin="3" Background="Chartreuse" Click="PushUserToNexus_OnClick"/>
+                <Button Grid.Row="15" Grid.Column="0" Grid.ColumnSpan="2" Content="Remove Privileged User" Name="RemoveButton" Margin="3" Background="OrangeRed" Click="RemoveButton_OnClick"/>
             </Grid>
         </GroupBox>
     </StackPanel>

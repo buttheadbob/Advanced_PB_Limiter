@@ -1,19 +1,25 @@
-﻿namespace Advanced_PB_Limiter.Utils
+﻿using System;
+using ProtoBuf;
+
+namespace Advanced_PB_Limiter.Utils
 {
+    [ProtoContract]
     public class PrivilegedPlayer
     {
-        public ulong SteamId { get; set; }
-        public string Name { get; set; }
-        public double RuntimeAllowance { get; set; }
-        public double RuntimeAverageAllowance { get; set; }
-        public double StartupAllowance { get; set; }
-        public double CombinedRuntimeAllowance { get; set; }
-        public double CombinedRuntimeAverageAllowance { get; set; }
-        public bool NoCombinedLimits { get; set; }
-        public Enums.Punishment Punishment { get; set; } = Enums.Punishment.TurnOff;
-        public int GracefulShutDownRequestDelay { get; set; } = 10;
-        public int OffencesBeforePunishment { get; set; } = 6;
+        [ProtoMember(10)] public ulong SteamId { get; set; }
+        [ProtoMember(20)] public string Name { get; set; }
+        [ProtoMember(30)] public double RuntimeAllowance { get; set; }
+        [ProtoMember(40)] public double RuntimeAverageAllowance { get; set; }
+        [ProtoMember(50)] public double StartupAllowance { get; set; }
+        [ProtoMember(60)] public double CombinedRuntimeAllowance { get; set; }
+        [ProtoMember(70)] public double CombinedRuntimeAverageAllowance { get; set; }
+        [ProtoMember(80)] public bool NoCombinedLimits { get; set; }
+        [ProtoMember(90)] public Enums.Punishment Punishment { get; set; } = Enums.Punishment.TurnOff;
+        [ProtoMember(100)] public int GracefulShutDownRequestDelay { get; set; } = 10;
+        [ProtoMember(110)] public int OffencesBeforePunishment { get; set; } = 6;
+        [ProtoMember(120)] public int DamageAmount { get; set; } = 100;
 
         public PrivilegedPlayer() { }
+        
     }
 }

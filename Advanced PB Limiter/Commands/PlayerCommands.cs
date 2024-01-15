@@ -31,7 +31,7 @@ namespace Advanced_PB_Limiter.Commands
         {
             if (Context.Player == null)
             {
-                Context.Respond("This command can only be used by players.");
+                Context.Respond("This command can only be used by players in game.");
                 return;
             }
             Task.Run(()=> ReportManager.PlayerStatsRequest(Context)); // Fire and forget on another thread.
@@ -44,6 +44,7 @@ namespace Advanced_PB_Limiter.Commands
             StringBuilder sb = new();
             if (Context.Player == null || !Config.PrivilegedPlayers.ContainsKey(Context.Player.SteamUserId))
             {
+                sb.AppendLine();
                 sb.AppendLine("Server Limits");
                 sb.AppendLine("--------------");
                 sb.AppendLine("Max PB Runtime: " + Config.MaxRunTimeMS + "ms");
@@ -56,8 +57,9 @@ namespace Advanced_PB_Limiter.Commands
                 Context.Respond(sb.ToString());
                 return;
             }
-            
-            sb.AppendLine("You are a privileged user.  Your limits are as follows:");
+
+            sb.AppendLine();
+            sb.AppendLine("You are a privileged user.  Your limits are:");
             sb.AppendLine("-----------------------");
             sb.AppendLine("Max PB Runtime" + Config.PrivilegedPlayers[Context.Player.SteamUserId].RuntimeAllowance + "ms");
             sb.AppendLine("Max PB Runtime Average: " + Config.PrivilegedPlayers[Context.Player.SteamUserId].RuntimeAverageAllowance + "ms");
@@ -67,6 +69,33 @@ namespace Advanced_PB_Limiter.Commands
             sb.AppendLine("Max Offences Before Punishment: " + Config.PrivilegedPlayers[Context.Player.SteamUserId].OffencesBeforePunishment);
             sb.AppendLine("Punishment Type: " + Config.PrivilegedPlayers[Context.Player.SteamUserId].Punishment);
             sb.AppendLine("Graceful Shutdown Period: " + Config.PrivilegedPlayers[Context.Player.SteamUserId].GracefulShutDownRequestDelay + " seconds.");
+            Context.Respond(sb.ToString());
+        }
+
+        [Command("Runtimes", "Shows the last saved runtimes for each programmable block owned by the player.")]
+        [Permission(MyPromoteLevel.None)]
+        public void Runtimes()
+        {
+            if (Context.Player == null)
+            {
+                Context.Respond("This command can only be used by players in game.");
+                return;
+            }
+            Task.Run(()=> ReportManager.PlayerRuntimesRequest(Context)); // Fire and forget on another thread.
+        }
+
+        [Command("Help", "Shows player commands.")]
+        [Permission(MyPromoteLevel.None)]
+        public void PlayerHelp()
+        {
+            StringBuilder sb = new();
+            sb.AppendLine();
+            sb.AppendLine("Advanced PB Limiter Player Commands");
+            sb.AppendLine("------------------------------------");
+            sb.AppendLine("Limits - Shows your limits applied to programmable blocks for this server.");
+            sb.AppendLine("MyStats - Generates a report about your programmable blocks for this server.");
+            sb.AppendLine("");
+            sb.AppendLine("About - Displays information about the Advanced PB Limiter.");
             Context.Respond(sb.ToString());
         }
     }

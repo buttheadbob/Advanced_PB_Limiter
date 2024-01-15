@@ -40,6 +40,9 @@
     <StartupObject />
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="0Harmony">
+      <HintPath>..\..\..\Users\rober\Desktop\Nexus (Server Sectoring &amp; DataSync)\0Harmony.dll</HintPath>
+    </Reference>
     <Reference Include="ConcurrentObservableCollections, Version=1.1.9.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>packages\ConcurrentObservableCollections.1.1.9\lib\netstandard2.0\ConcurrentObservableCollections.dll</HintPath>
     </Reference>
@@ -47,7 +50,19 @@
       <HintPath>packages\Microsoft.Bcl.AsyncInterfaces.8.0.0\lib\net462\Microsoft.Bcl.AsyncInterfaces.dll</HintPath>
     </Reference>
     <Reference Include="mscorlib" />
+    <Reference Include="NetMQ">
+      <HintPath>..\..\..\Users\rober\Desktop\Nexus (Server Sectoring &amp; DataSync)\NetMQ.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="NetMQ.Security">
+      <HintPath>..\..\..\Users\rober\Desktop\Nexus (Server Sectoring &amp; DataSync)\NetMQ.Security.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="netstandard" />
+    <Reference Include="Nexus">
+      <HintPath>..\..\..\Users\rober\Desktop\Nexus (Server Sectoring &amp; DataSync)\Nexus.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="NLog, Version=4.0.0.0, Culture=neutral, PublicKeyToken=5120e14c03d0593c, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>TorchBinaries\NLog.dll</HintPath>
@@ -230,6 +245,7 @@
     <Compile Include="Advanced PB Limiter\Utils\Enums.cs" />
     <Compile Include="Advanced PB Limiter\Utils\MtObservableSortedSerializableDictionary.cs" />
     <Compile Include="Advanced PB Limiter\Utils\NexusAPI.cs" />
+    <Compile Include="Advanced PB Limiter\Utils\NexusMessageSender.cs" />
     <Compile Include="Advanced PB Limiter\Utils\PrivilegedPlayer.cs" />
     <Compile Include="Advanced PB Limiter\Utils\ReflectionUtils.cs" />
     <Compile Include="Advanced PB Limiter\Utils\Report.cs" />

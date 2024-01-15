@@ -81,6 +81,10 @@ namespace Advanced_PB_Limiter.Patches
             if (!MySession.Static.Players.IdentityIsNpc(__instance.OwnerId) && Config.AllowSelfTurnOnExploit) return true;
             if (MySession.Static.Players.IdentityIsNpc(__instance.OwnerId) && !Config.AllowNPCToAutoTurnOn) return true;
 
+            MyIdentity? player = MySession.Static.Players.TryGetIdentity(__instance.OwnerId);
+            
+            if (player is not null)
+                Log.Warn($"{player.DisplayName} ({__instance.OwnerId}) tried to save a programmable block while it was turned off.  This is not allowed.");
             return false;
         }
     }

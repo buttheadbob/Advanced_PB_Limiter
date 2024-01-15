@@ -9,141 +9,93 @@ namespace Advanced_PB_Limiter.Utils
     {
         public ushort CrossServerModID;
 
-        /*  For recieving custom messages you have to register a message handler with a different unique ID then what you use server to client. (It should be the same as this class)
-         *  
-         *  NexusAPI(5432){
-         *  CrossServerModID = 5432
-         *  }
-         *  
-         *  
-         *  Register this somewhere in your comms code. (This will only be raised when it recieves a message from another server)
-         *  MyAPIGateway.Multiplayer.RegisterMessageHandler(5432, MessageHandler);
-         */
+        public NexusAPI(ushort SocketID) => this.CrossServerModID = SocketID;
 
-        public NexusAPI(ushort SocketID)
+        public static bool IsRunningNexus() => false;
+
+        public static bool IsPlayerOnline(long IdentityID) => false;
+
+        private static List<object[]> GetSectorsObject() => new List<object[]>();
+
+        private static List<object[]> GetAllOnlinePlayersObject() => new List<object[]>();
+
+        private static List<object[]> GetAllServersObject() => new List<object[]>();
+
+        private static List<object[]> GetAllOnlineServersObject() => new List<object[]>();
+
+        private static object[] GetThisServerObject() => new object[6];
+
+        public static NexusAPI.Server GetThisServer()
         {
-            CrossServerModID = SocketID;
+            object[] thisServerObject = NexusAPI.GetThisServerObject();
+            return new NexusAPI.Server((string) thisServerObject[0], (int) thisServerObject[1], (int) (short) thisServerObject[2], (float) (int) thisServerObject[3], (int) thisServerObject[4], (List<ulong>) thisServerObject[5]);
         }
 
-        public static bool IsRunningNexus()
+        public static List<NexusAPI.Sector> GetSectors()
         {
-            return false;
+            List<object[]> sectorsObject = NexusAPI.GetSectorsObject();
+            List<NexusAPI.Sector> sectors = new List<NexusAPI.Sector>();
+            foreach (object[] objArray in sectorsObject)
+                sectors.Add(new NexusAPI.Sector((string) objArray[0], (string) objArray[1], (int) objArray[2], (bool) objArray[3], (Vector3D) objArray[4], (double) objArray[5], (int) objArray[6]));
+            return sectors;
         }
 
-        public static bool IsPlayerOnline(long IdentityID)
+        public static int GetServerIDFromPosition(Vector3D Position) => 0;
+
+        public static List<NexusAPI.Player> GetAllOnlinePlayers()
         {
-            return false;
+            List<object[]> onlinePlayersObject = NexusAPI.GetAllOnlinePlayersObject();
+            List<NexusAPI.Player> allOnlinePlayers = new List<NexusAPI.Player>();
+            foreach (object[] objArray in onlinePlayersObject)
+                allOnlinePlayers.Add(new NexusAPI.Player((string) objArray[0], (ulong) objArray[1], (long) objArray[2], (int) objArray[3]));
+            return allOnlinePlayers;
         }
 
-        private static List<object[]> GetSectorsObject()
+        public static List<NexusAPI.Server> GetAllServers()
         {
-            List<object[]> APISectors = new ();
-            return APISectors;
+            List<object[]> allServersObject = NexusAPI.GetAllServersObject();
+            List<NexusAPI.Server> allServers = new List<NexusAPI.Server>();
+            foreach (object[] objArray in allServersObject)
+                allServers.Add(new NexusAPI.Server((string) objArray[0], (int) objArray[1], (int) objArray[2], (string) objArray[3]));
+            return allServers;
         }
 
-        private static List<object[]> GetAllOnlinePlayersObject()
+        public static List<NexusAPI.Server> GetAllOnlineServers()
         {
-            List<object[]> OnlinePlayers = new ();
-            return OnlinePlayers;
+            List<object[]> onlineServersObject = NexusAPI.GetAllOnlineServersObject();
+            List<NexusAPI.Server> allOnlineServers = new List<NexusAPI.Server>();
+            foreach (object[] objArray in onlineServersObject)
+                allOnlineServers.Add(new NexusAPI.Server((string) objArray[0], (int) objArray[1], (int) objArray[2], (float) objArray[3], (int) objArray[4], (List<ulong>) objArray[5]));
+            return allOnlineServers;
         }
 
-        private static List<object[]> GetAllServersObject()
-        {
-            List<object[]> Servers = new ();
-            return Servers;
+        public static bool IsServerOnline(int ServerID) => false;
 
-        }
-        
-        private static List<object[]> GetAllOnlineServersObject()
+        public static void BackupGrid(
+            List<MyObjectBuilder_CubeGrid> GridObjectBuilders,
+            long OnwerIdentity)
         {
-            List<object[]> Servers = new ();
-            return Servers;
         }
 
-        private static object[] GetThisServerObject()
+        public static void SendChatMessageToDiscord(ulong ChannelID, string Author, string Message)
         {
-            object[] OnlinePlayers = new object[6];
-            return OnlinePlayers;
         }
 
-        public static Server GetThisServer()
+        public static void SendEmbedMessageToDiscord(
+            ulong ChannelID,
+            string EmbedTitle,
+            string EmbedMsg,
+            string EmbedFooter,
+            string EmbedColor = null)
         {
-            object[] obj = GetThisServerObject();
-            return new Server((string)obj[0], (int)obj[1], (short)obj[2], (int)obj[3], (int)obj[4], (List<ulong>)obj[5]);
         }
-
-        public static List<Sector> GetSectors()
-        {
-            List<object[]> Objs = GetSectorsObject();
-            
-            List<Sector> Sectors = new ();
-            foreach (var obj in Objs)
-            {
-                Sectors.Add(new Sector((string)obj[0], (string)obj[1], (int)obj[2], (bool)obj[3], (Vector3D)obj[4], (double)obj[5], (int)obj[6]));
-            }
-            return Sectors;
-        }
-
-        public static int GetServerIDFromPosition(Vector3D Position)
-        {
-            return 0;
-        }
-
-        public static List<Player> GetAllOnlinePlayers()
-        {
-            List<object[]> Objs = GetAllOnlinePlayersObject();
-
-            List<Player> Players = new ();
-            foreach (var obj in Objs)
-            {
-                Players.Add(new Player((string)obj[0], (ulong)obj[1], (long)obj[2], (int)obj[3]));
-            }
-            return Players;
-        }
-
-        public static List<Server> GetAllServers()
-        {
-            List<object[]> Objs = GetAllServersObject();
-
-            List<Server> Servers = new ();
-            foreach (var obj in Objs)
-            {
-                Servers.Add(new Server((string)obj[0], (int)obj[1], (int)obj[2],  (string)obj[3]));
-            }
-            return Servers;
-        }
-        
-        public static List<Server> GetAllOnlineServers()
-        {
-            List<object[]> Objs = GetAllOnlineServersObject();
-
-            List<Server> Servers = new ();
-            foreach (var obj in Objs)
-            {
-                Servers.Add(new Server((string)obj[0], (int)obj[1], (int)obj[2], (float)obj[3], (int)obj[4], (List<ulong>)obj[5]));
-            }
-            return Servers;
-        }
-
-        public static bool IsServerOnline(int ServerID)
-        {
-            return false;
-        }
-        public static void BackupGrid(List<MyObjectBuilder_CubeGrid> GridObjectBuilders, long OnwerIdentity)
-        {
-            return;
-        }
-        public static void SendChatMessageToDiscord(ulong ChannelID, string Author, string Message) {}
-        public static void SendEmbedMessageToDiscord(ulong ChannelID, string EmbedTitle, string EmbedMsg, string EmbedFooter, string? EmbedColor = null) {}
 
         public void SendMessageToServer(int ServerID, byte[] Message)
         {
-            return;
         }
 
         public void SendMessageToAllServers(byte[] Message)
         {
-            return;
         }
 
         public class Sector
@@ -156,7 +108,14 @@ namespace Advanced_PB_Limiter.Utils
             public readonly double Radius;
             public readonly int ServerID;
 
-            public Sector(string Name, string IPAddress, int Port, bool IsGeneralSpace, Vector3D Center, double Radius, int ServerID)
+            public Sector(
+                string Name,
+                string IPAddress,
+                int Port,
+                bool IsGeneralSpace,
+                Vector3D Center,
+                double Radius,
+                int ServerID)
             {
                 this.Name = Name;
                 this.IPAddress = IPAddress;
@@ -184,25 +143,16 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
 
-        public partial class Server
+        public class Server
         {
             public readonly string Name;
             public readonly int ServerID;
             public readonly int ServerType;
             public readonly string ServerIP;
-
             public readonly int MaxPlayers;
             public readonly float ServerSS;
             public readonly int TotalGrids;
             public readonly List<ulong> ReservedPlayers;
-
-            /*  Possible Server Types
-             * 
-             *  0 - SyncedSectored
-             *  1 - SyncedNon-Sectored
-             *  2 - Non-Synced & Non-Sectored
-             * 
-             */
 
             public Server(string Name, int ServerID, int ServerType, string IP)
             {
@@ -212,8 +162,13 @@ namespace Advanced_PB_Limiter.Utils
                 this.ServerIP = IP;
             }
 
-            //Online Server
-            public Server(string Name, int ServerID, int MaxPlayers, float SimSpeed, int TotalGrids, List<ulong> ReservedPlayers)
+            public Server(
+                string Name,
+                int ServerID,
+                int MaxPlayers,
+                float SimSpeed,
+                int TotalGrids,
+                List<ulong> ReservedPlayers)
             {
                 this.Name = Name;
                 this.ServerID = ServerID;
@@ -224,16 +179,23 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
 
-
         [ProtoContract]
         public class CrossServerMessage
         {
-            [ProtoMember(1)] public readonly int ToServerID;
-            [ProtoMember(2)] public readonly int FromServerID;
-            [ProtoMember(3)] public readonly ushort UniqueMessageID;
-            [ProtoMember(4)] public readonly byte[] Message;
+            [ProtoMember(1)]
+            public readonly int ToServerID;
+            [ProtoMember(2)]
+            public readonly int FromServerID;
+            [ProtoMember(3)]
+            public readonly ushort UniqueMessageID;
+            [ProtoMember(4)]
+            public readonly byte[] Message;
 
-            public CrossServerMessage(ushort UniqueMessageID, int ToServerID, int FromServerID, byte[] Message)
+            public CrossServerMessage(
+                ushort UniqueMessageID,
+                int ToServerID,
+                int FromServerID,
+                byte[] Message)
             {
                 this.UniqueMessageID = UniqueMessageID;
                 this.ToServerID = ToServerID;
@@ -241,7 +203,9 @@ namespace Advanced_PB_Limiter.Utils
                 this.Message = Message;
             }
 
-            public CrossServerMessage() { }
+            public CrossServerMessage()
+            {
+            }
         }
     }
 }

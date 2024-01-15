@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Globalization;
 using System.Reflection;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
@@ -22,6 +24,7 @@ namespace Advanced_PB_Limiter.Manager
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
         private static FieldInfo? needsInstansiationField;
         private static MethodInfo? Terminate;
+        private static ConcurrentDictionary<long, ulong> GracefulShutdownsInProgress { get; } = new(); // Key: EntityId, Value: SteamId
         public enum PunishReason
         {
             SingleRuntimeOverLimit,
@@ -34,6 +37,7 @@ namespace Advanced_PB_Limiter.Manager
         public static async Task CheckForPunishment(TrackedPlayer player, long pbEntityId, double lastRunTimeMS)
         {
             if (!Config.Enabled) return;
+            if (GracefulShutdownsInProgress.TryGetValue(pbEntityId, out _)) return;
             
             TrackedPBBlock? trackedPbBlock = player.GetTrackedPB(pbEntityId);
             if (trackedPbBlock is null)
@@ -42,19 +46,13 @@ namespace Advanced_PB_Limiter.Manager
                 return;
             }
             
-            if (!trackedPbBlock.GracePeriodFinished)
-            {
-                if (trackedPbBlock.IsUnderGracePeriod(player.SteamId))
-                    return;
-                
-                trackedPbBlock.GracePeriodFinished = true;
-            }
+            if (trackedPbBlock.IsUnderGracePeriod(player.SteamId)) return;
             
             // InstaKill
-            if (lastRunTimeMS >= Config.InstantKillThreshold)
+            if (Config.InstantKillThreshold > 0 && lastRunTimeMS > Config.InstantKillThreshold)
             {
-                await PunishPB(player, trackedPbBlock, PunishReason.ExtremeUsage, Punishment.Destroy, "[" + lastRunTimeMS.ToString(CultureInfo.InvariantCulture) + "ms]");
-                Log.Error($"INSTANT KILL TRIGGERED: {player.PlayerName} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} with a run-time of {lastRunTimeMS}ms");
+                await PunishPB(player, trackedPbBlock, PunishReason.ExtremeUsage, Punishment.Destroy, $"[{lastRunTimeMS:0.0000}ms]");
+                Log.Error($"INSTANT KILL TRIGGERED: {player.PlayerName} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} with a run-time of {lastRunTimeMS:0.0000}ms");
                 return;
             }
 
@@ -77,40 +75,57 @@ namespace Advanced_PB_Limiter.Manager
                 if (trackedPbBlock.Offences.TryPeek(out long lastOffense_cleanup))
                 {                                                                           // Limit is in minutes
                     if (((Stopwatch.GetTimestamp() - lastOffense_cleanup) / Stopwatch.Frequency) / 60 > Config.OffenseDurationBeforeDeletion)
-                        if (trackedPbBlock.Offences.TryPop(out _)) continue;
-                    
+                        if (trackedPbBlock.Offences.TryDequeue(out _)) continue;
                 }
 
                 break;
             }
 
             // Check if enough time since last offense has passed.
-            trackedPbBlock.Offences.TryPeek(out long lastOffense);
-            if ((Stopwatch.GetTimestamp() - lastOffense) / Stopwatch.Frequency <= Config.GraceAfterOffence)
+            if ((Stopwatch.GetTimestamp() - trackedPbBlock.LastOffenceTick) / Stopwatch.Frequency <= Config.GraceAfterOffence)
                 return;
             
             if (allowedRunTime != 0 && lastRunTimeMS > allowedRunTime)
             {
-                trackedPbBlock.Offences.Push(Stopwatch.GetTimestamp());
-                Log.Trace($"PB Block: {trackedPbBlock.ProgrammableBlock?.EntityId} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} has exceeded the run-time limit.  Last Run Time: {lastRunTimeMS}ms  Allowed Run Time: {allowedRunTime}ms  Offenses: {trackedPbBlock.Offences.Count}");
+                trackedPbBlock.Offences.Enqueue(Stopwatch.GetTimestamp());
+                trackedPbBlock.LastOffenceTick = Stopwatch.GetTimestamp();
+                Interlocked.Increment(ref player.Offences);
+                Log.Info($"PB Block: {trackedPbBlock.ProgrammableBlock?.EntityId} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} has exceeded the run-time limit.  Last Run-Time: {lastRunTimeMS:0.0000}ms  Allowed-Run-Time: {allowedRunTime:0.0000}ms  Offenses: {trackedPbBlock.Offences.Count}");
                 
                 if (trackedPbBlock.Offences.Count <= allowedOffenses)
                 {
-                    Chat.Send($"You have received an offense [{trackedPbBlock.Offences.Count} of {allowedOffenses}] for exceeding your run-time limit [{allowedRunTime}] on grid {trackedPbBlock.GridName}.  Please reduce the run time of your Programmable Block or it will be punished.", player.SteamId, Color.Red);
+                    if (Config.WarnUserOnOffense)
+                        Chat.Send($"You have received an offense [{trackedPbBlock.Offences.Count} of {allowedOffenses}] for exceeding your run-time limit [{allowedRunTime:0.0000}ms] on grid {trackedPbBlock.GridName}.  Please reduce the run time of your Programmable Block or it will be punished.", player.SteamId, Color.Red);
                     return;
                 }
-                
-                await PunishPB(player, trackedPbBlock, PunishReason.SingleRuntimeOverLimit, null, "[" +trackedPbBlock.LastRunTimeMS.ToString(CultureInfo.InvariantCulture) + "ms]");
+                StringBuilder sb = new();
+                sb.AppendLine();
+                sb.AppendLine($"Your Limit: [{allowedRunTime:0.0000}ms]");
+                sb.AppendLine($"Your Usage: [{lastRunTimeMS:0.0000}ms]");
+                await PunishPB(player, trackedPbBlock, PunishReason.SingleRuntimeOverLimit, null, sb.ToString());
                 return; // Block is punished, no need to punish again with average run-time violations.
             }
             
             if (combinedLimitRestriction && trackedPbBlock.RunTimeMSAvg > allowedRunTimeAvg)
             {
-                trackedPbBlock.Offences.Push(Stopwatch.GetTimestamp());
-                Log.Trace($"PB Block: {trackedPbBlock.ProgrammableBlock?.EntityId} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} has exceeded the average run-time limit.  Last Run-Time: {lastRunTimeMS}ms  Average Run Time: {trackedPbBlock.RunTimeMSAvg}ms");
+                trackedPbBlock.Offences.Enqueue(Stopwatch.GetTimestamp());
+                trackedPbBlock.LastOffenceTick = Stopwatch.GetTimestamp();
+                Interlocked.Increment(ref player.Offences);
+                Log.Info($"PB Block: {trackedPbBlock.ProgrammableBlock?.EntityId} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} has exceeded the average-run-time limit.  Allowed Average-Run-Time: {allowedRunTime:0.0000}ms   Last Run-Time: {lastRunTimeMS:0.0000}ms   Average-Run-Time: {trackedPbBlock.RunTimeMSAvg:0.0000}ms  Offenses: {trackedPbBlock.Offences.Count}");
                 
-                if (trackedPbBlock.Offences.Count < Config.MaxOffencesBeforePunishment) return;
-                await PunishPB(player, trackedPbBlock, PunishReason.AverageRuntimeOverLimit, null, "[" +trackedPbBlock.RunTimeMSAvg.ToString(CultureInfo.InvariantCulture) + "ms]");
+                if (trackedPbBlock.Offences.Count <= allowedOffenses)
+                {
+                    if (Config.WarnUserOnOffense)
+                        Chat.Send($"You have received an offense [{trackedPbBlock.Offences.Count} of {allowedOffenses}] for exceeding your average-run-time limit [{allowedRunTime:0.0000}ms] on grid {trackedPbBlock.GridName}.  Please reduce the run time of your Programmable Block or it will be punished.", player.SteamId, Color.Red);
+                    return;
+                }
+                
+                if (trackedPbBlock.Offences.Count <= Config.MaxOffencesBeforePunishment) return;
+                StringBuilder sb = new();
+                sb.AppendLine();
+                sb.AppendLine($"Your Limit: [{allowedRunTimeAvg:0.0000}ms]");
+                sb.AppendLine($"Your Usage: [{trackedPbBlock.RunTimeMSAvg:0.0000}ms]");
+                await PunishPB(player, trackedPbBlock, PunishReason.AverageRuntimeOverLimit, null, sb.ToString());
             }
         }
         
@@ -125,10 +140,6 @@ namespace Advanced_PB_Limiter.Manager
             int gracePeriodSeconds = Config.GracefulShutDownRequestDelay;
             if (Config.PrivilegedPlayers.TryGetValue(player.SteamId, out PrivilegedPlayer privilegedPlayer))
                 gracePeriodSeconds = privilegedPlayer.GracefulShutDownRequestDelay;
-            MySandboxGame.Static.Invoke(() => // Not sure if this actually needs to be on the game thread, but it's better to be safe than sorry.
-            {
-                trackedPbBlock.ProgrammableBlock.Run($"GracefulShutDown::{gracePeriodSeconds}", UpdateType.Script);
-            }, "Advanced_PB_Limiter");
             
             if (reason == PunishReason.ExtremeUsage)
             {
@@ -136,10 +147,24 @@ namespace Advanced_PB_Limiter.Manager
                 return Task.CompletedTask;
             }
             
+            if (gracePeriodSeconds == 0)
+            {
+                PerformPunish(trackedPbBlock, player, reason, punishment, notes);
+                return Task.CompletedTask;
+            }
+
+            GracefulShutdownsInProgress.TryAdd(trackedPbBlock.ProgrammableBlock.EntityId, player.SteamId);
+            
+            MySandboxGame.Static.Invoke(() => // Not sure if this actually needs to be on the game thread.
+            {
+                trackedPbBlock.ProgrammableBlock.Run($"GracefulShutDown::{gracePeriodSeconds}", UpdateType.Script);
+            }, "Advanced_PB_Limiter");
+            
             Task.Delay(gracePeriodSeconds * 1000).ContinueWith(_ =>
             {
                 PerformPunish(trackedPbBlock, player, reason, null, notes);
             });
+            GracefulShutdownsInProgress.TryRemove(trackedPbBlock.ProgrammableBlock.EntityId, out _);
             return Task.CompletedTask;
         }
 
@@ -237,27 +262,16 @@ namespace Advanced_PB_Limiter.Manager
                 Log.Warn($"No punishment message was sent: SteamID[{player.SteamId}]  IsNPC[{MySession.Static.Players.IdentityIsNpc(player.PlayerId)}]  IsOnline[{MySession.Static.Players.IsPlayerOnline(player.PlayerId)}]  GridName[{pbBlock.GridName}]");
                 return "";
             }
-            
-            switch (reason)
-            {
-                case PunishReason.AverageRuntimeOverLimit:
-                    return $"Your Programmable Block on grid <{pbBlock.ProgrammableBlock?.CubeGrid.DisplayName}> was punished due to excessive average run time. " + message;
 
-                case PunishReason.CombinedAverageRuntimeOverLimit:
-                    return $"Your Programmable Block on grid <{pbBlock.ProgrammableBlock?.CubeGrid.DisplayName}> was punished due to excessive combined average run time. " + message;
-                
-                case PunishReason.SingleRuntimeOverLimit:
-                    return $"Your Programmable Block on grid <{pbBlock.ProgrammableBlock?.CubeGrid.DisplayName}> was punished due to excessive run time. " + message;
-                
-                case PunishReason.CombinedRuntimeOverLimit:
-                    return $"Your Programmable Block on grid <{pbBlock.ProgrammableBlock?.CubeGrid.DisplayName}> was punished due to excessive combined run time. " + message;
-                
-                case PunishReason.ExtremeUsage:
-                    return $"Your Programmable Block on grid <{pbBlock.ProgrammableBlock?.CubeGrid.DisplayName}> was punished due to extreme usage. " + message;
-                
-                default:
-                    return $"Your Programmable Block on grid <{pbBlock.ProgrammableBlock?.CubeGrid.DisplayName}> was punished for some reason, please check with server admins. " + message;
-            }
+            return reason switch
+            {
+                PunishReason.AverageRuntimeOverLimit => $"Your Programmable Block on grid <{pbBlock.ProgrammableBlock?.CubeGrid.DisplayName}> was punished due to excessive average run time. " + message,
+                PunishReason.CombinedAverageRuntimeOverLimit => $"Your Programmable Block on grid <{pbBlock.ProgrammableBlock?.CubeGrid.DisplayName}> was punished due to excessive combined average run time. " + message,
+                PunishReason.SingleRuntimeOverLimit => $"Your Programmable Block on grid <{pbBlock.ProgrammableBlock?.CubeGrid.DisplayName}> was punished due to excessive run time. " + message,
+                PunishReason.CombinedRuntimeOverLimit => $"Your Programmable Block on grid <{pbBlock.ProgrammableBlock?.CubeGrid.DisplayName}> was punished due to excessive combined run time. " + message,
+                PunishReason.ExtremeUsage => $"Your Programmable Block on grid <{pbBlock.ProgrammableBlock?.CubeGrid.DisplayName}> was punished due to extreme usage. " + message,
+                _ => $"Your Programmable Block on grid <{pbBlock.ProgrammableBlock?.CubeGrid.DisplayName}> was punished for some reason, please check with server admins. " + message
+            };
         }
     }
 }

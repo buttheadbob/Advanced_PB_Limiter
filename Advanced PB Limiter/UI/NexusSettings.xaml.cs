@@ -23,26 +23,33 @@ namespace Advanced_PB_Limiter.UI
         
         private void Nexus_Connected(object? sender, EventArgs e)
         {
-            if (e is not NexusConnectedEventArgs args) return;
-            if (args.Connected)
+            try
             {
-                Advanced_PB_Limiter.Dispatcher.Invoke(() =>
+                if (e is not NexusConnectedEventArgs args) return;
+                if (args.Connected)
                 {
-                    ServerNameText.Text = NexusManager.ThisServer?.Name;
-                    ServerIPText.Text = NexusManager.ThisServer?.ServerIP;
-                    ServerIDText.Text = NexusManager.ThisServer?.ServerID.ToString();
-                    ServerTypeText.Text = NexusManager.ThisServer?.ServerType.ToString();
+                    ServerNameText.Dispatcher.Invoke(() =>
+                    {
+                        ServerNameText.Text = NexusManager.ThisServer?.Name;
+                        ServerIPText.Text = NexusManager.ThisServer?.ServerIP;
+                        ServerIDText.Text = NexusManager.ThisServer?.ServerID.ToString();
+                        ServerTypeText.Text = NexusManager.ThisServer?.ServerType.ToString();
+                    });
+                    return;
+                }
+            
+                ServerNameText.Dispatcher.Invoke(() =>
+                {
+                    ServerNameText.Text = "Not Connected";
+                    ServerIPText.Text = "Not Connected";
+                    ServerIDText.Text = "Not Connected";
+                    ServerTypeText.Text = "Not Connected";
                 });
-                return;
+            } catch (Exception ex)
+            {
+                Advanced_PB_Limiter.Log.Error(ex);
             }
             
-            Advanced_PB_Limiter.Dispatcher.Invoke(() =>
-            {
-                ServerNameText.Text = "Not Connected";
-                ServerIPText.Text = "Not Connected";
-                ServerIDText.Text = "Not Connected";
-                ServerTypeText.Text = "Not Connected";
-            });
         }
 
         private async void SaveButton_OnClick(object sender, RoutedEventArgs e)

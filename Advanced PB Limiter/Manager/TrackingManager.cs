@@ -25,47 +25,42 @@ namespace Advanced_PB_Limiter.Manager
         {
             _cleanupTimer.Elapsed += (sender, args) => CleanUpOldPlayers();
             if (Config.RemovePlayersWithNoPBFrequencyInMinutes <= 0) return;
-            _cleanupTimer.Interval = Config.RemovePlayersWithNoPBFrequencyInMinutes * 60 * 1000;
+            _cleanupTimer.Interval = TimeSpan.FromMinutes(1).TotalMilliseconds;
             _cleanupTimer.Start();
         }
         
-        public static void StartPlayerCleanupTimer(int frequency)
-        {
-            if (frequency <= 0) return;
-            _cleanupTimer.Interval = TimeSpan.FromSeconds(frequency).TotalMilliseconds;
-            _cleanupTimer.Start();
-        }
         
         public static List<TrackedPlayer> GetTrackedPlayerData()
         {
             return PlayersTracked.Values.ToList();
+        }
+        
+        public static TrackedPlayer? GetTrackedPlayerDataById(long playerId)
+        {
+            return PlayersTracked.TryGetValue(playerId, out TrackedPlayer? player) 
+                ? player 
+                : null;
         }
 
         private static void CleanUpOldPlayers()
         {
             if (!Config.Enabled) return;
             
-            if (_lastKnownCleanupInterval != Config.RemovePlayersWithNoPBFrequencyInMinutes)
-            {
-                if (_lastKnownCleanupInterval <= 0)
-                {
-                    _cleanupTimer.Stop();
-                    return;
-                }
-                _cleanupTimer.Interval = Config.RemovePlayersWithNoPBFrequencyInMinutes * 60 * 1000;
-            }
+            // Get players
+            long[] trackedPlayers = PlayersTracked.Keys.ToArray();
+            if (trackedPlayers.Length <= 0) return;
             
-            for (int index = PlayersTracked.Count - 1; index >= 0; index--)
+            for (int index = trackedPlayers.Length - 1; index >= 0; index--)
             {
-                if (PlayersTracked[index].PBBlockCount > 0) continue;
-                RemovePlayer(PlayersTracked[index].PlayerId);
+                if (PlayersTracked[trackedPlayers[index]].PBBlockCount > 0) continue;
+                if ((Stopwatch.GetTimestamp() - PlayersTracked[trackedPlayers[index]].LastDataUpdateTick) / Stopwatch.Frequency / 60 < Config.RemovePlayersWithNoPBFrequencyInMinutes) continue;
+                RemovePlayer(PlayersTracked[trackedPlayers[index]].PlayerId);
             }
         }
 
         public static void UpdateTrackingData(MyProgrammableBlock pb, double runTime)
         {
-            Stopwatch debugTimer = new();
-            debugTimer.Start();
+            if (pb.OwnerId == 0) return; // Track un-owned blocks? something to think about...
             
             if (!Config.Enabled) return;
             if (Config.IgnoreNPCs)
@@ -76,16 +71,12 @@ namespace Advanced_PB_Limiter.Manager
             if (PlayersTracked.TryGetValue(pb.OwnerId, out TrackedPlayer? player))
             {
                 player.UpdatePBBlockData(pb, runTime);
-                debugTimer.Stop();
-                Log.Warn($"Warning: Updated PB Block Data.  Time Taken: [{debugTimer.Elapsed.TotalMilliseconds}]");
                 return;
             }
             
             player = new TrackedPlayer(pb.OwnerId);
             PlayersTracked.TryAdd(pb.OwnerId, player);
             player.UpdatePBBlockData(pb, runTime);
-            debugTimer.Stop();
-            Log.Warn($"Warning: Added PB Block Data.  Time Taken: [{debugTimer.Elapsed.TotalMilliseconds}]");
         }
         
         private static void RemovePlayer(long Id)
@@ -102,12 +93,11 @@ namespace Advanced_PB_Limiter.Manager
         {
             if (!Config.Enabled) return;
             if (pb is null) return;
+
+            if (!PlayersTracked.TryGetValue(pb.OwnerId, out TrackedPlayer? player)) return;
             
-            if (PlayersTracked.TryGetValue(pb.OwnerId, out TrackedPlayer? player))
-            {
-                if (Config.ClearHistoryOnRecompile)
-                    player.ResetPBBlockData(pb);
-            }
+            if (Config.ClearHistoryOnRecompile)
+                player.ResetPBBlockData(pb);
         }
          
         private static void CheckAllUserBlocksForCombinedLimits()

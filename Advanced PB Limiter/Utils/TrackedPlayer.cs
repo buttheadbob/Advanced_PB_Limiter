@@ -15,14 +15,14 @@ namespace Advanced_PB_Limiter.Utils
     {
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
         private static Logger Log => LogManager.GetLogger("Advanced PB Limiter - Tracked Player: ");
-        public string PlayerName { get; private set; }
+        public string? PlayerName { get; private set; }
         public long PlayerId { get; private set; }
         private ConcurrentDictionary<long, TrackedPBBlock> PBBlocks { get; } = new();
         public ulong SteamId { get; private set; }
         public long LastDataUpdateTick { get; set; }
         private readonly Timer _cleanupTimer = new (Config.RemoveInactivePBsAfterSeconds * 1000);
         private int _lastKnownCleanupInterval = Config.RemoveInactivePBsAfterSeconds * 1000;
-        public int Offences { get; private set; }
+        public int Offences = 0;
         
         public TrackedPlayer(long playerId)
         {
@@ -47,15 +47,13 @@ namespace Advanced_PB_Limiter.Utils
             LastDataUpdateTick = Stopwatch.GetTimestamp();
             if (!PBBlocks.TryGetValue(pbBlock.EntityId, out TrackedPBBlock? trackedPBBlock))
             {
-                trackedPBBlock = new TrackedPBBlock(pbBlock.CubeGrid.DisplayName, lastRunTimeMS, pbBlock);
+                trackedPBBlock = new TrackedPBBlock(pbBlock.CubeGrid.DisplayName, pbBlock);
                 PBBlocks.TryAdd(pbBlock.EntityId, trackedPBBlock);
-                Log.Warn($"Warning: Added PB Block Data.  Last RunTime ms: [{lastRunTimeMS}]");
                 return;
             }
 
-            trackedPBBlock.AddRuntimeData(lastRunTimeMS);
+            trackedPBBlock.AddRuntimeData(lastRunTimeMS, SteamId);
             await PunishmentManager.CheckForPunishment(this, trackedPBBlock.ProgrammableBlock!.EntityId, lastRunTimeMS);
-            Log.Warn($"Warning: Updated PB Block Data.  Last RunTime ms: [{lastRunTimeMS}]");
         }
         
         public List<TrackedPBBlock> GetAllPBBlocks
@@ -127,8 +125,19 @@ namespace Advanced_PB_Limiter.Utils
         
         public void ResetPBBlockData(MyProgrammableBlock pbBlock)
         {
-            if (!PBBlocks.TryGetValue(pbBlock.EntityId, out TrackedPBBlock trackedPBBlock)) return;
-            if (trackedPBBlock.ProgrammableBlock is null) return;
+            if (!PBBlocks.TryGetValue(pbBlock.EntityId, out TrackedPBBlock trackedPBBlock))
+            {
+                // Log.Warn("Unable to find PB Block to reset!");
+                // "Check Code" button in the pb interface will cause this to happen, probably compiles it in a fake or temp pb which isnt in the list. 
+                return;
+            }
+
+            if (trackedPBBlock.ProgrammableBlock is null)
+            {
+                Log.Warn("PB Block is null to reset!");
+                return;
+            }
+            
             PBBlocks[trackedPBBlock.ProgrammableBlock.EntityId].ClearRunTimes();
         }
     }

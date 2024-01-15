@@ -21,7 +21,7 @@ namespace Advanced_PB_Limiter.Manager
         private static int ConnectedNexusServers => NexusManager.ConnectedNexusServers;
         private static readonly List<int> ReportedNexusServers = new();
         private static bool ReportGenerationInProgress { get; set; }
-        private static List<NexusAPI.Server> NexusServers = new();
+        private static List<NexusAPI.Server> NexusServers { get; set; } = new();
         private static readonly ConcurrentDictionary<ulong, DateTime> LastPlayerReportRequest = new();
         
         public static void AddOrUpdateReport(int fromServer, List<PlayerReport> report)
@@ -102,7 +102,8 @@ namespace Advanced_PB_Limiter.Manager
 
         private static Task<string> FormatReport()
         {
-            NexusServers = NexusManager.GetNexusServers();
+            if (Advanced_PB_Limiter.NexusInstalled)
+                NexusServers = NexusManager.GetNexusServers();
             StringBuilder report = new();
            
             Tuple<double, string?, ulong?> hottestPb = new (0, null, null);  // ms, gridname, owner
@@ -266,23 +267,23 @@ namespace Advanced_PB_Limiter.Manager
             report.AppendLine(" >> Advanced PB Limiter Report");
             report.AppendLine("-----------------------------");
             report.AppendLine(" >  Overall Server Stats");
-            report.AppendLine("    -  Total Nexus Servers: " + ConnectedNexusServers);
-            report.AppendLine("    -  Total Nexus Servers Reporting: " + ReportedNexusServers.Count);
-            report.AppendLine("    -  Total Players: " + NexusReports.Count);
-            report.AppendLine("    -  Total Programming Blocks Tracked: " + TotalPbCount);
-            report.AppendLine("    -  Hottest Server Per Run: " + hottestServerMS.Item2?.Name);
-            report.AppendLine("    -  Hottest Server Per Run Avg: " + hottestServerMSAvg.Item2?.Name);
-            report.AppendLine("    -  Server With Most PBs: " + serverWithMostPbs.Item2?.Name);
-            report.AppendLine("    -  Server With Most Offences: " + serverWithMostOffences.Item2?.Name);
-            report.AppendLine("    -  Server With Most Recompiles: " + serverWithMostRecompiles.Item2?.Name);
+            report.AppendLine($"    -  Total Nexus Servers: {ConnectedNexusServers}");
+            report.AppendLine($"    -  Total Nexus Servers Reporting: {ReportedNexusServers.Count}");
+            report.AppendLine($"    -  Total Players: {NexusReports.Count}");
+            report.AppendLine($"    -  Total Programming Blocks Tracked: {TotalPbCount}");
+            report.AppendLine($"    -  Hottest Server Per Run: {hottestServerMS.Item2?.Name}");
+            report.AppendLine($"    -  Hottest Server Per Run Avg: {hottestServerMSAvg.Item2?.Name}");
+            report.AppendLine($"    -  Server With Most PBs: {serverWithMostPbs.Item2?.Name}");
+            report.AppendLine($"    -  Server With Most Offences: {serverWithMostOffences.Item2?.Name}");
+            report.AppendLine($"    -  Server With Most Recompiles: {serverWithMostRecompiles.Item2?.Name}");
             report.AppendLine("");
             
             report.AppendLine($" >  Per Server Stats");
             foreach (NexusAPI.Server server in NexusServers)
             {
                 report.AppendLine($"    -  Server Name: {server.Name}");
-                report.AppendLine($"    -  Total MS: {ServerTotalMS[server.ServerID]}");
-                report.AppendLine($"    -  Total MS Avg: {ServerTotalMSAvg[server.ServerID]}");
+                report.AppendLine($"    -  Total MS: {ServerTotalMS[server.ServerID]:0.0000}");
+                report.AppendLine($"    -  Total MS Avg: {ServerTotalMSAvg[server.ServerID]:0.0000}");
                 report.AppendLine($"    -  Total PBs: {ServerTotalPBs[server.ServerID]}");
                 report.AppendLine($"    -  Total Offences: {ServerTotalOffences[server.ServerID]}");
                 report.AppendLine($"    -  Total Recompiles: {ServerTotalRecompiles[server.ServerID]}");
@@ -290,12 +291,17 @@ namespace Advanced_PB_Limiter.Manager
             }
             
             report.AppendLine(" >  Overall Player Stats");
-            report.AppendLine("    -  Hottest Player Per Run: " + MySession.Static.Players.TryGetIdentityNameFromSteamId((ulong)hottestPlayer.Item2!));
-            report.AppendLine("    -  Hottest Player Per Run Avg: " + MySession.Static.Players.TryGetIdentityNameFromSteamId((ulong)hottestPlayerAvg.Item2!));
-            report.AppendLine("    -  Player With Most PBs: " + MySession.Static.Players.TryGetIdentityNameFromSteamId((ulong)playerWithMostPBs.Item2!));
-            report.AppendLine("    -  Player With Most Offences: " + MySession.Static.Players.TryGetIdentityNameFromSteamId((ulong)playerWithMostOffences.Item2!));
-            report.AppendLine("    -  Player With Most Offensive PB: - " + MySession.Static.Players.TryGetIdentityNameFromSteamId((ulong)pbWithMostRecompiles.Item3!));
-            report.AppendLine("    -  Player With Most Recompiled PB: " + MySession.Static.Players.TryGetIdentityNameFromSteamId((ulong)pbWithMostRecompiles.Item3!));
+            report.AppendLine("    -  Hottest Player Per Run: " + (hottestPlayer.Item2 == null ? "" : MySession.Static.Players.TryGetIdentityNameFromSteamId((ulong)hottestPlayer.Item2)));
+            if (hottestPlayerAvg.Item2 is not null)
+                report.AppendLine("    -  Hottest Player Per Run Avg: " + (hottestPlayerAvg.Item2 == null ? "" : MySession.Static.Players.TryGetIdentityNameFromSteamId((ulong)hottestPlayerAvg.Item2)));
+            if (playerWithMostPBs.Item2 is not null)
+                report.AppendLine("    -  Player With Most PBs: " + (playerWithMostPBs.Item2 == null ? "" : MySession.Static.Players.TryGetIdentityNameFromSteamId((ulong)playerWithMostPBs.Item2)));
+            if (playerWithMostOffences.Item2 is not null)
+                report.AppendLine("    -  Player With Most Offences: " + (playerWithMostOffences.Item2 == null ? "" : MySession.Static.Players.TryGetIdentityNameFromSteamId((ulong)playerWithMostOffences.Item2)));
+            if (pbWithMostRecompiles.Item3 is not null)
+                report.AppendLine("    -  Player With Most Offensive PB: - " + (pbWithMostOffences.Item3 == null ? "" : MySession.Static.Players.TryGetIdentityNameFromSteamId((ulong)pbWithMostOffences.Item3)));
+            if (pbWithMostRecompiles.Item3 is not null)
+                report.AppendLine("    -  Player With Most Recompiled PB: " + (pbWithMostRecompiles.Item2 == null ? "" : MySession.Static.Players.TryGetIdentityNameFromSteamId((ulong)pbWithMostRecompiles.Item3)));
             report.AppendLine("");
             
             report.AppendLine(" >  Per Player Stats");
@@ -309,16 +315,16 @@ namespace Advanced_PB_Limiter.Manager
                 report.AppendLine($"    -  Player PB Count: {playerReport.Value.GetPBReports.Count}");
                 report.AppendLine($"    -  Player Total Offences: {playerReport.Value.TotalOffences}");
                 report.AppendLine($"    -  Player Total Recompiles: {playerReport.Value.TotalRecompiles}");
-                report.AppendLine($"    -  Player Combined Runtime: {playerReport.Value.CombinedLastRunTimeMS}");
-                report.AppendLine($"    -  Player Combined Runtime Avg: {playerReport.Value.CombinedRunTimeMSAvg}");
+                report.AppendLine($"    -  Player Combined Runtime: {playerReport.Value.CombinedLastRunTimeMS:0.0000}");
+                report.AppendLine($"    -  Player Combined Runtime Avg: {playerReport.Value.CombinedRunTimeMSAvg:0.0000}");
                 report.AppendLine($"    >  Per Programmable Block Stats");
                 for (int index = 0; index < playerReport.Value.GetPBReports.Count; index++)
                 {
                     report.AppendLine($"       -  Grid Name: {playerReport.Value.GetPBReports[index].GridName}");
                     report.AppendLine($"       -  Block Name: {playerReport.Value.GetPBReports[index].BlockName}");
                     report.AppendLine($"       -  Grid Server: {GetServerByID(playerReport.Value.GetPBReports[index].ServerId)?.Name}");
-                    report.AppendLine($"       -  Grid Last Runtime: {playerReport.Value.GetPBReports[index].LastRunTimeMS}");
-                    report.AppendLine($"       -  Grid Runtime Avg: {playerReport.Value.GetPBReports[index].RunTimeMSAvg}");
+                    report.AppendLine($"       -  Grid Last Runtime: {playerReport.Value.GetPBReports[index].LastRunTimeMS:0.0000}");
+                    report.AppendLine($"       -  Grid Runtime Avg: {playerReport.Value.GetPBReports[index].RunTimeMSAvg:0.0000}");
                     report.AppendLine($"       -  Grid Offences: {playerReport.Value.GetPBReports[index].Offences}");
                     report.AppendLine($"       -  Grid Recompiles: {playerReport.Value.GetPBReports[index].Recompiles}");
                     report.AppendLine("");
@@ -412,34 +418,61 @@ namespace Advanced_PB_Limiter.Manager
                 report.AppendLine(" >> Advanced PB Limiter Player Report");
                 report.AppendLine("-----------------------------");
                 report.AppendLine(" >  Overall Player Stats");
-                report.AppendLine("    -  PB Count: " + playerReport.GetPBReports.Count);
-                report.AppendLine("    -  Total Offences: " + playerReport.TotalOffences);
-                report.AppendLine("    -  Total Recompiles: " + playerReport.TotalRecompiles);
-                report.AppendLine("    -  Combined Runtime: " + Math.Round(playerReport.CombinedLastRunTimeMS, 4));
-                report.AppendLine("    -  Combined Runtime Avg: " + Math.Round(playerReport.CombinedRunTimeMSAvg, 4));
+                report.AppendLine($"    -  PB Count: {playerReport.GetPBReports.Count}");
+                report.AppendLine($"    -  Total Offences: {playerReport.TotalOffences}");
+                report.AppendLine($"    -  Total Recompiles: {playerReport.TotalRecompiles}");
+                report.AppendLine($"    -  Combined Runtime: {playerReport.CombinedLastRunTimeMS:0.0000}");
+                report.AppendLine($"    -  Combined Runtime Avg: {playerReport.CombinedRunTimeMSAvg:0.0000}");
                 report.AppendLine("");
                 report.AppendLine(" >  Per Programmable Block Stats");
                 for (int index = 0; index < playerReport.GetPBReports.Count; index++)
                 {
-                    report.AppendLine("    -  Grid Name: " + playerReport.GetPBReports[index].GridName);
-                    report.AppendLine("    -  Block Name: " + playerReport.GetPBReports[index].BlockName);
-                    report.AppendLine("    -  Last Runtime: " + Math.Round(playerReport.GetPBReports[index].LastRunTimeMS, 4));
-                    report.AppendLine("    -  Runtime Avg: " + Math.Round(playerReport.GetPBReports[index].RunTimeMSAvg, 4));
-                    report.AppendLine("    -  Offences: " + playerReport.GetPBReports[index].Offences);
-                    report.AppendLine("    -  Recompiles: " + playerReport.GetPBReports[index].Recompiles);
+                    report.AppendLine($"    -  Grid Name: {playerReport.GetPBReports[index].GridName}");
+                    report.AppendLine($"    -  Block Name: {playerReport.GetPBReports[index].BlockName}");
+                    report.AppendLine($"    -  Last Runtime: {playerReport.GetPBReports[index].LastRunTimeMS:0.0000}");
+                    report.AppendLine($"    -  Runtime Avg: {playerReport.GetPBReports[index].RunTimeMSAvg:0.0000}");
+                    report.AppendLine($"    -  Offences: {playerReport.GetPBReports[index].Offences}");
+                    report.AppendLine($"    -  Recompiles: {playerReport.GetPBReports[index].Recompiles}");
                     report.AppendLine("");
                 }
                 report.AppendLine("-----------------------------");
                 report.AppendLine("END OF REPORT");
                 context.Respond(report.ToString());
                 sw.Stop();
-                Log.Info($"{playerReport.PlayerName} requested a player report, generated in {Math.Round(sw.Elapsed.TotalMilliseconds, 4)}ms.");
+                Log.Info($"{playerReport.PlayerName} requested a player report, generated in {sw.Elapsed.TotalMilliseconds:0.0000}ms.");
                 LocalReports.Clear();
                 ReportGenerationInProgress = false;
                 return;
             }
             
             context.Respond("No report data found for you.  This could be because you have no programmable blocks or they are not running.");
+        }
+
+        public static Task PlayerRuntimesRequest(CommandContext context)
+        {
+            StringBuilder sb = new();
+            TrackedPlayer? player = TrackingManager.GetTrackedPlayerDataById(context.Player.IdentityId);
+            
+            if (player is null)
+            {
+                sb.AppendLine("No programmable blocks found for you.  This could be because you have no programmable blocks or they are not running.");
+                context.Respond(sb.ToString());
+                return Task.CompletedTask;
+            }
+
+            foreach (TrackedPBBlock pbBlock in player.GetAllPBBlocks)
+            {
+                sb.AppendLine($"Grid Name: {pbBlock.ProgrammableBlock!.SlimBlock.CubeGrid.DisplayName}");
+                sb.AppendLine($"Block Name: {pbBlock.ProgrammableBlock.DisplayName}");
+                foreach (double runtime in pbBlock.GetRunTimesMS)
+                {
+                    sb.AppendLine($" - {runtime:0.0000}ms");
+                }               
+                sb.AppendLine("-----------------------------");
+            }
+            
+            context.Respond(sb.ToString());
+            return Task.CompletedTask;
         }
     }
 }

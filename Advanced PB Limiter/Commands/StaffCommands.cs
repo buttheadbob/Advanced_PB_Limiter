@@ -47,8 +47,10 @@ namespace Advanced_PB_Limiter.Commands
                 return;
             }
             
-            await NexusManager.UpdateNexusWithSettingsData();
-            Context.Respond("Advanced PB Limiter config pushed to all Nexus servers.");
+            if (await NexusManager.UpdateNexusWithSettingsData())
+                Context.Respond("Advanced PB Limiter config pushed to all Nexus servers.");
+            else
+                Context.Respond("Advanced PB Limiter config failed to push to all Nexus servers.  See logs for more information.");
         }
         
         [Command("PushPrivilegedUserData", "Pushes all privileged user data to all Nexus servers.  This is a great way to sync new servers or update servers that were offline when a new privileged user was added.")]
@@ -61,17 +63,21 @@ namespace Advanced_PB_Limiter.Commands
                 return;
             }
 
+            bool pushSuccess = true;
             foreach (KeyValuePair<ulong, PrivilegedPlayer> privilegedPlayer in Config.PrivilegedPlayers)
             {
-                await NexusManager.UpdateNexusWithPrivilegedPlayerData(privilegedPlayer.Value);
+                if (!await NexusManager.UpdateNexusWithPrivilegedPlayerData(privilegedPlayer.Value))
+                    pushSuccess = false;
             }
-            
-            Context.Respond("Advanced PB Limiter privileged user data pushed to all Nexus servers.");
+
+            Context.Respond(pushSuccess
+                ? "Advanced PB Limiter privileged user data pushed to all Nexus servers."
+                : "Advanced PB Limiter privileged user data failed to push to all Nexus servers.  See logs for more information.");
         }
         
         [Command("AcceptPushedConfig", "Allows configuration data received through Nexus to override the config on this plugin.")]
         [Permission(MyPromoteLevel.Admin)]
-        public void AcceptPushedConfig()
+        public async void AcceptPushedConfig()
         {
             if (!Config.AllowStaffCommands)
             {
@@ -80,12 +86,13 @@ namespace Advanced_PB_Limiter.Commands
             }
 
             Config.AllowNexusConfigUpdates = true;
+            await Advanced_PB_Limiter.Instance!.Save();
             Context.Respond("Advanced PB Limiter will now accept pushed config data from Nexus.");
         }
         
         [Command("DenyPushedConfig", "Disables this plugin's config from being overwritten by any config data received through nexus.")]
         [Permission(MyPromoteLevel.Admin)]
-        public void DenyPushedConfig()
+        public async void DenyPushedConfig()
         {
             if (!Config.AllowStaffCommands)
             {
@@ -94,12 +101,13 @@ namespace Advanced_PB_Limiter.Commands
             }
 
             Config.AllowNexusConfigUpdates = false;
+            await Advanced_PB_Limiter.Instance!.Save();
             Context.Respond("Advanced PB Limiter will now accept pushed config data from Nexus.");
         }
         
         [Command("AcceptPushedPrivilegedUserData", "Allows privileged user data received through Nexus to override the privileged user data on this plugin.  This will not remove player data, only update or add new data.")]
         [Permission(MyPromoteLevel.Admin)]
-        public void AcceptPushedPrivilegedUserData()
+        public async void AcceptPushedPrivilegedUserData()
         {
             if (!Config.AllowStaffCommands)
             {
@@ -108,12 +116,13 @@ namespace Advanced_PB_Limiter.Commands
             }
 
             Config.AllowNexusPrivilegedPlayerUpdates = true;
+            await Advanced_PB_Limiter.Instance!.Save();
             Context.Respond("Advanced PB Limiter will now accept pushed privileged user data from Nexus.");
         }
         
         [Command("DenyPushedPrivilegedUserData", "Disables this plugin's privileged user data from being overwritten by any privileged user data received through nexus.")]
         [Permission(MyPromoteLevel.Admin)]
-        public void DenyPushedPrivilegedUserData()
+        public async void DenyPushedPrivilegedUserData()
         {
             if (!Config.AllowStaffCommands)
             {
@@ -122,22 +131,25 @@ namespace Advanced_PB_Limiter.Commands
             }
 
             Config.AllowNexusPrivilegedPlayerUpdates = false;
+            await Advanced_PB_Limiter.Instance!.Save();
             Context.Respond("Advanced PB Limiter will not accept pushed privileged user data from Nexus.");
         }
         
         [Command("AllowStaffCommands", "Allows staff commands to be used. Only the server owner can use this command.")]
         [Permission(MyPromoteLevel.Owner)]
-        public void AllowStaffCommands()
+        public async void AllowStaffCommands()
         {
             Config.AllowStaffCommands = true;
+            await Advanced_PB_Limiter.Instance!.Save();
             Context.Respond("Staff commands are now enabled.");
         }
         
         [Command("DenyStaffCommands", "Disables staff commands from being used. Only the server owner can use this command.")]
         [Permission(MyPromoteLevel.Owner)]
-        public void DenyStaffCommands()
+        public async void DenyStaffCommands()
         {
             Config.AllowStaffCommands = false;
+            await Advanced_PB_Limiter.Instance!.Save();
             Context.Respond("Staff commands are now disabled.");
         }
 
@@ -182,10 +194,11 @@ namespace Advanced_PB_Limiter.Commands
 
             if (updateNexus)
                 await NexusManager.UpdateNexusWithPrivilegedPlayerData(Config.PrivilegedPlayers[steamId]);
+            await Advanced_PB_Limiter.Instance!.Save();
             Context.Respond("Privileged user data pushed to all Nexus servers.");
         }
 
-        [Command("DetailedHelp", "Gives a list of all staff commands and their usage.")]
+        [Command("DetailedAdminHelp", "Gives a list of all staff commands and their usage.")]
         [Permission(MyPromoteLevel.Admin)]
         public void DetailedHelp()
         {
@@ -203,7 +216,7 @@ namespace Advanced_PB_Limiter.Commands
             Context.Respond("/PBLimiter DenyStaffCommands - Disables staff commands from being used. Only the server owner can use this command.");
         }
         
-        [Command("Help", "Gives a list of all staff commands.")]
+        [Command("AdminHelp", "Gives a list of all staff commands.")]
         [Permission(MyPromoteLevel.Admin)]
         public void Help()
         {

@@ -17,6 +17,7 @@ using Torch.Session;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.UI;
 using Advanced_PB_Limiter.Utils;
+using HarmonyLib;
 using Sandbox.ModAPI;
 using Torch.Managers;
 using Torch.Managers.PatchManager;
@@ -25,7 +26,7 @@ namespace Advanced_PB_Limiter
 {
     public class Advanced_PB_Limiter : TorchPluginBase, IWpfPlugin
     {
-        private static readonly Logger Log = LogManager.GetCurrentClassLogger();
+        public static readonly Logger Log = LogManager.GetCurrentClassLogger();
         private const string CONFIG_FILE_NAME = "Advanced_PB_LimiterConfig.cfg";
         public static Advanced_PB_Limiter? Instance { get; private set; }
         private Advanced_PB_LimiterControl? _control;
@@ -37,10 +38,14 @@ namespace Advanced_PB_Limiter
         public static bool GameOnline { get; set; }
         public PatchManager? _pm;
         public PatchContext? _context;
+        public static PluginManager? _pluginManager = null;
         
         // Nexus stuff
-        public static NexusAPI? nexusAPI { get; private set; }
-        private static readonly Guid NexusGUID = new ("28a12184-0422-43ba-a6e6-2e228611cca5");
+        public NexusAPI? nexusAPI; 
+        public static readonly Guid NexusGUID = new ("28a12184-0422-43ba-a6e6-2e228611cca5");
+        public static ITorchPlugin? NexusPlugin;
+        public static Type? Plugin;
+        public Harmony _Harmony { get; } = new ("com.plugins.senx");
         public static bool NexusInstalled { get; private set; }
         // ReSharper disable once IdentifierTypo
         private static bool NexusInited;
@@ -49,8 +54,10 @@ namespace Advanced_PB_Limiter
         {
             base.Init(torch);
             SetupConfig();
+            _Harmony.PatchAll();
 
             TorchSessionManager sessionManager = Torch.Managers.GetManager<TorchSessionManager>();
+            _pluginManager = Torch.Managers.GetManager<PluginManager>();
             if (sessionManager != null)
                 sessionManager.SessionStateChanged += SessionChanged;
             else
@@ -62,6 +69,7 @@ namespace Advanced_PB_Limiter
             _pm = DependencyProviderExtensions.GetManager<PatchManager>(torch.Managers);
             _context = _pm.AcquireContext();
             ProfilerPatch.Patch(_context);
+            
             NexusConnectionChecker.Elapsed += CheckNexusConnection;
         }
 
@@ -95,25 +103,34 @@ namespace Advanced_PB_Limiter
         private void ConnectNexus()
         {
             if (NexusInited) return;
-            PluginManager? _pluginManager = Torch.Managers.GetManager<PluginManager>();
+            
             if (_pluginManager is null)
                 return;
                 
-            if (_pluginManager.Plugins.TryGetValue(NexusGUID, out ITorchPlugin? torchPlugin))
+           
+            nexusAPI = new (8697){CrossServerModID = 8697};
+            
+            _pluginManager.Plugins.TryGetValue(NexusGUID, out NexusPlugin);
             {
-                if (torchPlugin is null)
+                if (NexusPlugin is null)
                     return;
+
+                if (_context is not null)
+                {
+                    NexusMessageManager.afterRun_init(NexusPlugin);
+                }
                         
-                Type? Plugin = torchPlugin.GetType();
+                Plugin = NexusPlugin.GetType();
+                if (Plugin is null) return;
                 
-                Type? NexusPatcher = Plugin != null! ? Plugin.Assembly.GetType("Nexus.API.PluginAPISync") : null;
+                Type? NexusPatcher = Plugin.Assembly.GetType("Nexus.API.PluginAPISync");
                 if (NexusPatcher != null)
                 {
                     NexusPatcher.GetMethod("ApplyPatching", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, new object[]
                     {
                         typeof(NexusAPI), "Advanced PB Limiter"
                     });
-                    nexusAPI = new NexusAPI(8697);
+                    
                     MyAPIGateway.Multiplayer.RegisterSecureMessageHandler(8697, NexusManager.HandleNexusMessage); 
                     NexusInstalled = true;
                     

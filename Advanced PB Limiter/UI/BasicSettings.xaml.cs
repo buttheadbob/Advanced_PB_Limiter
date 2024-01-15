@@ -16,7 +16,7 @@ namespace Advanced_PB_Limiter.UI
             InitializeComponent();
             DataContext = Config;
             PunishmentComboBox.Text = Config.Punishment.ToString();
-            ComboBoxItem item1 = new() { Content = "Turn Off" };
+            ComboBoxItem item1 = new() { Content = "TurnOff" };
             ComboBoxItem item2 = new() { Content = "Damage" };
             ComboBoxItem item3 = new() { Content = "Destroy" };
             
@@ -34,15 +34,6 @@ namespace Advanced_PB_Limiter.UI
 
         private async void SaveLocallyButton_OnClick(object sender, RoutedEventArgs e)
         {
-            if (int.TryParse(RemovePlayersWithNoPbFrequency.Text, out int newFrequency))
-            {
-                TrackingManager.StartPlayerCleanupTimer(newFrequency);
-            }
-            else
-            {
-                MessageBox.Show("Invalid Player Cleanup Frequency");
-                RemovePlayersWithNoPbFrequency.Focus();
-            }
             await Save();
         }
 
