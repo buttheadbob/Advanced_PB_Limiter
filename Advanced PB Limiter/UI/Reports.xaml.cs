@@ -79,9 +79,10 @@ namespace Advanced_PB_Limiter.UI
                         data[index].SteamId, 
                         data[index].PlayerName, 
                         data[index].GetAllPBBlocks[ii].GridName, 
-                        data[index].GetAllPBBlocks[ii]!.ProgrammableBlock!.DisplayName,
+                        data[index].GetAllPBBlocks[ii]!.ProgrammableBlock!.CustomName.ToString(),
                         data[index].GetAllPBBlocks[ii].LastRunTimeMS, 
                         data[index].GetAllPBBlocks[ii].RunTimeMSAvg, 
+                        data[index].GetAllPBBlocks[ii].PeekRunTimeMS,
                         data[index].GetAllPBBlocks[ii].Offences.Count,
                         data[index].GetAllPBBlocks[ii].Recompiles
                     );
@@ -97,7 +98,7 @@ namespace Advanced_PB_Limiter.UI
                     calculatedLastRunTimeMs = lastRunTimeMs / data[index].PBBlockCount;
                 }
 
-                CustomPlayerReport report = new(data[index].SteamId, data[index].PlayerName, calculatedLastRunTimeMs, calculatedAvgMs, offences, data[index].PBBlockCount, recompiles);
+                CustomPlayerReport report = new(data[index].SteamId, data[index].PlayerName ?? "Unknown", calculatedLastRunTimeMs, calculatedAvgMs, offences, data[index].PBBlockCount, recompiles);
                 PlayerReports.TryAdd(data[index].SteamId, report);
 
                 lastRunTimeMs = 0;
@@ -142,10 +143,11 @@ namespace Advanced_PB_Limiter.UI
             public string? BlockName { get; }
             public double LastRunTimeMS { get; }
             public double AvgMS { get; }
+            public double PeekRunTimeMS { get; }
             public int Offences { get; }
             public int Recompiles { get; }
 
-            public CustomBlockReport(ulong steamId, string playerName, string gridName, string blockName, double lastRunTimeMs, double avgMs, int offences, int recompiles)
+            public CustomBlockReport(ulong steamId, string playerName, string gridName, string blockName, double lastRunTimeMs, double avgMs, double peekRunTimeMS, int offences, int recompiles)
             {
                 SteamId = steamId;
                 PlayerName = playerName;
@@ -153,6 +155,7 @@ namespace Advanced_PB_Limiter.UI
                 BlockName = blockName;
                 LastRunTimeMS = Math.Round(lastRunTimeMs, 4);
                 AvgMS = Math.Round(avgMs, 4);
+                PeekRunTimeMS = peekRunTimeMS;
                 Offences = offences;
                 Recompiles = recompiles;
             }

@@ -2,6 +2,7 @@
 using System.Reflection;
 using Advanced_PB_Limiter.Manager;
 using HarmonyLib;
+using Nexus;
 using Nexus.DataStructures;
 using Nexus.PubSub;
 using Sandbox.ModAPI;

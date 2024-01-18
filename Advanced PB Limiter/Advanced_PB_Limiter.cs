@@ -18,6 +18,7 @@ using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.UI;
 using Advanced_PB_Limiter.Utils;
 using HarmonyLib;
+using Nexus;
 using Sandbox.ModAPI;
 using Torch.Managers;
 using Torch.Managers.PatchManager;
@@ -68,7 +69,7 @@ namespace Advanced_PB_Limiter
             Instance = this;
             _pm = DependencyProviderExtensions.GetManager<PatchManager>(torch.Managers);
             _context = _pm.AcquireContext();
-            ProfilerPatch.Patch(_context);
+            ProfilerPatch_Torch.Patch(_context);
             
             NexusConnectionChecker.Elapsed += CheckNexusConnection;
         }

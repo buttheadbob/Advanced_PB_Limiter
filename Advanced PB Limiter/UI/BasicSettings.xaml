@@ -172,7 +172,7 @@
             <TextBlock Grid.Row="11" Grid.Column="2" Text="Seconds after an offence before another offence can be incurred.  This prevents Update1 and Update10 from reaching offence limits and punishing any pb withing 1 second of the first offence." Margin="3" TextWrapping="Wrap"/>
             
             <TextBlock Grid.Row="12" Grid.Column="0" Text="Warn user on offense" Margin="3" VerticalAlignment="Center"/>
-            <TextBox Grid.Row="12" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding WarnUserOnOffense}"/>
+            <CheckBox Grid.Row="12" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsChecked="{Binding WarnUserOnOffense}"/>
             <TextBlock Grid.Row="12" Grid.Column="2" Text="Send a warning to the user when their pb incurs an offense." Margin="3" TextWrapping="Wrap"/>
             
             <TextBlock Grid.Row="13" Grid.Column="0" Text="Remove offense after time" Margin="3" VerticalAlignment="Center"/>
@@ -199,24 +199,27 @@
             <TextBox Grid.Row="18" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding PunishDamageAmount}" />
             <TextBlock Grid.Row="18" Grid.Column="2" Text="The amount of points to apply to the pb when damage is selected." Margin="3" TextWrapping="Wrap"/>
             
-            <TextBlock Grid.Row="19" Grid.Column="0" Text="Auto Enable" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
-            <CheckBox Grid.Row="19" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding AllowSelfTurnOnExploit}"/>
-            <TextBlock Grid.Row="19" Grid.Column="2" Text="Players use the Save() function to turn on their pb automatically.  This runs regardless if the pb is enabled or not.  Uncheck this box to prevent that." Margin="3" TextWrapping="Wrap"/>
+            <TextBlock Grid.Row="19" Grid.Column="0" Text="Turn off when owned by Nobody" Margin="3" VerticalAlignment="Center"/>
+            <CheckBox Grid.Row="19" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding TurnOffUnownedBlocks}"/>
+            <TextBlock Grid.Row="19" Grid.Column="2" Text="PB's with no owner can still run... but should they?" Margin="3" TextWrapping="Wrap"/>
             
-            <TextBlock Grid.Row="20" Grid.Column="0" Text="Auto Enable NPC" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
-            <CheckBox Grid.Row="20" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding AllowNPCToAutoTurnOn}"/>
-            <TextBlock Grid.Row="20" Grid.Column="2" Text="If Auto Enable for Players is checked, NPC will automatically be allowed.  But does the same as Auto Enable." Margin="3" TextWrapping="Wrap"/>
+            <TextBlock Grid.Row="20" Grid.Column="0" Text="Auto Enable" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+            <CheckBox Grid.Row="20" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding AllowSelfTurnOnExploit}"/>
+            <TextBlock Grid.Row="20" Grid.Column="2" Text="Players use the Save() function to turn on their pb automatically.  This runs regardless if the pb is enabled or not.  Uncheck this box to prevent that." Margin="3" TextWrapping="Wrap"/>
             
-            <TextBlock Grid.Row="21" Grid.Column="0" Text="InstaKill Limit" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
-            <TextBox Grid.Row="21" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding InstantKillThreshold}"/>
-            <TextBlock Grid.Row="21" Grid.Column="2" Text="Any pb that reaches this limit will be damaged beyond function immediately, regardless if no offences have previously occured.  No Graceful shutdown request will be sent.  Set to 0 to disable." Margin="3" TextWrapping="Wrap"/>
+            <TextBlock Grid.Row="21" Grid.Column="0" Text="Auto Enable NPC" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+            <CheckBox Grid.Row="21" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding AllowNPCToAutoTurnOn}"/>
+            <TextBlock Grid.Row="21" Grid.Column="2" Text="If Auto Enable for Players is checked, NPC will automatically be allowed.  Check this box to allow NPC programmable block Save() command to run.  Useful for custom operations on server!" Margin="3" TextWrapping="Wrap"/>
             
-            <Button Grid.Row="22" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Save Locally Only" Name="SaveLocallyButton" Click="SaveLocallyButton_OnClick"/>
-            <TextBlock Grid.Row="22" Grid.Column="2" Margin="3" Text="Saves the configuration to this server only."/>
+            <TextBlock Grid.Row="22" Grid.Column="0" Text="InstaKill Limit" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+            <TextBox Grid.Row="22" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding InstantKillThreshold}"/>
+            <TextBlock Grid.Row="22" Grid.Column="2" Text="Any pb that reaches this limit will be damaged beyond function immediately, regardless if no offences have previously occured.  No Graceful shutdown request will be sent.  Set to 0 to disable." Margin="3" TextWrapping="Wrap"/>
             
-            <Button Grid.Row="23" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Push Through Nexus" Name="SaveAndPush" Click="SaveAndPush_OnClick"/>
-            <TextBlock Grid.Row="23" Grid.Column="2" Margin="3" Text="Sends the current settings to all Nexus servers with this plugin.  This will override their current settings."/>
+            <Button Grid.Row="23" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Save Locally Only" Name="SaveLocallyButton" Click="SaveLocallyButton_OnClick"/>
+            <TextBlock Grid.Row="23" Grid.Column="2" Margin="3" Text="Saves the configuration to this server only."/>
             
+            <Button Grid.Row="24" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Push Through Nexus" Name="SaveAndPush" Click="SaveAndPush_OnClick"/>
+            <TextBlock Grid.Row="24" Grid.Column="2" Margin="3" Text="Sends the current settings to all Nexus servers with this plugin.  This will override their current settings."/>
         </Grid>
     </GroupBox>
 </UserControl>

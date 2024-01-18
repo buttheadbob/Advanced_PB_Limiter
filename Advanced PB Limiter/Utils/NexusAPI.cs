@@ -3,7 +3,7 @@ using ProtoBuf;
 using VRage.Game;
 using VRageMath;
 
-namespace Advanced_PB_Limiter.Utils
+namespace Nexus
 {
     public class NexusAPI
     {

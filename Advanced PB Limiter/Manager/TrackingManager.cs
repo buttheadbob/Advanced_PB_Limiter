@@ -60,7 +60,12 @@ namespace Advanced_PB_Limiter.Manager
 
         public static void UpdateTrackingData(MyProgrammableBlock pb, double runTime)
         {
-            if (pb.OwnerId == 0) return; // Track un-owned blocks? something to think about...
+            if (pb.OwnerId == 0)
+            {
+                if (Config.TurnOffUnownedBlocks) pb.Enabled = false;
+                return;
+            } // Track un-owned blocks? something to think about...
+        
             
             if (!Config.Enabled) return;
             if (Config.IgnoreNPCs)

@@ -18,6 +18,7 @@ namespace Advanced_PB_Limiter.Utils
         public int Recompiles { get; private set; }
         public double LastRunTimeMS { get; private set; }
         private double RunTimesSum = 0;
+        public double PeekRunTimeMS { get; private set; } = 0;
         
         private long _lastOffenceTick;
         public long LastOffenceTick
@@ -25,6 +26,9 @@ namespace Advanced_PB_Limiter.Utils
             get => _lastOffenceTick;
             set => Interlocked.Exchange(ref _lastOffenceTick, value);
         }
+        public bool TieredBlock { get; private set; }
+        public int TierLevel { get; private set; }
+        
         
         private long _lastUpdateTick;
         public long LastUpdateTick
@@ -32,10 +36,6 @@ namespace Advanced_PB_Limiter.Utils
             get => Interlocked.Read(ref _lastUpdateTick);
             set => Interlocked.Exchange(ref _lastUpdateTick, value);
         }
-        
-        // Internal Usage
-        private double total = 0;
-        private int count = 0;
 
         public TrackedPBBlock(string gridName, MyProgrammableBlock pbBlock)
         {
@@ -48,7 +48,8 @@ namespace Advanced_PB_Limiter.Utils
         public void AddRuntimeData(double lastRunTimeMS, ulong steamId)
         {
             if (IsUnderGracePeriod(steamId)) return;
-            
+            if (lastRunTimeMS > PeekRunTimeMS)
+                PeekRunTimeMS = lastRunTimeMS;
             LastRunTimeMS = lastRunTimeMS;
             if (RunTimesMS.Count >= Config.MaxRunsToTrack)
                 if (RunTimesMS.TryDequeue(out double oldRunTimeMS))
@@ -120,6 +121,7 @@ namespace Advanced_PB_Limiter.Utils
             Recompiles++;
             PBStartTime = Stopwatch.GetTimestamp();
             _lastUpdateTick = Stopwatch.GetTimestamp();
+            PeekRunTimeMS = 0;
         }
     }
 }

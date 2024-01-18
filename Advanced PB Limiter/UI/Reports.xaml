@@ -134,6 +134,7 @@
                     <DataGridTextColumn Header="Block Name" Binding="{Binding BlockName}"/>
                     <DataGridTextColumn Header="Last MS" Binding="{Binding LastRunTimeMS}"/>
                     <DataGridTextColumn Header="Avg MS" Binding="{Binding AvgMS}"/>
+                    <DataGridTextColumn Header="Peek MS" Binding="{Binding PeekRunTimeMS}"/>
                     <DataGridTextColumn Header="Offenses" Binding="{Binding Offences}"/>
                     <DataGridTextColumn Header="Recompiles" Binding="{Binding Recompiles}"/>
                 </DataGrid.Columns>

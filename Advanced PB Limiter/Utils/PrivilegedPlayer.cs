@@ -1,5 +1,4 @@
-﻿using System;
-using ProtoBuf;
+﻿using ProtoBuf;
 
 namespace Advanced_PB_Limiter.Utils
 {
@@ -18,6 +17,7 @@ namespace Advanced_PB_Limiter.Utils
         [ProtoMember(100)] public int GracefulShutDownRequestDelay { get; set; } = 10;
         [ProtoMember(110)] public int OffencesBeforePunishment { get; set; } = 6;
         [ProtoMember(120)] public int DamageAmount { get; set; } = 100;
+        [ProtoMember(130)] public TierData TierPlan { get; set; }
 
         public PrivilegedPlayer() { }
         

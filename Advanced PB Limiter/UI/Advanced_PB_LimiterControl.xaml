@@ -89,6 +89,7 @@
     <TabItem Name="PrivilegedUsersTab" Header="Privileged Users"/>
     <TabItem Name="ReportsTab" Header="Reports"/>
     <TabItem Name="NexusTab" Header="Nexus"/>
+    <TabItem Name="TierDataTab" Header="Tiered Run Groups"/>
     
     </TabControl>
 </UserControl>

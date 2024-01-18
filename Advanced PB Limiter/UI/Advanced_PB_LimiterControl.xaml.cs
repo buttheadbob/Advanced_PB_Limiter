@@ -16,6 +16,7 @@ namespace Advanced_PB_Limiter.UI
             PrivilegedUsersTab.Content = new PrivilegedUsers();
             ReportsTab.Content = new Reports();
             NexusTab.Content = new NexusSettings();
+            TierDataTab.Content = new TierDataSettings();
         }
         
         private async Task Save()

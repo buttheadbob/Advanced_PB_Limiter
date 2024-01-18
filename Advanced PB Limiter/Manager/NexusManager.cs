@@ -6,7 +6,8 @@ using Advanced_PB_Limiter.Utils;
 using NLog;
 using ProtoBuf;
 using Sandbox.ModAPI;
-using NexusAPI = Advanced_PB_Limiter.Utils.NexusAPI;
+using Nexus_NexusAPI = Nexus.NexusAPI;
+using Nexus;
 
 namespace Advanced_PB_Limiter.Manager
 {
@@ -26,7 +27,7 @@ namespace Advanced_PB_Limiter.Manager
             PlayerReport
         }
         
-        public static void SetServerData(NexusAPI.Server server)
+        public static void SetServerData(Nexus_NexusAPI.Server server)
         {
             ThisServer = server;
         }

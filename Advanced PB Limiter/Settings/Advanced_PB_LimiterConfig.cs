@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Advanced_PB_Limiter.Utils;
 using Torch;
+using Torch.Collections;
 
 namespace Advanced_PB_Limiter.Settings
 {
@@ -79,6 +80,12 @@ namespace Advanced_PB_Limiter.Settings
         
         private bool _WarnUserOnOffense = true;
         public bool WarnUserOnOffense { get => _WarnUserOnOffense; set => SetValue(ref _WarnUserOnOffense, value); }
+        
+        private bool _TurnOffUnownedBlocks = true;
+        public bool TurnOffUnownedBlocks { get => _TurnOffUnownedBlocks; set => SetValue(ref _TurnOffUnownedBlocks, value); }
+        
+        private List<TierData> _TierPlans = new();
+        public List<TierData> TierPlans { get => _TierPlans; set => SetValue(ref _TierPlans, value); }
         
         public IEnumerable<Enums.Punishment> MyPunishments => Enum.GetValues(typeof(Enums.Punishment)).Cast<Enums.Punishment>();
 
