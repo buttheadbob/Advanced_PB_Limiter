@@ -362,7 +362,7 @@ namespace Advanced_PB_Limiter.Manager
                     
                     pbReports.Add(pbReport);
                 }
-                PlayerReport playerReport = new(list[index].SteamId, list[index].PlayerId, list[index].PlayerName, true, pbReports);
+                PlayerReport playerReport = new(list[index].SteamId, list[index].PlayerId, list[index].PlayerName ?? "Unknown", true, pbReports);
 
                 LocalReports.TryAdd(playerReport.SteamId, playerReport);
             }

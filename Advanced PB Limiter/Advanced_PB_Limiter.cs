@@ -22,6 +22,7 @@ using Nexus;
 using Sandbox.ModAPI;
 using Torch.Managers;
 using Torch.Managers.PatchManager;
+using VRage;
 
 namespace Advanced_PB_Limiter
 {
@@ -34,12 +35,12 @@ namespace Advanced_PB_Limiter
         public UserControl GetControl() => _control ?? (_control = new Advanced_PB_LimiterControl());
         private Persistent<Advanced_PB_LimiterConfig>? _config;
         public Advanced_PB_LimiterConfig? Config => _config?.Data;
-        public static Dispatcher Dispatcher { get; private set; } = Dispatcher.CurrentDispatcher;
+        public static Dispatcher UI_Dispatcher { get; set; } = Dispatcher.CurrentDispatcher;
         private static Timer NexusConnectionChecker { get; set; } = new Timer(10000);
         public static bool GameOnline { get; set; }
         public PatchManager? _pm;
         public PatchContext? _context;
-        public static PluginManager? _pluginManager = null;
+        public static PluginManager? _pluginManager;
         
         // Nexus stuff
         public NexusAPI? nexusAPI; 
@@ -143,10 +144,39 @@ namespace Advanced_PB_Limiter
             NexusInited = true;
         }
 
-        public async Task UpdateConfigFromNexus(Advanced_PB_LimiterConfig config)
+        public Task UpdateConfigFromNexus(Advanced_PB_LimiterConfig _newConfig)
         {
-            _config = new Persistent<Advanced_PB_LimiterConfig>(Path.Combine(StoragePath, CONFIG_FILE_NAME), config);
-             await Save();
+            if (Instance is null || Instance.Config is null) return Task.CompletedTask;
+            Advanced_PB_Limiter.UI_Dispatcher.Invoke(() =>
+            {
+                Instance.Config.Enabled = _newConfig.Enabled;
+            Instance.Config.AllowStaffCommands = _newConfig.AllowStaffCommands;
+            Instance.Config.RemovePlayersWithNoPBFrequencyInMinutes = _newConfig.RemovePlayersWithNoPBFrequencyInMinutes;
+            Instance.Config.MaxRunsToTrack = _newConfig.MaxRunsToTrack;
+            Instance.Config.ClearHistoryOnRecompile = _newConfig.ClearHistoryOnRecompile;
+            Instance.Config.GracefulShutDownRequestDelay = _newConfig.GracefulShutDownRequestDelay;
+            Instance.Config.PrivilegedPlayers = _newConfig.PrivilegedPlayers; //
+            Instance.Config.InstantKillThreshold = _newConfig.InstantKillThreshold;
+            Instance.Config.PunishDamageAmount = _newConfig.PunishDamageAmount;
+            Instance.Config.GraceAfterOffence = _newConfig.GraceAfterOffence;
+            Instance.Config.MaxOffencesBeforePunishment = _newConfig.MaxOffencesBeforePunishment;
+            Instance.Config.OffenseDurationBeforeDeletion = _newConfig.OffenseDurationBeforeDeletion;
+            Instance.Config.MaxRunTimeMS = _newConfig.MaxRunTimeMS;
+            Instance.Config.MaxRunTimeMSAvg = _newConfig.MaxRunTimeMSAvg;
+            Instance.Config.Punishment = _newConfig.Punishment;
+            Instance.Config.CheckAllUserBlocksCombined = _newConfig.CheckAllUserBlocksCombined;
+            Instance.Config.PunishAllUserBlocksCombinedOnExcessLimits = _newConfig.PunishAllUserBlocksCombinedOnExcessLimits;
+            Instance.Config.MaxAllBlocksCombinedRunTimeMS = _newConfig.MaxAllBlocksCombinedRunTimeMS;
+            Instance.Config.MaxAllBlocksCombinedRunTimeMSAvg = _newConfig.MaxAllBlocksCombinedRunTimeMSAvg;
+            Instance.Config.IgnoreNPCs = _newConfig.IgnoreNPCs;
+            Instance.Config.AllowSelfTurnOnExploit = _newConfig.AllowSelfTurnOnExploit;
+            Instance.Config.AllowNPCToAutoTurnOn = _newConfig.AllowNPCToAutoTurnOn;
+            Instance.Config.WarnUserOnOffense = _newConfig.WarnUserOnOffense;
+            Instance.Config.TurnOffUnownedBlocks = _newConfig.TurnOffUnownedBlocks;
+            Instance.Config.UseSimTime = _newConfig.UseSimTime;
+            });
+            
+            return Task.CompletedTask;
         }
 
         private void SetupConfig()

@@ -125,6 +125,8 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             
             <TextBlock Grid.Row="0" Grid.Column="0" Text="Enable:" Margin="3"/>
@@ -133,7 +135,7 @@
             
             <TextBlock Grid.Row="1" Grid.Column="0" Text="Graceful shutdown delay" Margin="3" VerticalAlignment="Center"/>
             <TextBox Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding GracefulShutDownRequestDelay}"/>
-            <TextBlock Grid.Row="1" Grid.Column="2" Text="How long to wait (in seconds) for the script before the punishment is applied.  Use 0 for no delay." Margin="3" TextWrapping="Wrap"/>
+            <TextBlock Grid.Row="1" Grid.Column="2" Text="How long to wait (in seconds) for the script to shutdown before the punishment is applied.  Use 0 for no delay.  Punishments are always applied after the delay." Margin="3" TextWrapping="Wrap"/>
             
             <TextBlock Grid.Row="3" Grid.Column="0" Text="Max runtime" Margin="3" VerticalAlignment="Center"/>
             <TextBox Grid.Row="3" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding MaxRunTimeMS}"/>
@@ -214,12 +216,16 @@
             <TextBlock Grid.Row="22" Grid.Column="0" Text="InstaKill Limit" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
             <TextBox Grid.Row="22" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding InstantKillThreshold}"/>
             <TextBlock Grid.Row="22" Grid.Column="2" Text="Any pb that reaches this limit will be damaged beyond function immediately, regardless if no offences have previously occured.  No Graceful shutdown request will be sent.  Set to 0 to disable." Margin="3" TextWrapping="Wrap"/>
+
+            <TextBlock Grid.Row="23" Grid.Column="0" Text="Use SimTime" Margin="3" VerticalAlignment="Center" Foreground="Red" />
+            <CheckBox Grid.Row="23" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding InstantKillThreshold}" />
+            <TextBlock Grid.Row="23" Grid.Column="2" Text="Use SimTime will adjust the runtime for Sim Speed.  When sim speed tanks then the script running can also take longer to run at no fault of the player." Margin="3" TextWrapping="Wrap" />
             
-            <Button Grid.Row="23" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Save Locally Only" Name="SaveLocallyButton" Click="SaveLocallyButton_OnClick"/>
-            <TextBlock Grid.Row="23" Grid.Column="2" Margin="3" Text="Saves the configuration to this server only."/>
+            <Button Grid.Row="24" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Save Locally Only" Name="SaveLocallyButton" Click="SaveLocallyButton_OnClick"/>
+            <TextBlock Grid.Row="24" Grid.Column="2" Margin="3" Text="Saves the configuration to this server only."/>
             
-            <Button Grid.Row="24" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Push Through Nexus" Name="SaveAndPush" Click="SaveAndPush_OnClick"/>
-            <TextBlock Grid.Row="24" Grid.Column="2" Margin="3" Text="Sends the current settings to all Nexus servers with this plugin.  This will override their current settings."/>
+            <Button Grid.Row="25" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Push Through Nexus" Name="SaveAndPush" Click="SaveAndPush_OnClick"/>
+            <TextBlock Grid.Row="25" Grid.Column="2" Margin="3" Text="Sends the current settings to all Nexus servers with this plugin.  This will override their current settings."/>
         </Grid>
     </GroupBox>
 </UserControl>

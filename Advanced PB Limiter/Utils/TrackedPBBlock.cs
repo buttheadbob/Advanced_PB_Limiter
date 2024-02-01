@@ -17,7 +17,7 @@ namespace Advanced_PB_Limiter.Utils
         public ConcurrentQueue<long> Offences { get; private set; } = new();
         public int Recompiles { get; private set; }
         public double LastRunTimeMS { get; private set; }
-        private double RunTimesSum = 0;
+        private double RunTimesSum { get; set; }= 0;
         public double PeekRunTimeMS { get; private set; } = 0;
         
         private long _lastOffenceTick;
@@ -28,7 +28,6 @@ namespace Advanced_PB_Limiter.Utils
         }
         public bool TieredBlock { get; private set; }
         public int TierLevel { get; private set; }
-        
         
         private long _lastUpdateTick;
         public long LastUpdateTick

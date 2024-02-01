@@ -1,13 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Threading.Tasks;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
+using Newtonsoft.Json;
 using NLog;
-using ProtoBuf;
 using Sandbox.ModAPI;
 using Nexus_NexusAPI = Nexus.NexusAPI;
 using Nexus;
+using ProtoBuf;
 
 namespace Advanced_PB_Limiter.Manager
 {
@@ -36,7 +38,7 @@ namespace Advanced_PB_Limiter.Manager
         
         public static async void HandleNexusMessage(ushort handlerId, byte[] data, ulong steamID, bool fromServer)
         {
-            NexusMessage? message = MyAPIGateway.Utilities.SerializeFromBinary<NexusMessage>(data);
+            NexusMessage? message = JsonConvert.DeserializeObject<NexusMessage>(Encoding.UTF8.GetString(data));
             if (message == null) return;
             if (message.FromServerID == ThisServer!.ServerID) return; // Don't process messages from itself.
 
@@ -59,7 +61,8 @@ namespace Advanced_PB_Limiter.Manager
 
         private static async Task HandlePrivilegedPlayerData(byte[] data)
         {
-            PrivilegedPlayer? privilegedPlayer = MyAPIGateway.Utilities.SerializeFromBinary<PrivilegedPlayer>(data);
+            PrivilegedPlayer? privilegedPlayer = JsonConvert.DeserializeObject<PrivilegedPlayer>(Encoding.UTF8.GetString(data));
+            
             if (privilegedPlayer == null || privilegedPlayer.SteamId == 0)
             {
                 Log.Warn("Received null or invalid privileged player data from nexus, ignoring it.");
@@ -78,7 +81,8 @@ namespace Advanced_PB_Limiter.Manager
         
         private static async void HandleUpdatedSettings(byte[] data)
         {
-            Advanced_PB_LimiterConfig? newConfig = MyAPIGateway.Utilities.SerializeFromBinary<Advanced_PB_LimiterConfig>(data);
+            Advanced_PB_LimiterConfig? newConfig = JsonConvert.DeserializeObject<Advanced_PB_LimiterConfig>(Encoding.UTF8.GetString(data));
+            
             if (newConfig == null)
             {
                 Log.Warn("Received null or invalid settings data from nexus, ignoring it.");
@@ -113,7 +117,7 @@ namespace Advanced_PB_Limiter.Manager
 
         private static void HandlePlayerReports(int fromServer, byte[] data)
         {
-            List<PlayerReport>? playerReport = MyAPIGateway.Utilities.SerializeFromBinary<List<PlayerReport>>(data);
+            List<PlayerReport> playerReport = JsonConvert.DeserializeObject<List<PlayerReport>>(Encoding.UTF8.GetString(data));
             if (playerReport == null)
             {
                 Log.Warn("Unable to deserialize player report data..");
@@ -130,8 +134,8 @@ namespace Advanced_PB_Limiter.Manager
                 Log.Warn("Tries to send privileged player data to nexus, but this server is not configured properly.");
                 return Task.FromResult(false); // IF not properly configured, this could happen.
             }
-            
-            byte[]? playerData = MyAPIGateway.Utilities.SerializeToBinary(player);
+
+            byte[]? playerData = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(player));
             if (playerData == null)
             {
                 Log.Warn("Unable to serialize privileged player data to send to nexus.");
@@ -139,7 +143,7 @@ namespace Advanced_PB_Limiter.Manager
             }
             
             NexusMessage message = new(ThisServer.ServerID, NexusMessageType.PrivilegedPlayerData, playerData);
-            byte[] data = MyAPIGateway.Utilities.SerializeToBinary(message);
+            byte[] data = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(message));
 
             // Nexus Controller resets all the "too server ints" to 0... cause why not, right!
             // So we have to send it to all servers, and let them figure it out.
@@ -156,7 +160,7 @@ namespace Advanced_PB_Limiter.Manager
                 return Task.FromResult(false); // IF not properly configured, this could happen.
             }
             
-            byte[]? settingsData = MyAPIGateway.Utilities.SerializeToBinary(Config);
+            byte[]? settingsData = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(Config));
             if (settingsData == null)
             {
                 Log.Warn("Unable to serialize privileged player data to send to nexus.");
@@ -164,9 +168,9 @@ namespace Advanced_PB_Limiter.Manager
             }
             
             NexusMessage message = new(ThisServer.ServerID, NexusMessageType.Settings, settingsData);
-            byte[] data = MyAPIGateway.Utilities.SerializeToBinary(message);
-            Advanced_PB_Limiter.Instance?.nexusAPI?.SendMessageToAllServers(data);
+            byte[] data = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(message));
             
+            NexusMessageManager.SendMessage(0, data);
             return Task.FromResult(true);
         }
 
@@ -198,7 +202,7 @@ namespace Advanced_PB_Limiter.Manager
                 playerReports.Add(playerReport);
             }
 
-            byte[]? FinishedReport = MyAPIGateway.Utilities.SerializeToBinary(playerReports);
+            byte[]? FinishedReport = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(playerReports));
             if (FinishedReport == null)
             {
                 Log.Warn("Unable to serialize tracked player data to send through nexus.");
@@ -206,7 +210,7 @@ namespace Advanced_PB_Limiter.Manager
             }
             
             NexusMessage message = new(ThisServer!.ServerID, NexusMessageType.PlayerReport, FinishedReport);
-            byte[] data = MyAPIGateway.Utilities.SerializeToBinary(message);
+            byte[] data = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(message));
             Advanced_PB_Limiter.Instance?.nexusAPI?.SendMessageToServer(fromServer, data);
         }
         
@@ -242,9 +246,9 @@ namespace Advanced_PB_Limiter.Manager
     [ProtoContract]
     public sealed class NexusMessage
     {
-        [ProtoMember(1)] public readonly int FromServerID;
-        [ProtoMember(2)] public readonly NexusManager.NexusMessageType MessageType;
-        [ProtoMember(3)] public readonly byte[] MessageData;
+        [ProtoMember(1)] public int FromServerID;
+        [ProtoMember(2)] public NexusManager.NexusMessageType MessageType;
+        [ProtoMember(3)] public byte[] MessageData;
 
         public NexusMessage(int _fromServerId, NexusManager.NexusMessageType _messageType, byte[] messageData)
         {

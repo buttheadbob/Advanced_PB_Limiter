@@ -3,10 +3,12 @@
 	<s:Boolean x:Key="/Default/AddReferences/RecentPaths/=C_003A_005CTorch_005CDedicatedServer64_005CMicrosoft_002ECodeAnalysis_002Edll/@EntryIndexedValue">True</s:Boolean>
 	<s:Boolean x:Key="/Default/AddReferences/RecentPaths/=C_003A_005CTorch_005CDedicatedServer64_005CProtoBuf_002ENet_002ECore_002Edll/@EntryIndexedValue">True</s:Boolean>
 	<s:Boolean x:Key="/Default/AddReferences/RecentPaths/=C_003A_005CTorch_005CDedicatedServer64_005CVRage_002EScripting_002Edll/@EntryIndexedValue">True</s:Boolean>
+	<s:Boolean x:Key="/Default/AddReferences/RecentPaths/=C_003A_005CTorch_005CNewtonsoft_002EJson_002Edll/@EntryIndexedValue">True</s:Boolean>
 	<s:Boolean x:Key="/Default/AddReferences/RecentPaths/=C_003A_005CUsers_005Crober_005CDesktop_005CNexus_0020_0028Server_0020Sectoring_0020_0026_0020DataSync_0029_005C0Harmony_002Edll/@EntryIndexedValue">True</s:Boolean>
 	<s:Boolean x:Key="/Default/AddReferences/RecentPaths/=C_003A_005CUsers_005Crober_005CDesktop_005CNexus_0020_0028Server_0020Sectoring_0020_0026_0020DataSync_0029_005CNetMQ_002Edll/@EntryIndexedValue">True</s:Boolean>
 	<s:Boolean x:Key="/Default/AddReferences/RecentPaths/=C_003A_005CUsers_005Crober_005CDesktop_005CNexus_0020_0028Server_0020Sectoring_0020_0026_0020DataSync_0029_005CNetMQ_002ESecurity_002Edll/@EntryIndexedValue">True</s:Boolean>
 	<s:Boolean x:Key="/Default/AddReferences/RecentPaths/=C_003A_005CUsers_005Crober_005CDesktop_005CNexus_0020_0028Server_0020Sectoring_0020_0026_0020DataSync_0029_005CNexus_002Edll/@EntryIndexedValue">True</s:Boolean>
+	<s:Boolean x:Key="/Default/AddReferences/RecentPaths/=C_003A_005CUsers_005Crober_005CDesktop_005CNexus_0020_0028Server_0020Sectoring_0020_0026_0020DataSync_0029_005CSystem_002EServiceModel_002EPrimitives_002Edll/@EntryIndexedValue">True</s:Boolean>
 	<s:String x:Key="/Default/CodeInspection/ExcludedFiles/FilesAndFoldersToSkip2/=B7BFB542_002D92D8_002D445A_002D8883_002D4204A0817454_002Fd_003AAdvanced_0020PB_0020Limiter_002Fd_003APatches_002Ff_003AProfilerPatch_002Ecs/@EntryIndexedValue">ForceIncluded</s:String>
 	<s:String x:Key="/Default/Environment/AssemblyExplorer/XmlDocument/@EntryValue">&lt;AssemblyExplorer&gt;&#xD;
   &lt;Assembly Path="C:\Users\rober\Desktop\Nexus (Server Sectoring &amp;amp; DataSync)\Nexus.dll" /&gt;&#xD;

@@ -1,25 +1,16 @@
-﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Linq;
 using System.Reflection;
-using System.Timers;
 using Advanced_PB_Limiter.Manager;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NLog;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.Multiplayer;
 using Sandbox.Game.World;
-using Sandbox.ModAPI.Ingame;
 using Torch.Managers.PatchManager;
 using Torch.Utils;
 using Torch.Utils.Reflected;
-using VRage.Scripting;
 
 // ReSharper disable IdentifierTypo
 #pragma warning disable CS0649 // Field is never assigned to, and will always have its default value
@@ -72,8 +63,13 @@ namespace Advanced_PB_Limiter.Patches
         {
             if (__instance is null) return;
             long a = Stopwatch.GetTimestamp();
-            TrackingManager.UpdateTrackingData(__instance, ((a - __localTimingStart) * 1000.0 / Stopwatch.Frequency) / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio));
-            Advanced_PB_Limiter.Log.Error($"{__instance.CustomName} : {((Stopwatch.GetTimestamp() - a) * 1000.0 / Stopwatch.Frequency) / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio)} :: {((a - __localTimingStart) * 1000.0 / Stopwatch.Frequency) / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio)}");
+            
+            if (Config.UseSimTime)
+                TrackingManager.UpdateTrackingData(__instance, ((a - __localTimingStart) * 1000.0 / Stopwatch.Frequency) / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio));
+            else
+                TrackingManager.UpdateTrackingData(__instance, (a - __localTimingStart) * 1000.0 / Stopwatch.Frequency);
+            
+            //Advanced_PB_Limiter.Log.Error($"{__instance.CustomName} : {((Stopwatch.GetTimestamp() - a) * 1000.0 / Stopwatch.Frequency) / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio)} :: {((a - __localTimingStart) * 1000.0 / Stopwatch.Frequency) / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio)}");
         }
 
         private static void PrefixRecompilePb(MyProgrammableBlock? __instance)
@@ -97,7 +93,7 @@ namespace Advanced_PB_Limiter.Patches
             if (__instance.Enabled) return false;
             
             if (!MySession.Static.Players.IdentityIsNpc(__instance.OwnerId) && Config.AllowSelfTurnOnExploit) return true;
-            if (MySession.Static.Players.IdentityIsNpc(__instance.OwnerId) && !Config.AllowNPCToAutoTurnOn) return true;
+            if (MySession.Static.Players.IdentityIsNpc(__instance.OwnerId) && Config.AllowNPCToAutoTurnOn) return true;
 
             MyIdentity? player = MySession.Static.Players.TryGetIdentity(__instance.OwnerId);
          

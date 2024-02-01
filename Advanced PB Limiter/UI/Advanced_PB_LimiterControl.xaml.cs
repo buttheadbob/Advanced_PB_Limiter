@@ -17,6 +17,8 @@ namespace Advanced_PB_Limiter.UI
             ReportsTab.Content = new Reports();
             NexusTab.Content = new NexusSettings();
             TierDataTab.Content = new TierDataSettings();
+            
+            Advanced_PB_Limiter.UI_Dispatcher = MainSettingsTab.Dispatcher;
         }
         
         private async Task Save()

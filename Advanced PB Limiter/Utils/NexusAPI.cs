@@ -1,8 +1,7 @@
 ﻿using System.Collections.Generic;
-using ProtoBuf;
 using VRage.Game;
 using VRageMath;
-
+using ProtoBuf;
 namespace Nexus
 {
     public class NexusAPI

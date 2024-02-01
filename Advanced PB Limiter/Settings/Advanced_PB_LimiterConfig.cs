@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Advanced_PB_Limiter.Utils;
 using Torch;
-using Torch.Collections;
 
 namespace Advanced_PB_Limiter.Settings
 {
@@ -84,6 +83,13 @@ namespace Advanced_PB_Limiter.Settings
         private bool _TurnOffUnownedBlocks = true;
         public bool TurnOffUnownedBlocks { get => _TurnOffUnownedBlocks; set => SetValue(ref _TurnOffUnownedBlocks, value); }
         
+        private bool _useSimTime = true;
+        public bool UseSimTime { get => _useSimTime; set => SetValue(ref _useSimTime, value); }
+        
+        // Future update to have players in different tiers.
+        // Each tier has a different run time adjustment.
+        // Example: Tier 1 has Update1 run each tick, Tier 2 runs every 3rd tick, Tier 3 runs every 5 ticks.
+        // The amount of adjustment will be configurable.
         private List<TierData> _TierPlans = new();
         public List<TierData> TierPlans { get => _TierPlans; set => SetValue(ref _TierPlans, value); }
         

@@ -49,11 +49,8 @@ namespace Advanced_PB_Limiter.Utils
     [HarmonyPatch(typeof(SubscriptionRecieved), "OnRecieve")]
     public static class SubscriptionReceived_OnRecieve_Patch
     {
-
-        // The suffix method
         public static void Postfix(ref Message __result)
         {
-            // Call your custom suffix method
             NexusMessageManager.SuffixMessageReceived(ref __result);
         }
     }

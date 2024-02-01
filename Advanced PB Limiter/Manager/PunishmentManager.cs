@@ -52,7 +52,7 @@ namespace Advanced_PB_Limiter.Manager
             if (Config.InstantKillThreshold > 0 && lastRunTimeMS > Config.InstantKillThreshold)
             {
                 await PunishPB(player, trackedPbBlock, PunishReason.ExtremeUsage, Punishment.Destroy, $"[{lastRunTimeMS:0.0000}ms]");
-                Log.Error($"INSTANT KILL TRIGGERED: {player.PlayerName} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} with a run-time of {lastRunTimeMS:0.0000}ms");
+                Log.Error($"INSTANT-KILL TRIGGERED: {player.PlayerName} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} with a run-time of {lastRunTimeMS:0.0000}ms");
                 return;
             }
 
