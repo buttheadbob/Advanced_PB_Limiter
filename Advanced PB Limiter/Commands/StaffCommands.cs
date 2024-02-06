@@ -47,7 +47,7 @@ namespace Advanced_PB_Limiter.Commands
                 return;
             }
             
-            if (await NexusManager.UpdateNexusWithSettingsData())
+            if (await NexusNetworkManager.UpdateNexusWithSettingsData())
                 Context.Respond("Advanced PB Limiter config pushed to all Nexus servers.");
             else
                 Context.Respond("Advanced PB Limiter config failed to push to all Nexus servers.  See logs for more information.");
@@ -66,7 +66,7 @@ namespace Advanced_PB_Limiter.Commands
             bool pushSuccess = true;
             foreach (KeyValuePair<ulong, PrivilegedPlayer> privilegedPlayer in Config.PrivilegedPlayers)
             {
-                if (!await NexusManager.UpdateNexusWithPrivilegedPlayerData(privilegedPlayer.Value))
+                if (!await NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(privilegedPlayer.Value))
                     pushSuccess = false;
             }
 
@@ -193,7 +193,7 @@ namespace Advanced_PB_Limiter.Commands
             }
 
             if (updateNexus)
-                await NexusManager.UpdateNexusWithPrivilegedPlayerData(Config.PrivilegedPlayers[steamId]);
+                await NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(Config.PrivilegedPlayers[steamId]);
             await Advanced_PB_Limiter.Instance!.Save();
             Context.Respond("Privileged user data pushed to all Nexus servers.");
         }

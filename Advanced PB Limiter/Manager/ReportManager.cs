@@ -19,7 +19,7 @@ namespace Advanced_PB_Limiter.Manager
         private static ConcurrentDictionary<ulong, PlayerReport> LocalReports { get; } = new();
         private static ConcurrentDictionary<ulong, PlayerReport> NexusReports { get; } = new();
         private static bool NexusEnabled => Advanced_PB_Limiter.NexusInstalled;
-        private static int ConnectedNexusServers => NexusManager.ConnectedNexusServers;
+        private static int ConnectedNexusServers => NexusNetworkManager.ConnectedNexusServers;
         private static readonly List<int> ReportedNexusServers = new();
         private static bool ReportGenerationInProgress { get; set; }
         private static List<NexusAPI.Server> NexusServers { get; set; } = new();
@@ -68,7 +68,7 @@ namespace Advanced_PB_Limiter.Manager
             if (createNexusReport)
             {
                 ReportGenerationInProgress = true;
-                await NexusManager.RequestPlayerReports();
+                await NexusNetworkManager.RequestPlayerReports();
                 await GenerateLocalReportData(); // Doesn't take long but can be done while waiting for reports to come in from nexus servers.
 
                 int waitCount = 0;
@@ -104,7 +104,7 @@ namespace Advanced_PB_Limiter.Manager
         private static Task<string> FormatReport()
         {
             if (Advanced_PB_Limiter.NexusInstalled)
-                NexusServers = NexusManager.GetNexusServers();
+                NexusServers = NexusAPI.GetAllServers();
             StringBuilder report = new();
            
             Tuple<double, string?, ulong?> hottestPb = new (0, null, null);  // ms, gridname, owner
@@ -348,8 +348,8 @@ namespace Advanced_PB_Limiter.Manager
                     if (list[index].GetAllPBBlocks[ii] is null || list[index].GetAllPBBlocks[ii].ProgrammableBlock == null) continue;
                     
                     int myNexusId = 0;
-                    if (NexusEnabled && NexusManager.ThisServer != null)    
-                        myNexusId = NexusManager.ThisServer.ServerID;
+                    if (NexusEnabled && NexusNetworkManager.ThisServer != null)    
+                        myNexusId = NexusNetworkManager.ThisServer.ServerID;
                     
                     PBReport pbReport = new(list[index].SteamId,
                         list[index].GetAllPBBlocks[ii].ProgrammableBlock!.SlimBlock.CubeGrid.DisplayName,

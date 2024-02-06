@@ -16,13 +16,10 @@ using Torch.API.Session;
 using Torch.Session;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.UI;
-using Advanced_PB_Limiter.Utils;
-using HarmonyLib;
 using Nexus;
 using Sandbox.ModAPI;
 using Torch.Managers;
 using Torch.Managers.PatchManager;
-using VRage;
 
 namespace Advanced_PB_Limiter
 {
@@ -47,19 +44,17 @@ namespace Advanced_PB_Limiter
         public static readonly Guid NexusGUID = new ("28a12184-0422-43ba-a6e6-2e228611cca5");
         public static ITorchPlugin? NexusPlugin;
         public static Type? Plugin;
-        public Harmony _Harmony { get; } = new ("com.plugins.senx");
+        public static NexusAPI.Server? ThisServer;
         public static bool NexusInstalled { get; private set; }
-        // ReSharper disable once IdentifierTypo
-        private static bool NexusInited;
 
         public override async void Init(ITorchBase torch)
         {
             base.Init(torch);
             SetupConfig();
-            _Harmony.PatchAll();
 
             TorchSessionManager sessionManager = Torch.Managers.GetManager<TorchSessionManager>();
             _pluginManager = Torch.Managers.GetManager<PluginManager>();
+            
             if (sessionManager != null)
                 sessionManager.SessionStateChanged += SessionChanged;
             else
@@ -72,7 +67,7 @@ namespace Advanced_PB_Limiter
             _context = _pm.AcquireContext();
             ProfilerPatch_Torch.Patch(_context);
             
-            NexusConnectionChecker.Elapsed += CheckNexusConnection;
+            NexusConnectionChecker.Elapsed += (o, args) => ConnectNexus();
         }
 
         private void SessionChanged(ITorchSession session, TorchSessionState state)
@@ -83,7 +78,7 @@ namespace Advanced_PB_Limiter
                     Log.Info("Session Loaded!");
                     ConnectNexus();
                     TrackingManager.Init();
-                    if (NexusInited)
+                    if (!NexusInstalled)
                         NexusConnectionChecker.Start();
                     GameOnline = true;
                     break;
@@ -95,35 +90,21 @@ namespace Advanced_PB_Limiter
             }
         }
         
-        private static void CheckNexusConnection(object sender, EventArgs e)
-        {
-            if (!NexusInstalled || !NexusInited || NexusManager.ThisServer is null) return;
-            if (!NexusAPI.IsServerOnline(NexusManager.ThisServer.ServerID))
-                NexusManager.RaiseNexusConnectedEvent(false);
-        }
-        
         private void ConnectNexus()
         {
-            if (NexusInited) return;
+            if (NexusInstalled) return;
             
             if (_pluginManager is null)
                 return;
-                
            
-            nexusAPI = new (8697){CrossServerModID = 8697};
+            nexusAPI = new NexusAPI(8697){CrossServerModID = 8697};
             
             _pluginManager.Plugins.TryGetValue(NexusGUID, out NexusPlugin);
             {
                 if (NexusPlugin is null)
                     return;
-
-                if (_context is not null)
-                {
-                    NexusMessageManager.afterRun_init(NexusPlugin);
-                }
                         
                 Plugin = NexusPlugin.GetType();
-                if (Plugin is null) return;
                 
                 Type? NexusPatcher = Plugin.Assembly.GetType("Nexus.API.PluginAPISync");
                 if (NexusPatcher != null)
@@ -133,21 +114,20 @@ namespace Advanced_PB_Limiter
                         typeof(NexusAPI), "Advanced PB Limiter"
                     });
                     
-                    MyAPIGateway.Multiplayer.RegisterSecureMessageHandler(8697, NexusManager.HandleNexusMessage); 
+                    MyAPIGateway.Multiplayer.RegisterSecureMessageHandler(8697, NexusNetworkManager.HandleReceivedMessage); 
                     NexusInstalled = true;
-                    
-                    NexusAPI.Server thisServer = NexusAPI.GetThisServer();
-                    NexusManager.SetServerData(thisServer);
-                    NexusManager.RaiseNexusConnectedEvent(true);
+                    ThisServer = NexusAPI.GetThisServer();
                 }
             }
-            NexusInited = true;
+            NexusInstalled = true;
+            NexusConnectionChecker.Stop();
+            Log.Info("Nexus Connected!");
         }
 
         public Task UpdateConfigFromNexus(Advanced_PB_LimiterConfig _newConfig)
         {
-            if (Instance is null || Instance.Config is null) return Task.CompletedTask;
-            Advanced_PB_Limiter.UI_Dispatcher.Invoke(() =>
+            if (Instance?.Config is null) return Task.CompletedTask;
+            UI_Dispatcher.Invoke(() =>
             {
                 Instance.Config.Enabled = _newConfig.Enabled;
             Instance.Config.AllowStaffCommands = _newConfig.AllowStaffCommands;

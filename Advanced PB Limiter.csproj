@@ -7,7 +7,7 @@
     <ProjectGuid>{B7BFB542-92D8-445A-8883-4204A0817454}</ProjectGuid>
     <OutputType>Library</OutputType>
     <RootNamespace>Advanced_PB_Limiter</RootNamespace>
-    <AssemblyName>X-Advanced PB Limiter</AssemblyName>
+    <AssemblyName>Advanced PB Limiter</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <ProjectTypeGuids>{60dc8134-eba5-43b8-bcc9-bb4bc16c2548};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
@@ -40,28 +40,10 @@
     <StartupObject />
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="0Harmony">
-      <HintPath>..\..\..\Users\rober\Desktop\Nexus (Server Sectoring &amp; DataSync)\0Harmony.dll</HintPath>
-    </Reference>
-    <Reference Include="ConcurrentObservableCollections, Version=1.1.9.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\ConcurrentObservableCollections.1.1.9\lib\netstandard2.0\ConcurrentObservableCollections.dll</HintPath>
-    </Reference>  
     <Reference Include="mscorlib" />
-    <Reference Include="NetMQ">
-      <HintPath>..\..\..\Users\rober\Desktop\Nexus (Server Sectoring &amp; DataSync)\NetMQ.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="NetMQ.Security">
-      <HintPath>..\..\..\Users\rober\Desktop\Nexus (Server Sectoring &amp; DataSync)\NetMQ.Security.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
     <Reference Include="netstandard" />
     <Reference Include="Newtonsoft.Json">
       <HintPath>..\..\..\Torch\Newtonsoft.Json.dll</HintPath>
-    </Reference>
-    <Reference Include="Nexus">
-      <HintPath>..\..\..\Users\rober\Desktop\Nexus (Server Sectoring &amp; DataSync)\Nexus.dll</HintPath>
-      <Private>False</Private>
     </Reference>
     <Reference Include="NLog, Version=4.0.0.0, Culture=neutral, PublicKeyToken=5120e14c03d0593c, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
@@ -87,11 +69,6 @@
       <HintPath>GameBinaries\Sandbox.Game.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Sandbox.Game.XmlSerializers, Version=0.1.1.0, Culture=neutral, processorArchitecture=AMD64">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>GameBinaries\Sandbox.Game.XmlSerializers.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
     <Reference Include="Sandbox.Graphics, Version=0.1.1.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>GameBinaries\Sandbox.Graphics.dll</HintPath>
@@ -107,11 +84,6 @@
       <HintPath>GameBinaries\SpaceEngineers.ObjectBuilders.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="SpaceEngineers.ObjectBuilders.XmlSerializers, Version=1.0.0.0, Culture=neutral, processorArchitecture=AMD64">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>GameBinaries\SpaceEngineers.ObjectBuilders.XmlSerializers.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Buffers, Version=4.0.3.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>packages\System.Buffers.4.5.1\lib\net461\System.Buffers.dll</HintPath>
@@ -119,7 +91,6 @@
     <Reference Include="System.Collections.Immutable, Version=7.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>packages\System.Collections.Immutable.7.0.0\lib\net462\System.Collections.Immutable.dll</HintPath>
     </Reference>
-    <Reference Include="System.ComponentModel.Composition" />
     <Reference Include="System.Core" />
     <Reference Include="System.IdentityModel" />
     <Reference Include="System.Memory, Version=4.0.1.2, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
@@ -129,9 +100,6 @@
     <Reference Include="System.Numerics.Vectors, Version=4.1.4.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>packages\System.Numerics.Vectors.4.5.0\lib\net46\System.Numerics.Vectors.dll</HintPath>
     </Reference>
-    <Reference Include="System.Reflection.Metadata, Version=7.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
-      <HintPath>packages\System.Reflection.Metadata.7.0.0\lib\net462\System.Reflection.Metadata.dll</HintPath>
-    </Reference>
     <Reference Include="System.Runtime.CompilerServices.Unsafe, Version=6.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>packages\System.Runtime.CompilerServices.Unsafe.6.0.0\lib\net461\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
     </Reference>
@@ -140,16 +108,12 @@
     <Reference Include="System.ServiceModel.Primitives, Version=4.5.0.3, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>packages\System.ServiceModel.Primitives.4.5.3\lib\net461\System.ServiceModel.Primitives.dll</HintPath>
     </Reference>
-    <Reference Include="System.Threading.Channels, Version=7.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
-      <HintPath>packages\System.Threading.Channels.7.0.0\lib\net462\System.Threading.Channels.dll</HintPath>
-    </Reference>
     <Reference Include="System.Threading.Tasks.Extensions, Version=4.2.0.1, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>packages\System.Threading.Tasks.Extensions.4.5.4\lib\net461\System.Threading.Tasks.Extensions.dll</HintPath>
     </Reference>
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xaml" />
     <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Data" />
     <Reference Include="System.Net.Http" />
@@ -164,29 +128,14 @@
       <HintPath>TorchBinaries\Torch.API.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Torch.Server, Version=1.3.1.97, Culture=neutral, processorArchitecture=AMD64">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>TorchBinaries\Torch.Server.exe</HintPath>
-      <Private>False</Private>
-    </Reference>
     <Reference Include="VRage, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>GameBinaries\VRage.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="VRage.Dedicated, Version=1.0.0.0, Culture=neutral, processorArchitecture=AMD64">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>GameBinaries\VRage.Dedicated.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
     <Reference Include="VRage.Game, Version=1.0.0.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>GameBinaries\VRage.Game.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="VRage.Game.XmlSerializers, Version=1.0.0.0, Culture=neutral, processorArchitecture=AMD64">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>GameBinaries\VRage.Game.XmlSerializers.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="VRage.Input, Version=1.0.0.0, Culture=neutral, processorArchitecture=AMD64">
@@ -204,20 +153,12 @@
       <HintPath>GameBinaries\VRage.Math.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="VRage.Math.XmlSerializers, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>GameBinaries\VRage.Math.XmlSerializers.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="VRage.Scripting">
-      <HintPath>..\..\..\Torch\DedicatedServer64\VRage.Scripting.dll</HintPath>
-    </Reference>
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Advanced PB Limiter\Commands\PlayerCommands.cs" />
     <Compile Include="Advanced PB Limiter\Commands\StaffCommands.cs" />
-    <Compile Include="Advanced PB Limiter\Manager\NexusManager.cs" />
+    <Compile Include="Advanced PB Limiter\Manager\NexusNetworkManager.cs" />
     <Compile Include="Advanced PB Limiter\Manager\PunishmentManager.cs" />
     <Compile Include="Advanced PB Limiter\Manager\ReportManager.cs" />
     <Compile Include="Advanced PB Limiter\Manager\TrackingManager.cs" />
@@ -261,7 +202,6 @@
     <Compile Include="Advanced PB Limiter\Utils\Enums.cs" />
     <Compile Include="Advanced PB Limiter\Utils\MtObservableSortedSerializableDictionary.cs" />
     <Compile Include="Advanced PB Limiter\Utils\NexusAPI.cs" />
-    <Compile Include="Advanced PB Limiter\Utils\NexusMessageSender.cs" />
     <Compile Include="Advanced PB Limiter\Utils\PrivilegedPlayer.cs" />
     <Compile Include="Advanced PB Limiter\Utils\ReflectionUtils.cs" />
     <Compile Include="Advanced PB Limiter\Utils\Report.cs" />
@@ -300,6 +240,6 @@
   </ItemGroup>
   <Target Name="Zip" BeforeTargets="AfterBuild">
     <MakeDir Directories="$(SolutionDir)\Build\" />
-    <ZipDirectory SourceDirectory="$(OutputPath)" DestinationFile="$(SolutionDir)\Build\(MSBuildProjectName).zip" Overwrite="true" />
+    <ZipDirectory SourceDirectory="$(OutputPath)" DestinationFile="$(SolutionDir)\Build\$(MSBuildProjectName).zip" Overwrite="true" />
   </Target>
 </Project>

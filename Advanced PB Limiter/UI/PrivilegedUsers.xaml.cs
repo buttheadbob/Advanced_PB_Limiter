@@ -142,7 +142,7 @@ namespace Advanced_PB_Limiter.UI
                     MessageBoxResult result = MessageBox.Show("Would you like to update this player on all Nexus instances?", "Player Updated", MessageBoxButton.YesNo, MessageBoxImage.Question);
                     if (result == MessageBoxResult.Yes)
                     {
-                        await NexusManager.UpdateNexusWithPrivilegedPlayerData(newPlayer);
+                        await NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(newPlayer);
                     }
                 }
             }
@@ -154,7 +154,7 @@ namespace Advanced_PB_Limiter.UI
                     MessageBoxResult result = MessageBox.Show("Would you like to update this player on all Nexus instances?", "Player Added", MessageBoxButton.YesNo, MessageBoxImage.Question);
                     if (result == MessageBoxResult.Yes)
                     {
-                        await NexusManager.UpdateNexusWithPrivilegedPlayerData(newPlayer);
+                        await NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(newPlayer);
                     }
                 }
             }
@@ -196,7 +196,7 @@ namespace Advanced_PB_Limiter.UI
                 return;
             }
                 
-            await NexusManager.UpdateNexusWithPrivilegedPlayerData(selectedPlayer);
+            await NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(selectedPlayer);
         }
     }
 }

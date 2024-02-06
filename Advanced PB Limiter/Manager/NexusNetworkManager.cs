@@ -1,26 +1,22 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
 using Newtonsoft.Json;
-using NLog;
-using Sandbox.ModAPI;
-using Nexus_NexusAPI = Nexus.NexusAPI;
 using Nexus;
+using NLog;
 using ProtoBuf;
+using Sandbox.ModAPI;
 
 namespace Advanced_PB_Limiter.Manager
 {
-    public static class NexusManager
+    public static class NexusNetworkManager
     {
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
-        public static NexusAPI.Server? ThisServer { get; private set; }
-        public delegate void NexusConnectedDelegate(object? sender, NexusConnectedEventArgs e);
-        
-        
+        public static NexusAPI.Server? ThisServer => Advanced_PB_Limiter.ThisServer;
+
         public enum NexusMessageType
         {
             PrivilegedPlayerData,
@@ -28,17 +24,15 @@ namespace Advanced_PB_Limiter.Manager
             RequestPlayerReports,
             PlayerReport
         }
-        
-        public static void SetServerData(Nexus_NexusAPI.Server server)
-        {
-            ThisServer = server;
-        }
-        
+
         public static int ConnectedNexusServers => NexusAPI.GetAllServers().Count;
         
-        public static async void HandleNexusMessage(ushort handlerId, byte[] data, ulong steamID, bool fromServer)
+        public static async void HandleReceivedMessage(ushort handlerId, byte[] data, ulong steamID, bool fromServer)
         {
-            NexusMessage? message = JsonConvert.DeserializeObject<NexusMessage>(Encoding.UTF8.GetString(data));
+            if (handlerId != 8697) return;
+            
+            NexusAPI.CrossServerMessage nMessage = MyAPIGateway.Utilities.SerializeFromBinary<NexusAPI.CrossServerMessage>(data);
+            NexusMessage? message = MyAPIGateway.Utilities.SerializeFromBinary<NexusMessage>(nMessage.Message);
             if (message == null) return;
             if (message.FromServerID == ThisServer!.ServerID) return; // Don't process messages from itself.
 
@@ -98,23 +92,6 @@ namespace Advanced_PB_Limiter.Manager
             await Advanced_PB_Limiter.Instance!.UpdateConfigFromNexus(newConfig);
         }
         
-        public static List<NexusAPI.Server> GetNexusServers()
-        {
-            return NexusAPI.GetAllServers();
-        }
-        
-        public static NexusAPI.Server? GetServerFromId(int serverId)
-        {
-            for (int index = 0; index < NexusAPI.GetAllServers().Count; index++)
-            {
-                NexusAPI.Server server = NexusAPI.GetAllServers()[index];
-                if (server.ServerID == serverId)
-                    return server;
-            }
-
-            return null;
-        }
-
         private static void HandlePlayerReports(int fromServer, byte[] data)
         {
             List<PlayerReport> playerReport = JsonConvert.DeserializeObject<List<PlayerReport>>(Encoding.UTF8.GetString(data));
@@ -143,11 +120,7 @@ namespace Advanced_PB_Limiter.Manager
             }
             
             NexusMessage message = new(ThisServer.ServerID, NexusMessageType.PrivilegedPlayerData, playerData);
-            byte[] data = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(message));
-
-            // Nexus Controller resets all the "too server ints" to 0... cause why not, right!
-            // So we have to send it to all servers, and let them figure it out.
-            NexusMessageManager.SendMessage(0, data);
+            SendNexusMessage(message);
             
             return Task.FromResult(true);
         }
@@ -168,9 +141,7 @@ namespace Advanced_PB_Limiter.Manager
             }
             
             NexusMessage message = new(ThisServer.ServerID, NexusMessageType.Settings, settingsData);
-            byte[] data = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(message));
-            
-            NexusMessageManager.SendMessage(0, data);
+            SendNexusMessage(message);
             return Task.FromResult(true);
         }
 
@@ -210,8 +181,7 @@ namespace Advanced_PB_Limiter.Manager
             }
             
             NexusMessage message = new(ThisServer!.ServerID, NexusMessageType.PlayerReport, FinishedReport);
-            byte[] data = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(message));
-            Advanced_PB_Limiter.Instance?.nexusAPI?.SendMessageToServer(fromServer, data);
+            SendNexusMessage(message);
         }
         
         public static Task<bool> RequestPlayerReports()
@@ -225,51 +195,45 @@ namespace Advanced_PB_Limiter.Manager
             byte[] requesterData = { 0 }; // So were not throwing null shit into protobuf and nexus.
             
             NexusMessage message = new(ThisServer.ServerID, NexusMessageType.RequestPlayerReports, requesterData);
-            byte[] data = MyAPIGateway.Utilities.SerializeToBinary(message);
-            
-            foreach (NexusAPI.Server? server in NexusAPI.GetAllServers())
-            {
-                Advanced_PB_Limiter.Instance?.nexusAPI?.SendMessageToServer(server.ServerID, data);
-            }
-            
+            SendNexusMessage(message);
             return Task.FromResult(true);
         }
-        
-        public static event NexusConnectedDelegate? NexusConnected;
-        public static void RaiseNexusConnectedEvent(bool connected)
+
+        [ProtoContract]
+        public sealed class NexusMessage
         {
-            NexusConnectedEventArgs args = new (connected);
-            NexusConnected?.Invoke(null, args);
+            [ProtoMember(1)] public int FromServerID;
+            [ProtoMember(2)] public NexusMessageType MessageType;
+            [ProtoMember(3)] public byte[] MessageData;
+
+            public NexusMessage(int _fromServerId, NexusMessageType _messageType, byte[] messageData)
+            {
+                FromServerID = _fromServerId;
+                MessageType = _messageType;
+                MessageData = messageData;
+            }
+
+#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
+            public NexusMessage()
+#pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
+            {
+
+            }
         }
-    }
 
-    [ProtoContract]
-    public sealed class NexusMessage
-    {
-        [ProtoMember(1)] public int FromServerID;
-        [ProtoMember(2)] public NexusManager.NexusMessageType MessageType;
-        [ProtoMember(3)] public byte[] MessageData;
-
-        public NexusMessage(int _fromServerId, NexusManager.NexusMessageType _messageType, byte[] messageData)
+        public static void SendNexusMessage(NexusMessage message)
         {
-            FromServerID = _fromServerId;
-            MessageType = _messageType;
-            MessageData = messageData;
-        }
-
-        public NexusMessage()
-        {
+            if (!Advanced_PB_Limiter.NexusInstalled) return;
             
-        }
-    }
-    
-    public class NexusConnectedEventArgs : EventArgs
-    {
-        public bool Connected { get; set; }
+            byte[] data = MyAPIGateway.Utilities.SerializeToBinary(message);
 
-        public NexusConnectedEventArgs(bool connected)
-        {
-            Connected = connected;
+            foreach (NexusAPI.Server server in NexusAPI.GetAllServers())
+            {
+                if (server.ServerID == ThisServer!.ServerID) continue;
+                NexusAPI.CrossServerMessage nMessage = new(8697, server.ServerID, ThisServer!.ServerID, data);
+                byte[] crossServerMessage = MyAPIGateway.Utilities.SerializeToBinary(nMessage);
+                Advanced_PB_Limiter.Instance?.nexusAPI?.SendMessageToServer(server.ServerID, crossServerMessage);
+            }
         }
     }
 }

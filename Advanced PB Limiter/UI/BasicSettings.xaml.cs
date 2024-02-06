@@ -40,7 +40,7 @@ namespace Advanced_PB_Limiter.UI
         private async void SaveAndPush_OnClick(object sender, RoutedEventArgs e)
         {
             await Save();
-            await NexusManager.UpdateNexusWithSettingsData();
+            await NexusNetworkManager.UpdateNexusWithSettingsData();
         }
 
         private void PunishmentComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
