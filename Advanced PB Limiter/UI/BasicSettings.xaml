@@ -218,7 +218,7 @@
             <TextBlock Grid.Row="22" Grid.Column="2" Text="Any pb that reaches this limit will be damaged beyond function immediately, regardless if no offences have previously occured.  No Graceful shutdown request will be sent.  Set to 0 to disable." Margin="3" TextWrapping="Wrap"/>
 
             <TextBlock Grid.Row="23" Grid.Column="0" Text="Use SimTime" Margin="3" VerticalAlignment="Center" Foreground="Red" />
-            <CheckBox Grid.Row="23" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding InstantKillThreshold}" />
+            <CheckBox Grid.Row="23" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding UseSimTime}" />
             <TextBlock Grid.Row="23" Grid.Column="2" Text="Use SimTime will adjust the runtime for Sim Speed.  When sim speed tanks then the script running can also take longer to run at no fault of the player." Margin="3" TextWrapping="Wrap" />
             
             <Button Grid.Row="24" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Save Locally Only" Name="SaveLocallyButton" Click="SaveLocallyButton_OnClick"/>

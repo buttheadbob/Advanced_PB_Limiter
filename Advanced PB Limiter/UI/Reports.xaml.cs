@@ -77,7 +77,7 @@ namespace Advanced_PB_Limiter.UI
                     CustomBlockReport blockReport = new
                     (
                         data[index].SteamId, 
-                        data[index].PlayerName, 
+                        data[index].PlayerName ?? "Unknown", 
                         data[index].GetAllPBBlocks[ii].GridName, 
                         data[index].GetAllPBBlocks[ii]!.ProgrammableBlock!.CustomName.ToString(),
                         data[index].GetAllPBBlocks[ii].LastRunTimeMS, 
@@ -103,6 +103,10 @@ namespace Advanced_PB_Limiter.UI
 
                 lastRunTimeMs = 0;
                 avgMs = 0;
+                calculatedLastRunTimeMs = 0;
+                calculatedAvgMs = 0;
+                offences = 0;
+                recompiles = 0;
                 
                 datagrid_BlockReports = new ObservableCollection<CustomBlockReport>(BlockReports.Values);
                 datagrid_PlayerReports = new ObservableCollection<CustomPlayerReport>(PlayerReports.Values);

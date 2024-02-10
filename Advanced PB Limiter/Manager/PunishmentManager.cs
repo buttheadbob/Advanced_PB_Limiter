@@ -90,12 +90,12 @@ namespace Advanced_PB_Limiter.Manager
                 trackedPbBlock.Offences.Enqueue(Stopwatch.GetTimestamp());
                 trackedPbBlock.LastOffenceTick = Stopwatch.GetTimestamp();
                 Interlocked.Increment(ref player.Offences);
-                Log.Info($"PB Block: {trackedPbBlock.ProgrammableBlock?.EntityId} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} has exceeded the run-time limit.  Last Run-Time: {lastRunTimeMS:0.0000}ms  Allowed-Run-Time: {allowedRunTime:0.0000}ms  Offenses: {trackedPbBlock.Offences.Count}");
+                Log.Info($"PB Block: {trackedPbBlock.ProgrammableBlock?.EntityId} for [{trackedPbBlock.GridName} >> {trackedPbBlock.ProgrammableBlock?.CustomName}] has exceeded the run-time limit.  Last Run-Time: {lastRunTimeMS:0.0000}ms  Allowed-Run-Time: {allowedRunTime:0.0000}ms  Offenses: {trackedPbBlock.Offences.Count}");
                 
                 if (trackedPbBlock.Offences.Count <= allowedOffenses)
                 {
                     if (Config.WarnUserOnOffense)
-                        Chat.Send($"You have received an offense [{trackedPbBlock.Offences.Count} of {allowedOffenses}] for exceeding your run-time limit [{allowedRunTime:0.0000}ms] on grid {trackedPbBlock.GridName}.  Please reduce the run time of your Programmable Block or it will be punished.", player.SteamId, Color.Red);
+                        Chat.Send($"You have received an offense [{trackedPbBlock.Offences.Count} of {allowedOffenses}] for exceeding your run-time limit [{allowedRunTime:0.0000}ms] for [{trackedPbBlock.GridName} >> {trackedPbBlock.ProgrammableBlock?.CustomName}].  Please reduce the run time of your Programmable Block or it will be punished.", player.SteamId, Color.Red);
                     return;
                 }
                 StringBuilder sb = new();
@@ -111,12 +111,12 @@ namespace Advanced_PB_Limiter.Manager
                 trackedPbBlock.Offences.Enqueue(Stopwatch.GetTimestamp());
                 trackedPbBlock.LastOffenceTick = Stopwatch.GetTimestamp();
                 Interlocked.Increment(ref player.Offences);
-                Log.Info($"PB Block: {trackedPbBlock.ProgrammableBlock?.EntityId} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} has exceeded the average-run-time limit.  Allowed Average-Run-Time: {allowedRunTime:0.0000}ms   Last Run-Time: {lastRunTimeMS:0.0000}ms   Average-Run-Time: {trackedPbBlock.RunTimeMSAvg:0.0000}ms  Offenses: {trackedPbBlock.Offences.Count}");
+                Log.Info($"PB Block: {trackedPbBlock.ProgrammableBlock?.EntityId} for [{trackedPbBlock.GridName} >> {trackedPbBlock.ProgrammableBlock?.CustomName}] has exceeded the average-run-time limit.  Allowed Average-Run-Time: {allowedRunTimeAvg:0.0000}ms   Last Run-Time: {lastRunTimeMS:0.0000}ms   Average-Run-Time: {trackedPbBlock.RunTimeMSAvg:0.0000}ms  Offenses: {trackedPbBlock.Offences.Count}");
                 
                 if (trackedPbBlock.Offences.Count <= allowedOffenses)
                 {
                     if (Config.WarnUserOnOffense)
-                        Chat.Send($"You have received an offense [{trackedPbBlock.Offences.Count} of {allowedOffenses}] for exceeding your average-run-time limit [{allowedRunTime:0.0000}ms] on grid {trackedPbBlock.GridName}.  Please reduce the run time of your Programmable Block or it will be punished.", player.SteamId, Color.Red);
+                        Chat.Send($"You have received an offense [{trackedPbBlock.Offences.Count} of {allowedOffenses}] for exceeding your average-run-time limit [{allowedRunTimeAvg:0.0000}ms] for [{trackedPbBlock.GridName} >> {trackedPbBlock.ProgrammableBlock?.CustomName}].  Please reduce the run time of your Programmable Block or it will be punished.", player.SteamId, Color.Red);
                     return;
                 }
                 
@@ -133,7 +133,7 @@ namespace Advanced_PB_Limiter.Manager
         {
             if (trackedPbBlock.ProgrammableBlock is null)
             {
-                Log.Warn("Attempted to punish a programmable block that was null!  Grid: " + trackedPbBlock.GridName);
+                Log.Warn($"Attempted to punish a programmable block that was null! for [{trackedPbBlock.GridName} >> {trackedPbBlock.ProgrammableBlock?.CustomName}]");
                 return Task.CompletedTask;
             }
             
