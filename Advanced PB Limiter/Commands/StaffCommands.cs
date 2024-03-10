@@ -14,6 +14,15 @@ namespace Advanced_PB_Limiter.Commands
     {
         private Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
 
+        
+        [Command("debug", "Only for debugging, not regular use for servers.")]
+        [Permission(MyPromoteLevel.Admin)]
+        public void Debug(bool debug)
+        {
+            Config.DebugReporting = debug;
+            Context.Respond("Debug mode is now " + (debug ? "enabled." : "disabled."));
+        }
+        
         [Command("GetReport", "Generates a full report of this server and any Nexus servers.")]
         [Permission(MyPromoteLevel.Admin)]
         public void GenerateReport()

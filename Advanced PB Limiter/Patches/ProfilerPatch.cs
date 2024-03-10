@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Reflection;
 using Advanced_PB_Limiter.Manager;
@@ -23,10 +24,11 @@ namespace Advanced_PB_Limiter.Patches
         /// <summary>
         /// Gracefully stolen (and modified by me) from the original PB Limiter, Credits to SirHamsterAlot, and Equinox
         /// </summary>
-       
         private static ConcurrentDictionary<MyProgrammableBlock, string> _pbQueue = new();
-
-        private const string InjectionEnabledTag = "// injected By Advanced PB Limiter";
+        
+        // There is overhead to setting up the pb and running its code that is tracked by this and not by the in-game profiler. 
+        // Were punishing shitty scripts, nothing more.
+        private const double overhead = 0.1;
         
         private static readonly Logger Log = LogManager.GetLogger("Advanced PB Limiter Profile Patcher");
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
@@ -39,6 +41,10 @@ namespace Advanced_PB_Limiter.Patches
 
         [ReflectedMethodInfo(typeof(MyProgrammableBlock), "UpdateStorage")]
         private static readonly MethodInfo? _programmableSaveMethod;
+        
+        private static int gc0 = GC.CollectionCount(0);
+        private static int gc1 = GC.CollectionCount(1);
+        private static int gc2 = GC.CollectionCount(2);
         
         
         public static void Patch(PatchContext ctx)
@@ -54,8 +60,12 @@ namespace Advanced_PB_Limiter.Patches
         }
 
         // ReSharper disable once RedundantAssignment
-        private static void PrefixProfilePb(MyProgrammableBlock __instance, ref long __localTimingStart)
+        private static void PrefixProfilePb(ref long __localTimingStart)
         {
+            gc0 = GC.CollectionCount(0);
+            gc1 = GC.CollectionCount(1);
+            gc2 = GC.CollectionCount(2);
+            
             __localTimingStart = Stopwatch.GetTimestamp();
         }
         
@@ -64,12 +74,16 @@ namespace Advanced_PB_Limiter.Patches
             if (__instance is null) return;
             long a = Stopwatch.GetTimestamp();
             
-            if (Config.UseSimTime)
-                TrackingManager.UpdateTrackingData(__instance, ((a - __localTimingStart) * 1000.0 / Stopwatch.Frequency) / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio));
-            else
-                TrackingManager.UpdateTrackingData(__instance, (a - __localTimingStart) * 1000.0 / Stopwatch.Frequency);
+            if (gc0 != GC.CollectionCount(0) || gc1 != GC.CollectionCount(1) || gc2 != GC.CollectionCount(2))
+               return;
             
-            //Advanced_PB_Limiter.Log.Error($"{__instance.CustomName} : {((Stopwatch.GetTimestamp() - a) * 1000.0 / Stopwatch.Frequency) / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio)} :: {((a - __localTimingStart) * 1000.0 / Stopwatch.Frequency) / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio)}");
+            if (Config.UseSimTime)
+                TrackingManager.UpdateTrackingData(__instance, (a - __localTimingStart) * (1000.0 / (double)Stopwatch.Frequency) / (Sync.ServerSimulationRatio >= 1 ? 1 : Sync.ServerSimulationRatio) - overhead);
+            else
+                TrackingManager.UpdateTrackingData(__instance, (a - __localTimingStart) * (1000.0 / (double)Stopwatch.Frequency) - overhead);
+            
+            if (Config.DebugReporting)
+                Advanced_PB_Limiter.Log.Error($"{__instance.CustomName} : {(Stopwatch.GetTimestamp() - a) * (1000.0 / Stopwatch.Frequency) / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio) - overhead} :: {(a - __localTimingStart) * (1000.0 / Stopwatch.Frequency) / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio) - overhead}");
         }
 
         private static void PrefixRecompilePb(MyProgrammableBlock? __instance)

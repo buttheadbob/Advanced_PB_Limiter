@@ -29,7 +29,6 @@ namespace Advanced_PB_Limiter.Manager
             _cleanupTimer.Start();
         }
         
-        
         public static List<TrackedPlayer> GetTrackedPlayerData()
         {
             return PlayersTracked.Values.ToList();

@@ -92,8 +92,9 @@ namespace Advanced_PB_Limiter.Settings
         // The amount of adjustment will be configurable.
         private List<TierData> _TierPlans = new();
         public List<TierData> TierPlans { get => _TierPlans; set => SetValue(ref _TierPlans, value); }
-        
-        public IEnumerable<Enums.Punishment> MyPunishments => Enum.GetValues(typeof(Enums.Punishment)).Cast<Enums.Punishment>();
+
+        private bool _debugReporting;
+        public bool DebugReporting { get => _debugReporting; set => SetValue(ref _debugReporting, value); }
 
     }
 }

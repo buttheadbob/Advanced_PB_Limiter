@@ -13,7 +13,7 @@ namespace Advanced_PB_Limiter.Utils
         public MyProgrammableBlock? ProgrammableBlock { get; }
         private ConcurrentQueue<double> RunTimesMS { get; set; } = new ();
         public string GridName { get; }
-        private double PBStartTime { get; set; }
+        private long PBStartTime { get; set; }
         public ConcurrentQueue<long> Offences { get; private set; } = new();
         public int Recompiles { get; private set; }
         public double LastRunTimeMS { get; private set; }
@@ -106,9 +106,10 @@ namespace Advanced_PB_Limiter.Utils
         public bool IsUnderGracePeriod(ulong SteamId)
         {
             if (Config.PrivilegedPlayers.TryGetValue(SteamId, out PrivilegedPlayer privilegedPlayer))
-                return (Stopwatch.GetTimestamp() - PBStartTime) / Stopwatch.Frequency < privilegedPlayer.StartupAllowance;
+                return (double)(Stopwatch.GetTimestamp() - PBStartTime) / Stopwatch.Frequency < privilegedPlayer.StartupAllowance;
             
-            return (Stopwatch.GetTimestamp() - PBStartTime) / Stopwatch.Frequency < 10;
+            double result = (double)(Stopwatch.GetTimestamp() - PBStartTime) / Stopwatch.Frequency;
+            return result < 15;
         }
         
         public void ClearRunTimes()

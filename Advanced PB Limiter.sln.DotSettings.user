@@ -13,6 +13,7 @@
 	<s:String x:Key="/Default/Environment/AssemblyExplorer/XmlDocument/@EntryValue">&lt;AssemblyExplorer&gt;&#xD;
   &lt;Assembly Path="C:\Users\rober\Desktop\Nexus (Server Sectoring &amp;amp; DataSync)\Nexus.dll" /&gt;&#xD;
   &lt;Assembly Path="d:\nexus\worlds\lobby\dedicatedserver64\VRage.Scripting.dll" /&gt;&#xD;
+  &lt;Assembly Path="C:\Development\Public\Advanced PB Limiter\GameBinaries\Sandbox.Common.dll" /&gt;&#xD;
 &lt;/AssemblyExplorer&gt;</s:String>
 	<s:String x:Key="/Default/Environment/Hierarchy/Build/SolBuilderDuo/UseMsbuildSolutionBuilder/@EntryValue">No</s:String>
 	<s:Boolean x:Key="/Default/Environment/Hierarchy/Build/SolutionBuilderNext/PassVisualStudioParameters/@EntryValue">True</s:Boolean></wpf:ResourceDictionary>
