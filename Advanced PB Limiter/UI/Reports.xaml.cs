@@ -65,6 +65,7 @@ namespace Advanced_PB_Limiter.UI
             double calculatedAvgMs = 0;
             int offences = 0;
             int recompiles = 0;
+            long memoryUsed = 0;
 
             List<TrackedPlayer> data = TrackingManager.GetTrackedPlayerData();
             for (int index = 0; index < data.Count; index++)
@@ -84,12 +85,14 @@ namespace Advanced_PB_Limiter.UI
                         data[index].GetAllPBBlocks[ii].RunTimeMSAvg, 
                         data[index].GetAllPBBlocks[ii].PeekRunTimeMS,
                         data[index].GetAllPBBlocks[ii].Offences.Count,
-                        data[index].GetAllPBBlocks[ii].Recompiles
+                        data[index].GetAllPBBlocks[ii].Recompiles,
+                        data[index].GetAllPBBlocks[ii].memoryUsage
                     );
                     BlockReports.TryAdd(data[index].GetAllPBBlocks[ii].ProgrammableBlock!.EntityId, blockReport);
                     
                     recompiles += data[index].GetAllPBBlocks[ii].Recompiles;
                     offences += data[index].GetAllPBBlocks[ii].Offences.Count;
+                    memoryUsed += data[index].GetAllPBBlocks[ii].memoryUsage;
                 }
 
                 if (data[index].PBBlockCount is not 0) // Should prevent NaN showing up in the live report.
@@ -98,7 +101,7 @@ namespace Advanced_PB_Limiter.UI
                     calculatedLastRunTimeMs = lastRunTimeMs / data[index].PBBlockCount;
                 }
 
-                CustomPlayerReport report = new(data[index].SteamId, data[index].PlayerName ?? "Unknown", calculatedLastRunTimeMs, calculatedAvgMs, offences, data[index].PBBlockCount, recompiles);
+                CustomPlayerReport report = new(data[index].SteamId, data[index].PlayerName ?? "Unknown", calculatedLastRunTimeMs, calculatedAvgMs, offences, data[index].PBBlockCount, recompiles, memoryUsed);
                 PlayerReports.TryAdd(data[index].SteamId, report);
 
                 lastRunTimeMs = 0;
@@ -107,6 +110,7 @@ namespace Advanced_PB_Limiter.UI
                 calculatedAvgMs = 0;
                 offences = 0;
                 recompiles = 0;
+                memoryUsed = 0;
                 
                 datagrid_BlockReports = new ObservableCollection<CustomBlockReport>(BlockReports.Values);
                 datagrid_PlayerReports = new ObservableCollection<CustomPlayerReport>(PlayerReports.Values);
@@ -126,8 +130,9 @@ namespace Advanced_PB_Limiter.UI
             public int Offences { get; }
             public int PbCount { get; }
             public int Recompiles { get; }
+            public string MemoryUsed { get; }
 
-            public CustomPlayerReport(ulong steamId, string playerName, double combinedLastRunTimeMs, double combinedAvgMs, int offences, int pbCount, int recompiles)
+            public CustomPlayerReport(ulong steamId, string playerName, double combinedLastRunTimeMs, double combinedAvgMs, int offences, int pbCount, int recompiles, long memoryUsed)
             {
                 SteamId = steamId;
                 PlayerName = playerName;
@@ -136,6 +141,7 @@ namespace Advanced_PB_Limiter.UI
                 Offences = offences;
                 PbCount = pbCount;
                 Recompiles = recompiles;
+                MemoryUsed = HelperUtils.FormatBytesToKB(memoryUsed);
             }
         }
         
@@ -150,8 +156,9 @@ namespace Advanced_PB_Limiter.UI
             public double PeekRunTimeMS { get; }
             public int Offences { get; }
             public int Recompiles { get; }
+            public string MemoryUsed { get; }
 
-            public CustomBlockReport(ulong steamId, string playerName, string gridName, string blockName, double lastRunTimeMs, double avgMs, double peekRunTimeMS, int offences, int recompiles)
+            public CustomBlockReport(ulong steamId, string playerName, string gridName, string blockName, double lastRunTimeMs, double avgMs, double peekRunTimeMS, int offences, int recompiles, long memoryUsed)
             {
                 SteamId = steamId;
                 PlayerName = playerName;
@@ -162,6 +169,7 @@ namespace Advanced_PB_Limiter.UI
                 PeekRunTimeMS = peekRunTimeMS;
                 Offences = offences;
                 Recompiles = recompiles;
+                MemoryUsed = HelperUtils.FormatBytesToKB(memoryUsed);
             }
         }
 
@@ -320,6 +328,7 @@ namespace Advanced_PB_Limiter.UI
                 sb.Append($"{PaddingGenerator(7+item.AvgMS.ToString().Length, ColumnWidth)}AvgMS: {item.AvgMS}{PaddingGenerator(7+item.AvgMS.ToString().Length, ColumnWidth)}||");
                 sb.Append($"{PaddingGenerator(10+item.Offences.ToString().Length, ColumnWidth)}Offences: {item.Offences}{PaddingGenerator(10+item.Offences.ToString().Length, ColumnWidth)}||");
                 sb.AppendLine($"{PaddingGenerator(12+item.Recompiles.ToString().Length, ColumnWidth)}Recompiles: {item.Recompiles}");
+                sb.AppendLine($"{PaddingGenerator(12+item.MemoryUsed.Length, ColumnWidth)}MemoryUsed: {item.MemoryUsed}");
             }
             sb.AppendLine();
             sb.AppendLine();
@@ -335,6 +344,7 @@ namespace Advanced_PB_Limiter.UI
                 sb.Append($"{PaddingGenerator(10+item.Offences.ToString().Length, ColumnWidth)}Offences: {item.Offences}{PaddingGenerator(10+item.Offences.ToString().Length, ColumnWidth)}||");
                 sb.Append($"{PaddingGenerator(12+item.Recompiles.ToString().Length, ColumnWidth)}Recompiles: {item.Recompiles}{PaddingGenerator(12+item.Recompiles.ToString().Length, ColumnWidth)}||");
                 sb.AppendLine($"{PaddingGenerator(6+item.PbCount.ToString().Length, ColumnWidth)}PB's: {item.PbCount}");
+                sb.AppendLine($"{PaddingGenerator(12+item.MemoryUsed.Length, ColumnWidth)}MemoryUsed: {item.MemoryUsed}");
             }
             sb.AppendLine();
             sb.AppendLine();

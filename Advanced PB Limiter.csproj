@@ -200,6 +200,7 @@
     <Compile Include="Advanced PB Limiter\Utils\ChatUtils.cs" />
     <Compile Include="Advanced PB Limiter\Utils\CS9Support.cs" />
     <Compile Include="Advanced PB Limiter\Utils\Enums.cs" />
+    <Compile Include="Advanced PB Limiter\Utils\HelperUtils.cs" />
     <Compile Include="Advanced PB Limiter\Utils\MtObservableSortedSerializableDictionary.cs" />
     <Compile Include="Advanced PB Limiter\Utils\NexusAPI.cs" />
     <Compile Include="Advanced PB Limiter\Utils\PrivilegedPlayer.cs" />

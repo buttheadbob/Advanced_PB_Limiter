@@ -19,6 +19,7 @@ namespace Advanced_PB_Limiter.Utils
         public double LastRunTimeMS { get; private set; }
         private double RunTimesSum { get; set; }= 0;
         public double PeekRunTimeMS { get; private set; } = 0;
+        public long memoryUsage { get; private set; }
         
         private long _lastOffenceTick;
         public long LastOffenceTick
@@ -36,16 +37,30 @@ namespace Advanced_PB_Limiter.Utils
             set => Interlocked.Exchange(ref _lastUpdateTick, value);
         }
 
-        public TrackedPBBlock(string gridName, MyProgrammableBlock pbBlock)
+        public void updateMemoryUsage(long bytes)
+        {
+            memoryUsage += bytes;
+            if (memoryUsage < 0)
+                memoryUsage = 0;
+        }
+        
+        public void ResetMemoryUsage()
+        {
+            memoryUsage = 0;
+        }
+
+        public TrackedPBBlock(string gridName, MyProgrammableBlock pbBlock, long memoryUsage)
         {
             GridName = gridName;
             PBStartTime = Stopwatch.GetTimestamp();
             ProgrammableBlock = pbBlock;
             LastUpdateTick = Stopwatch.GetTimestamp();
+            this.memoryUsage = memoryUsage;
         }
 
-        public void AddRuntimeData(double lastRunTimeMS, ulong steamId)
+        public void AddRuntimeData(double lastRunTimeMS, ulong steamId, long updatedMemoryUsage)
         {
+            updateMemoryUsage(updatedMemoryUsage);
             if (IsUnderGracePeriod(steamId)) return;
             if (lastRunTimeMS > PeekRunTimeMS)
                 PeekRunTimeMS = lastRunTimeMS;

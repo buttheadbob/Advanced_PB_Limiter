@@ -46,16 +46,25 @@ namespace Advanced_PB_Limiter.Manager
                 return;
             }
             
-            if (trackedPbBlock.IsUnderGracePeriod(player.SteamId)) return;
-            
-            // InstaKill
+            // InstaKill by run-time
             if (Config.InstantKillThreshold > 0 && lastRunTimeMS > Config.InstantKillThreshold)
             {
                 await PunishPB(player, trackedPbBlock, PunishReason.ExtremeUsage, Punishment.Destroy, $"[{lastRunTimeMS:0.0000}ms]");
                 Log.Error($"INSTANT-KILL TRIGGERED: {player.PlayerName} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} with a run-time of {lastRunTimeMS:0.0000}ms");
                 return;
             }
+            
+            // InstaKill by memory
+            if (Config.PBMemoryThreshold < trackedPbBlock.memoryUsage)
+            {
+                string usage = HelperUtils.FormatBytesToKB(trackedPbBlock.memoryUsage);
+                await PunishPB(player, trackedPbBlock, PunishReason.ExtremeUsage, Punishment.Destroy, $"[{usage}]");
+                Log.Error($"INSTANT-KILL TRIGGERED: {player.PlayerName} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} with a memory usage of {usage}");
+                return;
+            }
 
+            if (trackedPbBlock.IsUnderGracePeriod(player.SteamId)) return;
+            
             double allowedRunTime = Config.MaxRunTimeMS;
             double allowedRunTimeAvg = Config.MaxRunTimeMSAvg;
             int allowedOffenses = Config.MaxOffencesBeforePunishment;

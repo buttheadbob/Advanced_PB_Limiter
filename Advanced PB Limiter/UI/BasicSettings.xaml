@@ -221,11 +221,15 @@
             <CheckBox Grid.Row="23" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding UseSimTime}" />
             <TextBlock Grid.Row="23" Grid.Column="2" Text="Use SimTime will adjust the runtime for Sim Speed.  When sim speed tanks then the script running can also take longer to run at no fault of the player." Margin="3" TextWrapping="Wrap" />
             
-            <Button Grid.Row="24" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Save Locally Only" Name="SaveLocallyButton" Click="SaveLocallyButton_OnClick"/>
-            <TextBlock Grid.Row="24" Grid.Column="2" Margin="3" Text="Saves the configuration to this server only."/>
+            <TextBlock Grid.Row="24" Grid.Column="0" Text="Max Memory per PB (in bytes)" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+            <TextBox Grid.Row="24" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="75"  Text="{Binding PBMemoryThreshold}" TextAlignment="Center"/>
+            <TextBlock Grid.Row="24" Grid.Column="2" Text="Limit PB use of system memory (Prevents some script attacks against the server and shitty scripts from making the system unstable." Margin="3" TextWrapping="Wrap" />
             
-            <Button Grid.Row="25" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Push Through Nexus" Name="SaveAndPush" Click="SaveAndPush_OnClick"/>
-            <TextBlock Grid.Row="25" Grid.Column="2" Margin="3" Text="Sends the current settings to all Nexus servers with this plugin.  This will override their current settings."/>
+            <Button Grid.Row="25" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Save Locally Only" Name="SaveLocallyButton" Click="SaveLocallyButton_OnClick"/>
+            <TextBlock Grid.Row="25" Grid.Column="2" Margin="3" Text="Saves the configuration to this server only."/>
+            
+            <Button Grid.Row="26" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Push Through Nexus" Name="SaveAndPush" Click="SaveAndPush_OnClick"/>
+            <TextBlock Grid.Row="26" Grid.Column="2" Margin="3" Text="Sends the current settings to all Nexus servers with this plugin.  This will override their current settings."/>
         </Grid>
     </GroupBox>
 </UserControl>

@@ -44,7 +44,6 @@ namespace Advanced_PB_Limiter.Manager
         private static void CleanUpOldPlayers()
         {
             if (!Config.Enabled) return;
-            
             // Get players
             long[] trackedPlayers = PlayersTracked.Keys.ToArray();
             if (trackedPlayers.Length <= 0) return;
@@ -57,7 +56,7 @@ namespace Advanced_PB_Limiter.Manager
             }
         }
 
-        public static void UpdateTrackingData(MyProgrammableBlock pb, double runTime)
+        public static void UpdateTrackingData(MyProgrammableBlock pb, double runTime, long memoryUsage)
         {
             if (pb.OwnerId == 0)
             {
@@ -65,22 +64,24 @@ namespace Advanced_PB_Limiter.Manager
                 return;
             } // Track un-owned blocks? something to think about...
         
-            
             if (!Config.Enabled) return;
             if (Config.IgnoreNPCs)
             {
                 if (MySession.Static.Players.IdentityIsNpc(pb.OwnerId)) return;
             }
+
+            if (runTime < 0)
+                runTime = 0;
             
             if (PlayersTracked.TryGetValue(pb.OwnerId, out TrackedPlayer? player))
             {
-                player.UpdatePBBlockData(pb, runTime);
+                player.UpdatePBBlockData(pb, runTime, memoryUsage);
                 return;
             }
             
             player = new TrackedPlayer(pb.OwnerId);
             PlayersTracked.TryAdd(pb.OwnerId, player);
-            player.UpdatePBBlockData(pb, runTime);
+            player.UpdatePBBlockData(pb, runTime, memoryUsage);
         }
         
         private static void RemovePlayer(long Id)
@@ -167,3 +168,4 @@ namespace Advanced_PB_Limiter.Manager
         }
     }
 }
+     

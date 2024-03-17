@@ -42,17 +42,17 @@ namespace Advanced_PB_Limiter.Utils
                 : null;
         }
         
-        public async void UpdatePBBlockData(MyProgrammableBlock pbBlock, double lastRunTimeMS)
+        public async void UpdatePBBlockData(MyProgrammableBlock pbBlock, double lastRunTimeMS, long memoryUsage)
         {
             LastDataUpdateTick = Stopwatch.GetTimestamp();
             if (!PBBlocks.TryGetValue(pbBlock.EntityId, out TrackedPBBlock? trackedPBBlock))
             {
-                trackedPBBlock = new TrackedPBBlock(pbBlock.CubeGrid.DisplayName, pbBlock);
+                trackedPBBlock = new TrackedPBBlock(pbBlock.CubeGrid.DisplayName, pbBlock, memoryUsage);
                 PBBlocks.TryAdd(pbBlock.EntityId, trackedPBBlock);
                 return;
             }
 
-            trackedPBBlock.AddRuntimeData(lastRunTimeMS, SteamId);
+            trackedPBBlock.AddRuntimeData(lastRunTimeMS, SteamId, memoryUsage);
             await PunishmentManager.CheckForPunishment(this, trackedPBBlock.ProgrammableBlock!.EntityId, lastRunTimeMS);
         }
         
@@ -139,6 +139,7 @@ namespace Advanced_PB_Limiter.Utils
             }
             
             PBBlocks[trackedPBBlock.ProgrammableBlock.EntityId].ClearRunTimes();
+            PBBlocks[trackedPBBlock.ProgrammableBlock.EntityId].ResetMemoryUsage();
         }
     }
 }

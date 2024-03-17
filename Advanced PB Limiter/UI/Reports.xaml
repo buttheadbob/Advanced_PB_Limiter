@@ -137,6 +137,7 @@
                     <DataGridTextColumn Header="Peek MS" Binding="{Binding PeekRunTimeMS}"/>
                     <DataGridTextColumn Header="Offenses" Binding="{Binding Offences}"/>
                     <DataGridTextColumn Header="Recompiles" Binding="{Binding Recompiles}"/>
+                    <DataGridTextColumn Header="Memory" Binding="{Binding MemoryUsed}"/>
                 </DataGrid.Columns>
             </DataGrid>
         </GroupBox>
@@ -156,6 +157,7 @@
                     <DataGridTextColumn Header="Offenses" Binding="{Binding Offences}"/>
                     <DataGridTextColumn Header="PB's Tracked" Binding="{Binding PbCount}"/>
                     <DataGridTextColumn Header="Recompiles" Binding="{Binding Recompiles}"/>
+                    <DataGridTextColumn Header="Memory" Binding="{Binding MemoryUsed}"/>
                 </DataGrid.Columns>
             </DataGrid>
         </GroupBox>
