@@ -18,7 +18,7 @@ namespace Advanced_PB_Limiter.Commands
         public void About()
         {
             Context.Respond("Advanced PB Limiter v" + Advanced_PB_Limiter.Instance!.Version + " by SentorX");
-            Context.Respond("This is a plugin that limits the runtime of programmable blocks to prevent server lag.");
+            Context.Respond("This is a plugin that limits the runtime and memory usage of programmable blocks to prevent server lag.");
             Context.Respond("You can also generate detailed reports of your server and any Nexus servers with this plugin installed.");
             Context.Respond("Advanced PB Limiter is open source and can be found on GitHub: https://github.com/buttheadbob/Advanced_PB_Limiter");
             Context.Respond("For any issues, please contact SentorX through his Discord server.  DM's will be ignored unless you are a server owner or admin.");

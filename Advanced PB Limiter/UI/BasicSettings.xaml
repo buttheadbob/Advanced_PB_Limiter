@@ -10,9 +10,7 @@
              d:DesignHeight="Auto" d:DesignWidth="Auto" Background="#FF1E1E1E">
     
     <UserControl.Resources>
-        <ObjectDataProvider MethodName="GetValues"
-                            ObjectType="{x:Type sys:Enum}"
-                            x:Key="EnumDataProvider">
+        <ObjectDataProvider MethodName="GetValues" ObjectType="{x:Type sys:Enum}" x:Key="EnumDataProvider">
             <ObjectDataProvider.MethodParameters>
                 <x:Type TypeName="utils:Enums+Punishment"/>
             </ObjectDataProvider.MethodParameters>
@@ -86,150 +84,232 @@
             <Setter Property="FontSize" Value="12"/>
         </Style>
     </UserControl.Resources>
-    
-    <GroupBox>
-        <GroupBox.Header>
-            <TextBlock>
-                <Span FontWeight="Bold">Main Settings</Span>
-            </TextBlock>
-        </GroupBox.Header>
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-            
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="Enable:" Margin="3"/>
-            <CheckBox Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsChecked="{Binding Enabled}"/>
-            <TextBlock Grid.Row="0" Grid.Column="2" Text="Enable or Disable the plugin" Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="1" Grid.Column="0" Text="Graceful shutdown delay" Margin="3" VerticalAlignment="Center"/>
-            <TextBox Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding GracefulShutDownRequestDelay}"/>
-            <TextBlock Grid.Row="1" Grid.Column="2" Text="How long to wait (in seconds) for the script to shutdown before the punishment is applied.  Use 0 for no delay.  Punishments are always applied after the delay." Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="3" Grid.Column="0" Text="Max runtime" Margin="3" VerticalAlignment="Center"/>
-            <TextBox Grid.Row="3" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding MaxRunTimeMS}"/>
-            <TextBlock Grid.Row="3" Grid.Column="2" Text="Max amount of time (in milliseconds) a script is allowed to use before being issued any punishment.  Set to 0 for no limit." Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="4" Grid.Column="0" Text="Max runtime average" Margin="3" VerticalAlignment="Center"/>
-            <TextBox Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding MaxRunTimeMSAvg}"/>
-            <TextBlock Grid.Row="4" Grid.Column="2" Text="Max amount of time (in milliseconds) a script is allowed to average before being issued any punishment.  Set to 0 for no limit." Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="5" Grid.Column="0" Text="Runs to track for Averaging" Margin="3" VerticalAlignment="Center"/>
-            <TextBox Grid.Row="5" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding MaxRunsToTrack}"/>
-            <TextBlock Grid.Row="5" Grid.Column="2" Text="How many runs to use to calculate the runtime average." Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="6" Grid.Column="0" Text="Limit combined pb's" Margin="3" VerticalAlignment="Center"/>
-            <CheckBox Grid.Row="6" Grid.Column="1" VerticalAlignment="Center" Margin="3" HorizontalAlignment="Center" IsChecked="{Binding CheckAllUserBlocksCombined}"/>
-            <TextBlock Grid.Row="6" Grid.Column="2" Text="Track the total time of all running pb's owned by a player." Margin="3" TextWrapping="Wrap" VerticalAlignment="Center"/>
-            
-            <TextBlock Grid.Row="7" Grid.Column="0" Text="Max combined runtime limit" Margin="3" VerticalAlignment="Center"/>
-            <TextBox Grid.Row="7" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding MaxAllBlocksCombinedRunTimeMS}"/>
-            <TextBlock Grid.Row="7" Grid.Column="2" Text="Max amount of time (in milliseconds) of all the players pb's before punishing." Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="8" Grid.Column="0" Text="Max combined runtime average" Margin="3" VerticalAlignment="Center"/>
-            <TextBox Grid.Row="8" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding MaxAllBlocksCombinedRunTimeMSAvg}"/>
-            <TextBlock Grid.Row="8" Grid.Column="2" Text="Max amount of time (in milliseconds) all pb's owned by a user is allowed to average before being issued any punishment." Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="9" Grid.Column="0" Text="Punish all combined pb's" Margin="3" VerticalAlignment="Center"/>
-            <CheckBox Grid.Row="9" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsChecked="{Binding PunishAllUserBlocksCombinedOnExcessLimits}"/>
-            <TextBlock Grid.Row="9" Grid.Column="2" Text="Enabled will apply the punishment to all the players active pb's.  Disabled will punish a random one." Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="10" Grid.Column="0" Text="Allowed offenses" Margin="3" VerticalAlignment="Center"/>
-            <TextBox Grid.Row="10" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding MaxOffencesBeforePunishment}"/>
-            <TextBlock Grid.Row="10" Grid.Column="2" Text="Amount of offences by the player (not the pb) before punishment is applied." Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="11" Grid.Column="0" Text="Grace after offence" Margin="3" VerticalAlignment="Center"/>
-            <TextBox Grid.Row="11" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding GraceAfterOffence}"/>
-            <TextBlock Grid.Row="11" Grid.Column="2" Text="Seconds after an offence before another offence can be incurred.  This prevents Update1 and Update10 from reaching offence limits and punishing any pb withing 1 second of the first offence." Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="12" Grid.Column="0" Text="Warn user on offense" Margin="3" VerticalAlignment="Center"/>
-            <CheckBox Grid.Row="12" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsChecked="{Binding WarnUserOnOffense}"/>
-            <TextBlock Grid.Row="12" Grid.Column="2" Text="Send a warning to the user when their pb incurs an offense." Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="13" Grid.Column="0" Text="Remove offense after time" Margin="3" VerticalAlignment="Center"/>
-            <TextBox Grid.Row="13" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding OffenseDurationBeforeDeletion}"/>
-            <TextBlock Grid.Row="13" Grid.Column="2" Text="How many minutes before an offense is removed.  Each offense is tracked, so only after an offense is at least this old will it be removed." Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="14" Grid.Column="0" Text="Clear data on pb recompile" Margin="3" VerticalAlignment="Center"/>
-            <CheckBox Grid.Row="14" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsChecked="{Binding ClearHistoryOnRecompile}"/>
-            <TextBlock Grid.Row="14" Grid.Column="2" Text="When a player recompiles their script, resets all tracking data to null." Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="15" Grid.Column="0" Text="Keep inactive pb duration" Margin="3" VerticalAlignment="Center"/>
-            <TextBox Grid.Row="15" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding RemoveInactivePBsAfterSeconds}"/>
-            <TextBlock Grid.Row="15" Grid.Column="2" Text="How long to keep inactive pb data, only useful for showing data.  Pb's removed from the game will be removed from tracking data regardless." Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="16" Grid.Column="0" Text="Keep player data with no pb's" Margin="3" VerticalAlignment="Center"/>
-            <TextBox Name="RemovePlayersWithNoPbFrequency" Grid.Row="16" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding RemovePlayersWithNoPBFrequencyInMinutes}"/>
-            <TextBlock Grid.Row="16" Grid.Column="2" Text="Removes players from any reports when they have no pb's in game.  Set to 0 (zero) disable removing.  Setting above 0 to restart will activate again only after using Save Locally Only button." Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="17" Grid.Column="0" Name="PunishmentLabel" Text="Punishment type" Margin="3" VerticalAlignment="Center"/>
-            <ComboBox Grid.Row="17" Grid.Column="1" Name="PunishmentComboBox" VerticalAlignment="Center" Margin="3" Width="28" Foreground="Black" SelectionChanged="PunishmentComboBox_OnSelectionChanged"/>
-            <TextBlock Grid.Row="17" Grid.Column="2" Text="Turn off will disable the block.  Damage will applied the set amount of damage points to the block (may not occur in SafeZones.  Destroy will damage the pb to below functional level." Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="18" Grid.Column="0" Text="Damage points" Margin="3"/>
-            <TextBox Grid.Row="18" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding PunishDamageAmount}" />
-            <TextBlock Grid.Row="18" Grid.Column="2" Text="The amount of points to apply to the pb when damage is selected." Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="19" Grid.Column="0" Text="Turn off when owned by Nobody" Margin="3" VerticalAlignment="Center"/>
-            <CheckBox Grid.Row="19" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding TurnOffUnownedBlocks}"/>
-            <TextBlock Grid.Row="19" Grid.Column="2" Text="PB's with no owner can still run... but should they?" Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="20" Grid.Column="0" Text="Auto Enable" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
-            <CheckBox Grid.Row="20" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding AllowSelfTurnOnExploit}"/>
-            <TextBlock Grid.Row="20" Grid.Column="2" Text="Players use the Save() function to turn on their pb automatically.  This runs regardless if the pb is enabled or not.  Uncheck this box to prevent that." Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="21" Grid.Column="0" Text="Auto Enable NPC" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
-            <CheckBox Grid.Row="21" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding AllowNPCToAutoTurnOn}"/>
-            <TextBlock Grid.Row="21" Grid.Column="2" Text="If Auto Enable for Players is checked, NPC will automatically be allowed.  Check this box to allow NPC programmable block Save() command to run.  Useful for custom operations on server!" Margin="3" TextWrapping="Wrap"/>
-            
-            <TextBlock Grid.Row="22" Grid.Column="0" Text="InstaKill Limit" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
-            <TextBox Grid.Row="22" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding InstantKillThreshold}"/>
-            <TextBlock Grid.Row="22" Grid.Column="2" Text="Any pb that reaches this limit will be damaged beyond function immediately, regardless if no offences have previously occured.  No Graceful shutdown request will be sent.  Set to 0 to disable." Margin="3" TextWrapping="Wrap"/>
+    <TabControl>
+        <TabItem Header="Main Settings">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Enable:" Margin="3"/>
+                <CheckBox Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsChecked="{Binding Enabled}"/>
+                <TextBlock Grid.Row="0" Grid.Column="2" Text="Enable or Disable the plugin" Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="19" Grid.Column="0" Text="Turn off when owned by Nobody" Margin="3" VerticalAlignment="Center"/>
+                <CheckBox Grid.Row="19" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding TurnOffUnownedBlocks}"/>
+                <TextBlock Grid.Row="19" Grid.Column="2" Text="PB's with no owner can still run... but should they?" Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="20" Grid.Column="0" Text="Auto Enable" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+                <CheckBox Grid.Row="20" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding AllowSelfTurnOnExploit}"/>
+                <TextBlock Grid.Row="20" Grid.Column="2" Text="Players use the Save() function to turn on their pb automatically.  This runs regardless if the pb is enabled or not.  Uncheck this box to prevent that." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="21" Grid.Column="0" Text="Auto Enable NPC" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+                <CheckBox Grid.Row="21" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding AllowNPCToAutoTurnOn}"/>
+                <TextBlock Grid.Row="21" Grid.Column="2" Text="If Auto Enable for Players is checked, NPC will automatically be allowed.  Check this box to allow NPC programmable block Save() command to run.  Useful for custom operations on server!" Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="22" Grid.Column="0" Text="InstaKill Limit" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+                <TextBox Grid.Row="22" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding InstantKillThreshold}"/>
+                <TextBlock Grid.Row="22" Grid.Column="2" Text="Any pb that reaches this limit will be damaged beyond function immediately, regardless if no offences have previously occured.  No Graceful shutdown request will be sent.  Set to 0 to disable." Margin="3" TextWrapping="Wrap"/>
 
-            <TextBlock Grid.Row="23" Grid.Column="0" Text="Use SimTime" Margin="3" VerticalAlignment="Center" Foreground="Red" />
-            <CheckBox Grid.Row="23" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding UseSimTime}" />
-            <TextBlock Grid.Row="23" Grid.Column="2" Text="Use SimTime will adjust the runtime for Sim Speed.  When sim speed tanks then the script running can also take longer to run at no fault of the player." Margin="3" TextWrapping="Wrap" />
-            
-            <TextBlock Grid.Row="24" Grid.Column="0" Text="Max Memory per PB (in bytes)" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
-            <TextBox Grid.Row="24" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="75"  Text="{Binding PBMemoryThreshold}" TextAlignment="Center"/>
-            <TextBlock Grid.Row="24" Grid.Column="2" Text="Limit PB use of system memory (Prevents some script attacks against the server and shitty scripts from making the system unstable." Margin="3" TextWrapping="Wrap" />
-            
-            <Button Grid.Row="25" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Save Locally Only" Name="SaveLocallyButton" Click="SaveLocallyButton_OnClick"/>
-            <TextBlock Grid.Row="25" Grid.Column="2" Margin="3" Text="Saves the configuration to this server only."/>
-            
-            <Button Grid.Row="26" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Push Through Nexus" Name="SaveAndPush" Click="SaveAndPush_OnClick"/>
-            <TextBlock Grid.Row="26" Grid.Column="2" Margin="3" Text="Sends the current settings to all Nexus servers with this plugin.  This will override their current settings."/>
-        </Grid>
-    </GroupBox>
+                <TextBlock Grid.Row="23" Grid.Column="0" Text="Use SimTime" Margin="3" VerticalAlignment="Center" Foreground="Red" />
+                <CheckBox Grid.Row="23" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding UseSimTime}" />
+                <TextBlock Grid.Row="23" Grid.Column="2" Text="Use SimTime will adjust the runtime for Sim Speed.  When sim speed tanks then the script running can also take longer to run at no fault of the player." Margin="3" TextWrapping="Wrap" />
+                
+                <TextBlock Grid.Row="24" Grid.Column="0" Text="Max Memory per PB (in bytes)" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+                <TextBox Grid.Row="24" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="75"  Text="{Binding PBMemoryThreshold}" TextAlignment="Center"/>
+                <TextBlock Grid.Row="24" Grid.Column="2" Text="Limit PB use of system memory (Prevents some script attacks against the server and shitty scripts from making the system unstable." Margin="3" TextWrapping="Wrap" />
+                
+                <Button Grid.Row="25" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Save Locally Only" Name="SaveLocallyButton" Click="SaveLocallyButton_OnClick"/>
+                <TextBlock Grid.Row="25" Grid.Column="2" Margin="3" Text="Saves the configuration to this server only."/>
+                
+                <Button Grid.Row="26" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Push Through Nexus" Name="SaveAndPush" Click="SaveAndPush_OnClick"/>
+                <TextBlock Grid.Row="26" Grid.Column="2" Margin="3" Text="Sends the current settings to all Nexus servers with this plugin.  This will override their current settings."/>
+            </Grid>
+        </TabItem>
+        
+        <TabItem Header="Player Settings">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Graceful shutdown delay" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding GracefulShutDownRequestDelay}"/>
+                <TextBlock Grid.Row="1" Grid.Column="2" Text="How long to wait (in seconds) for the script to shutdown before the punishment is applied.  Use 0 for no delay.  Punishments are always applied after the delay." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Max runtime" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="3" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding MaxRunTimeMS}"/>
+                <TextBlock Grid.Row="3" Grid.Column="2" Text="Max amount of time (in milliseconds) a script is allowed to use before being issued any punishment.  Set to 0 for no limit." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="Max runtime average" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding MaxRunTimeMSAvg}"/>
+                <TextBlock Grid.Row="4" Grid.Column="2" Text="Max amount of time (in milliseconds) a script is allowed to average before being issued any punishment.  Set to 0 for no limit." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="Runs to track for Averaging" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="5" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding MaxRunsToTrack}"/>
+                <TextBlock Grid.Row="5" Grid.Column="2" Text="How many runs to use to calculate the runtime average." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="6" Grid.Column="0" Text="Limit combined pb's" Margin="3" VerticalAlignment="Center"/>
+                <CheckBox Grid.Row="6" Grid.Column="1" VerticalAlignment="Center" Margin="3" HorizontalAlignment="Center" IsChecked="{Binding CheckAllUserBlocksCombined}"/>
+                <TextBlock Grid.Row="6" Grid.Column="2" Text="Track the total time of all running pb's owned by a player." Margin="3" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                
+                <TextBlock Grid.Row="7" Grid.Column="0" Text="Max combined runtime limit" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="7" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding MaxAllBlocksCombinedRunTimeMS}"/>
+                <TextBlock Grid.Row="7" Grid.Column="2" Text="Max amount of time (in milliseconds) of all the players pb's before punishing." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="8" Grid.Column="0" Text="Max combined runtime average" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="8" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding MaxAllBlocksCombinedRunTimeMSAvg}"/>
+                <TextBlock Grid.Row="8" Grid.Column="2" Text="Max amount of time (in milliseconds) all pb's owned by a user is allowed to average before being issued any punishment." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="9" Grid.Column="0" Text="Punish all combined pb's" Margin="3" VerticalAlignment="Center"/>
+                <CheckBox Grid.Row="9" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsChecked="{Binding PunishAllUserBlocksCombinedOnExcessLimits}"/>
+                <TextBlock Grid.Row="9" Grid.Column="2" Text="Enabled will apply the punishment to all the players active pb's.  Disabled will punish a random one." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="10" Grid.Column="0" Text="Allowed offenses" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="10" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding MaxOffencesBeforePunishment}"/>
+                <TextBlock Grid.Row="10" Grid.Column="2" Text="Amount of offences by the player (not the pb) before punishment is applied." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="11" Grid.Column="0" Text="Grace after offence" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="11" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding GraceAfterOffence}"/>
+                <TextBlock Grid.Row="11" Grid.Column="2" Text="Seconds after an offence before another offence can be incurred.  This prevents Update1 and Update10 from reaching offence limits and punishing any pb withing 1 second of the first offence." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="12" Grid.Column="0" Text="Warn user on offense" Margin="3" VerticalAlignment="Center"/>
+                <CheckBox Grid.Row="12" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsChecked="{Binding WarnUserOnOffense}"/>
+                <TextBlock Grid.Row="12" Grid.Column="2" Text="Send a warning to the user when their pb incurs an offense." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="13" Grid.Column="0" Text="Remove offense after time" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="13" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding OffenseDurationBeforeDeletion}"/>
+                <TextBlock Grid.Row="13" Grid.Column="2" Text="How many minutes before an offense is removed.  Each offense is tracked, so only after an offense is at least this old will it be removed." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="14" Grid.Column="0" Text="Clear data on pb recompile" Margin="3" VerticalAlignment="Center"/>
+                <CheckBox Grid.Row="14" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsChecked="{Binding ClearHistoryOnRecompile}"/>
+                <TextBlock Grid.Row="14" Grid.Column="2" Text="When a player recompiles their script, resets all tracking data to null." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="15" Grid.Column="0" Text="Keep inactive pb duration" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="15" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding RemoveInactivePBsAfterSeconds}"/>
+                <TextBlock Grid.Row="15" Grid.Column="2" Text="How long to keep inactive pb data, only useful for showing data.  Pb's removed from the game will be removed from tracking data regardless." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="16" Grid.Column="0" Text="Keep player data with no pb's" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Name="RemovePlayersWithNoPbFrequency" Grid.Row="16" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding RemovePlayersWithNoPBFrequencyInMinutes}"/>
+                <TextBlock Grid.Row="16" Grid.Column="2" Text="Removes players from any reports when they have no pb's in game.  Set to 0 (zero) disable removing.  Setting above 0 to restart will activate again only after using Save Locally Only button." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="17" Grid.Column="0" Name="PunishmentLabel" Text="Punishment type" Margin="3" VerticalAlignment="Center"/>
+                <ComboBox Grid.Row="17" Grid.Column="1" Name="PunishmentComboBox" VerticalAlignment="Center" Margin="3" Width="28" Foreground="Black" SelectionChanged="PunishmentComboBox_OnSelectionChanged"/>
+                <TextBlock Grid.Row="17" Grid.Column="2" Text="Turn off will disable the block.  Damage will applied the set amount of damage points to the block (may not occur in SafeZones.  Destroy will damage the pb to below functional level." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="18" Grid.Column="0" Text="Damage points" Margin="3"/>
+                <TextBox Grid.Row="18" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="28" Text="{Binding PunishDamageAmount}" />
+                <TextBlock Grid.Row="18" Grid.Column="2" Text="The amount of points to apply to the pb when damage is selected." Margin="3" TextWrapping="Wrap"/>
+
+                <Button Grid.Row="25" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Save Locally Only" Click="SaveLocallyButton_OnClick" />
+                <TextBlock Grid.Row="25" Grid.Column="2" Margin="3" Text="Saves the configuration to this server only." />
+
+                <Button Grid.Row="26" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Push Through Nexus" Click="SaveAndPush_OnClick" />
+                <TextBlock Grid.Row="26" Grid.Column="2" Margin="3" Text="Sends the current settings to all Nexus servers with this plugin.  This will override their current settings." />
+            </Grid>
+        </TabItem>
+        
+        <TabItem Header="Faction Settings">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Label Grid.Column="0" Grid.Row="0" Content="Limiting factions is a planned for the next update." FontSize="40" Foreground="Chartreuse"/>
+            </Grid>
+        </TabItem>
+    </TabControl>
 </UserControl>
