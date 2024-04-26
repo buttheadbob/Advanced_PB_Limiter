@@ -52,6 +52,9 @@ namespace Advanced_PB_Limiter.Utils
                 return;
             }
 
+            if (trackedPBBlock.IsUnderGracePeriod(MySession.Static.Players.TryGetSteamId(pbBlock.OwnerId)))
+                return;
+            
             trackedPBBlock.AddRuntimeData(lastRunTimeMS, SteamId, memoryUsage);
             await PunishmentManager.CheckForPunishment(this, trackedPBBlock.ProgrammableBlock!.EntityId, lastRunTimeMS);
         }

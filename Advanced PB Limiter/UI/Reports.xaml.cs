@@ -98,7 +98,7 @@ namespace Advanced_PB_Limiter.UI
                 if (data[index].PBBlockCount is not 0) // Should prevent NaN showing up in the live report.
                 {
                     calculatedAvgMs = avgMs / data[index].PBBlockCount;
-                    calculatedLastRunTimeMs = lastRunTimeMs / data[index].PBBlockCount;
+                    calculatedLastRunTimeMs = lastRunTimeMs;
                 }
 
                 CustomPlayerReport report = new(data[index].SteamId, data[index].PlayerName ?? "Unknown", calculatedLastRunTimeMs, calculatedAvgMs, offences, data[index].PBBlockCount, recompiles, memoryUsed);
@@ -136,7 +136,7 @@ namespace Advanced_PB_Limiter.UI
             {
                 SteamId = steamId;
                 PlayerName = playerName;
-                CombinedLastRunTimeMS = Math.Round(combinedLastRunTimeMs, 4);
+                CombinedLastRunTimeMS = Math.Round(combinedLastRunTimeMs,4);
                 CombinedAvgMS = Math.Round(combinedAvgMs, 4);
                 Offences = offences;
                 PbCount = pbCount;

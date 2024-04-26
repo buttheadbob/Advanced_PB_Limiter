@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Advanced_PB_Limiter.Settings;
+using ExtensionMethods;
 using Sandbox.Game.Entities.Blocks;
 
 namespace Advanced_PB_Limiter.Utils
@@ -17,7 +18,7 @@ namespace Advanced_PB_Limiter.Utils
         public ConcurrentQueue<long> Offences { get; private set; } = new();
         public int Recompiles { get; private set; }
         public double LastRunTimeMS { get; private set; }
-        private double RunTimesSum { get; set; }= 0;
+        private double RunTimesSum { get; set; } = 0;
         public double PeekRunTimeMS { get; private set; } = 0;
         public long memoryUsage { get; private set; }
         
@@ -121,10 +122,10 @@ namespace Advanced_PB_Limiter.Utils
         public bool IsUnderGracePeriod(ulong SteamId)
         {
             if (Config.PrivilegedPlayers.TryGetValue(SteamId, out PrivilegedPlayer privilegedPlayer))
-                return (double)(Stopwatch.GetTimestamp() - PBStartTime) / Stopwatch.Frequency < privilegedPlayer.StartupAllowance;
+                return PBStartTime.TicksTillNow_TimeSpan().TotalSeconds < privilegedPlayer.StartupAllowance;
             
-            double result = (double)(Stopwatch.GetTimestamp() - PBStartTime) / Stopwatch.Frequency;
-            return result < 15;
+            double result = PBStartTime.TicksTillNow_TimeSpan().TotalSeconds;
+            return result < 10;
         }
         
         public void ClearRunTimes()

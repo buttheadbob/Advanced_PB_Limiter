@@ -132,9 +132,9 @@
                     <DataGridTextColumn Header="Player Name" Binding="{Binding PlayerName}"/>
                     <DataGridTextColumn Header="Grid Name" Binding="{Binding GridName}"/>
                     <DataGridTextColumn Header="Block Name" Binding="{Binding BlockName}"/>
-                    <DataGridTextColumn Header="Last MS" Binding="{Binding LastRunTimeMS}"/>
-                    <DataGridTextColumn Header="Avg MS" Binding="{Binding AvgMS}"/>
-                    <DataGridTextColumn Header="Peek MS" Binding="{Binding PeekRunTimeMS}"/>
+                    <DataGridTextColumn Header="Last MS" Binding="{Binding LastRunTimeMS, StringFormat={}{0:0.####}}"/>
+                    <DataGridTextColumn Header="Avg MS" Binding="{Binding AvgMS, StringFormat={}{0:0.####}}"/>
+                    <DataGridTextColumn Header="Peek MS" Binding="{Binding PeekRunTimeMS, StringFormat={}{0:0.####}}"/>
                     <DataGridTextColumn Header="Offenses" Binding="{Binding Offences}"/>
                     <DataGridTextColumn Header="Recompiles" Binding="{Binding Recompiles}"/>
                     <DataGridTextColumn Header="Memory" Binding="{Binding MemoryUsed}"/>
@@ -152,8 +152,8 @@
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Player SteamID" Binding="{Binding SteamId}"/>
                     <DataGridTextColumn Header="Player Name" Binding="{Binding PlayerName}"/>
-                    <DataGridTextColumn Header="Combined MS" Binding="{Binding CombinedLastRunTimeMS}"/>
-                    <DataGridTextColumn Header="Combined Avg MS" Binding="{Binding CombinedAvgMS}"/>
+                    <DataGridTextColumn Header="Combined MS" Binding="{Binding CombinedLastRunTimeMS, StringFormat={}{0:0.####}}"/>
+                    <DataGridTextColumn Header="Combined Avg MS" Binding="{Binding CombinedAvgMS, StringFormat={}{0:0.####}}"/>
                     <DataGridTextColumn Header="Offenses" Binding="{Binding Offences}"/>
                     <DataGridTextColumn Header="PB's Tracked" Binding="{Binding PbCount}"/>
                     <DataGridTextColumn Header="Recompiles" Binding="{Binding Recompiles}"/>

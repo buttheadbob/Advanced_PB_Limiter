@@ -1,5 +1,6 @@
 ﻿using NLog;
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -16,6 +17,7 @@ using Torch.API.Session;
 using Torch.Session;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.UI;
+using Advanced_PB_Limiter.Utils;
 using Nexus;
 using Sandbox.ModAPI;
 using Torch.Managers;
@@ -46,6 +48,7 @@ namespace Advanced_PB_Limiter
         public static Type? Plugin;
         public static NexusAPI.Server? ThisServer;
         public static bool NexusInstalled { get; private set; }
+        private static int TickUpdateCount = 0;
 
         public override async void Init(ITorchBase torch)
         {
@@ -190,6 +193,4 @@ namespace Advanced_PB_Limiter
             return Task.CompletedTask;
         }
     }
-    
-    
 }

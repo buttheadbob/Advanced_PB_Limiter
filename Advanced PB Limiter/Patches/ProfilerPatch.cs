@@ -1,19 +1,19 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Globalization;
 using System.Reflection;
 using Advanced_PB_Limiter.Manager;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
+using ExtensionMethods;
 using NLog;
-using NLog.Fluent;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.Multiplayer;
 using Sandbox.Game.World;
 using Torch.Managers.PatchManager;
 using Torch.Utils;
 using Torch.Utils.Reflected;
+using static Advanced_PB_Limiter.Utils.HelperUtils;
 
 // ReSharper disable IdentifierTypo
 #pragma warning disable CS0649 // Field is never assigned to, and will always have its default value
@@ -30,7 +30,7 @@ namespace Advanced_PB_Limiter.Patches
         
         // There is overhead to setting up the pb and running its code that is tracked by this and not by the in-game profiler. 
         // Were punishing shitty scripts, nothing more.
-        private const double overhead = 0.08;
+        private const double overhead = 0.0;
         
         private static readonly Logger Log = LogManager.GetLogger("Advanced PB Limiter Profile Patcher");
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
@@ -67,22 +67,23 @@ namespace Advanced_PB_Limiter.Patches
             gc0 = GC.CollectionCount(0);
             gc1 = GC.CollectionCount(1);
             gc2 = GC.CollectionCount(2);
-            
-            __localTimingStart = Stopwatch.GetTimestamp();
+
             beforeMemory = Process.GetCurrentProcess().WorkingSet64;
+            __localTimingStart = Stopwatch.GetTimestamp();
         }
         
         private static void SuffixProfilePb(MyProgrammableBlock? __instance, ref long __localTimingStart)
         {
+            long __localTimingEnd = Stopwatch.GetTimestamp();
+            TimeSpan measuredSpan = __localTimingEnd.TimeElapsed(__localTimingStart); 
             if (__instance is null) return;
-            long a = Stopwatch.GetTimestamp();
             
             if (gc0 != GC.CollectionCount(0) || gc1 != GC.CollectionCount(1) || gc2 != GC.CollectionCount(2))
                return;
 
             double runTime = Config.UseSimTime
-                ? (a - __localTimingStart) * (1000.0 / (double)Stopwatch.Frequency) / (Sync.ServerSimulationRatio >= 1 ? 1 : Sync.ServerSimulationRatio) - overhead
-                : (a - __localTimingStart) * (1000.0 / (double)Stopwatch.Frequency) - overhead;
+                ? measuredSpan.TotalMilliseconds / (Sync.ServerSimulationRatio >= 1 ? 1 : Sync.ServerSimulationRatio) - overhead
+                : measuredSpan.TotalMilliseconds - overhead;
             
             if (runTime < 0.0d)
                 runTime = 0.0d;
@@ -90,7 +91,7 @@ namespace Advanced_PB_Limiter.Patches
             TrackingManager.UpdateTrackingData(__instance, runTime, Process.GetCurrentProcess().WorkingSet64 - beforeMemory);
             
             if (Config.DebugReporting)
-                Advanced_PB_Limiter.Log.Error($"{__instance.CustomName} : {(Stopwatch.GetTimestamp() - a) * (1000.0 / Stopwatch.Frequency) / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio) - overhead} :: {(a - __localTimingStart) * (1000.0 / Stopwatch.Frequency) / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio) - overhead}");
+                Advanced_PB_Limiter.Log.Error($"{__instance.CustomName} : {measuredSpan.TotalMilliseconds / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio) - overhead} :: {measuredSpan.TotalMilliseconds / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio) - overhead}");
         }
 
         private static void PrefixRecompilePb(MyProgrammableBlock? __instance)
@@ -118,7 +119,7 @@ namespace Advanced_PB_Limiter.Patches
 
             MyIdentity? player = MySession.Static.Players.TryGetIdentity(__instance.OwnerId);
          
-            if (player is not null)
+            if (Config.DebugReporting && player is not null)
                 Log.Warn($"{player.DisplayName} ({__instance.OwnerId}) tried to save a programmable block while it was turned off.  This is not allowed.");
             return false;
         }

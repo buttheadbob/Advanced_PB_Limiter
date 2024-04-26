@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
+using ExtensionMethods;
 using NLog;
 using Sandbox;
 using Sandbox.Game.Entities.Blocks;
@@ -45,6 +46,8 @@ namespace Advanced_PB_Limiter.Manager
                 Log.Error("Null TrackedPBBlock!");
                 return;
             }
+
+            if (trackedPbBlock.IsUnderGracePeriod(player.SteamId)) return;
             
             // InstaKill by run-time
             if (Config.InstantKillThreshold > 0 && lastRunTimeMS > Config.InstantKillThreshold)
@@ -55,15 +58,13 @@ namespace Advanced_PB_Limiter.Manager
             }
             
             // InstaKill by memory
-            if (Config.PBMemoryThreshold < trackedPbBlock.memoryUsage)
+            if (Config.PBMemoryThreshold != 0 && Config.PBMemoryThreshold < trackedPbBlock.memoryUsage)
             {
                 string usage = HelperUtils.FormatBytesToKB(trackedPbBlock.memoryUsage);
                 await PunishPB(player, trackedPbBlock, PunishReason.ExtremeUsage, Punishment.Destroy, $"[{usage}]");
                 Log.Error($"INSTANT-KILL TRIGGERED: {player.PlayerName} on grid {trackedPbBlock.ProgrammableBlock?.CubeGrid.DisplayName} with a memory usage of {usage}");
                 return;
             }
-
-            if (trackedPbBlock.IsUnderGracePeriod(player.SteamId)) return;
             
             double allowedRunTime = Config.MaxRunTimeMS;
             double allowedRunTimeAvg = Config.MaxRunTimeMSAvg;
@@ -82,8 +83,8 @@ namespace Advanced_PB_Limiter.Manager
             while (true)
             {
                 if (trackedPbBlock.Offences.TryPeek(out long lastOffense_cleanup))
-                {                                                                           // Limit is in minutes
-                    if (((Stopwatch.GetTimestamp() - lastOffense_cleanup) / Stopwatch.Frequency) / 60 > Config.OffenseDurationBeforeDeletion)
+                {                                                                                                                    // Limit is in minutes
+                    if (lastOffense_cleanup.TicksTillNow_TimeSpan().TotalMinutes > Config.OffenseDurationBeforeDeletion)
                         if (trackedPbBlock.Offences.TryDequeue(out _)) continue;
                 }
 
@@ -91,7 +92,7 @@ namespace Advanced_PB_Limiter.Manager
             }
 
             // Check if enough time since last offense has passed.
-            if ((Stopwatch.GetTimestamp() - trackedPbBlock.LastOffenceTick) / Stopwatch.Frequency <= Config.GraceAfterOffence)
+            if (trackedPbBlock.LastOffenceTick.TicksTillNow_TimeSpan().TotalSeconds <= Config.GraceAfterOffence)
                 return;
             
             if (allowedRunTime != 0 && lastRunTimeMS > allowedRunTime)
