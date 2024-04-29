@@ -30,7 +30,7 @@ namespace Advanced_PB_Limiter.Patches
         
         // There is overhead to setting up the pb and running its code that is tracked by this and not by the in-game profiler. 
         // Were punishing shitty scripts, nothing more.
-        private const double overhead = 0.0;
+        private const double overhead = 0.015;
         
         private static readonly Logger Log = LogManager.GetLogger("Advanced PB Limiter Profile Patcher");
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;

@@ -42,7 +42,7 @@ namespace Advanced_PB_Limiter.Utils
                 : null;
         }
         
-        public async void UpdatePBBlockData(MyProgrammableBlock pbBlock, double lastRunTimeMS, long memoryUsage)
+        public void UpdatePBBlockData(MyProgrammableBlock pbBlock, double lastRunTimeMS, long memoryUsage)
         {
             LastDataUpdateTick = Stopwatch.GetTimestamp();
             if (!PBBlocks.TryGetValue(pbBlock.EntityId, out TrackedPBBlock? trackedPBBlock))
@@ -56,7 +56,7 @@ namespace Advanced_PB_Limiter.Utils
                 return;
             
             trackedPBBlock.AddRuntimeData(lastRunTimeMS, SteamId, memoryUsage);
-            await PunishmentManager.CheckForPunishment(this, trackedPBBlock.ProgrammableBlock!.EntityId, lastRunTimeMS);
+            PunishmentManager.CheckForPunishment(this, trackedPBBlock.ProgrammableBlock!.EntityId, lastRunTimeMS);
         }
         
         public List<TrackedPBBlock> GetAllPBBlocks
