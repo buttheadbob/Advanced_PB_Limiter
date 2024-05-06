@@ -8,6 +8,7 @@ using Advanced_PB_Limiter.Settings;
 using NLog;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.World;
+using Sandbox.ModAPI.Ingame;
 
 namespace Advanced_PB_Limiter.Utils
 {
@@ -42,7 +43,7 @@ namespace Advanced_PB_Limiter.Utils
                 : null;
         }
         
-        public void UpdatePBBlockData(MyProgrammableBlock pbBlock, double lastRunTimeMS, long memoryUsage)
+        public void UpdatePBBlockData(MyProgrammableBlock pbBlock, double lastRunTimeMS, long memoryUsage, UpdateFrequency updateFrequency)
         {
             LastDataUpdateTick = Stopwatch.GetTimestamp();
             if (!PBBlocks.TryGetValue(pbBlock.EntityId, out TrackedPBBlock? trackedPBBlock))
@@ -55,7 +56,7 @@ namespace Advanced_PB_Limiter.Utils
             if (trackedPBBlock.IsUnderGracePeriod(MySession.Static.Players.TryGetSteamId(pbBlock.OwnerId)))
                 return;
             
-            trackedPBBlock.AddRuntimeData(lastRunTimeMS, SteamId, memoryUsage);
+            trackedPBBlock.AddRuntimeData(lastRunTimeMS, SteamId, memoryUsage, updateFrequency);
             PunishmentManager.CheckForPunishment(this, trackedPBBlock.ProgrammableBlock!.EntityId, lastRunTimeMS);
         }
         

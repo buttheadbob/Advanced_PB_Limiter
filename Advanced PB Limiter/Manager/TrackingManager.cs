@@ -9,6 +9,7 @@ using Advanced_PB_Limiter.Utils;
 using NLog;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.World;
+using Sandbox.ModAPI.Ingame;
 using VRage.Game.VisualScripting.Utils;
 
 namespace Advanced_PB_Limiter.Manager
@@ -56,7 +57,7 @@ namespace Advanced_PB_Limiter.Manager
             }
         }
 
-        public static void UpdateTrackingData(MyProgrammableBlock pb, double runTime, long memoryUsage)
+        public static void UpdateTrackingData(MyProgrammableBlock pb, double runTime, long memoryUsage, UpdateFrequency updateFrequency)
         {
             if (pb.OwnerId == 0)
             {
@@ -75,13 +76,13 @@ namespace Advanced_PB_Limiter.Manager
             
             if (PlayersTracked.TryGetValue(pb.OwnerId, out TrackedPlayer? player))
             {
-                player.UpdatePBBlockData(pb, runTime, memoryUsage);
+                player.UpdatePBBlockData(pb, runTime, memoryUsage, updateFrequency);
                 return;
             }
             
             player = new TrackedPlayer(pb.OwnerId);
             PlayersTracked.TryAdd(pb.OwnerId, player);
-            player.UpdatePBBlockData(pb, runTime, memoryUsage);
+            player.UpdatePBBlockData(pb, runTime, memoryUsage, updateFrequency);
         }
         
         private static void RemovePlayer(long Id)

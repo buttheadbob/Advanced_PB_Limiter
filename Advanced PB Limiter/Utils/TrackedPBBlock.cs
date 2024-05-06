@@ -1,10 +1,12 @@
 ﻿using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using Advanced_PB_Limiter.Settings;
 using ExtensionMethods;
 using Sandbox.Game.Entities.Blocks;
+using Sandbox.ModAPI.Ingame;
 
 namespace Advanced_PB_Limiter.Utils
 {
@@ -21,6 +23,8 @@ namespace Advanced_PB_Limiter.Utils
         private double RunTimesSum { get; set; } = 0;
         public double PeekRunTimeMS { get; private set; } = 0;
         public long memoryUsage { get; private set; }
+        
+        public UpdateFrequency updateFrequency { get; set; }
         
         private long _lastOffenceTick;
         public long LastOffenceTick
@@ -59,8 +63,9 @@ namespace Advanced_PB_Limiter.Utils
             this.memoryUsage = memoryUsage;
         }
 
-        public void AddRuntimeData(double lastRunTimeMS, ulong steamId, long updatedMemoryUsage)
+        public void AddRuntimeData(double lastRunTimeMS, ulong steamId, long updatedMemoryUsage, UpdateFrequency uf)
         {
+            updateFrequency = uf;
             updateMemoryUsage(updatedMemoryUsage);
             if (IsUnderGracePeriod(steamId)) return;
             if (lastRunTimeMS > PeekRunTimeMS)
@@ -90,6 +95,16 @@ namespace Advanced_PB_Limiter.Utils
                 return runTimes;
             }
         }
+
+        private int GetRunTimeDivisor()
+        {
+            return updateFrequency switch
+            {
+                UpdateFrequency.Update10 => 10,
+                UpdateFrequency.Update100 => 100,
+                _ => 1
+            };
+        }
         
         public double RunTimeMSAvg
         {
@@ -98,8 +113,9 @@ namespace Advanced_PB_Limiter.Utils
                 // If the queue doesnt have enough samples to calculate the average, return 0
                 if (RunTimesMS.Count < Config.MaxRunsToTrack)
                     return 0;
-                
-                return RunTimesSum / RunTimesMS.Count;
+
+                var divisor = GetRunTimeDivisor();
+                return RunTimesSum / RunTimesMS.Count / divisor;
             }
         }
         
@@ -107,15 +123,9 @@ namespace Advanced_PB_Limiter.Utils
         {
             get
             {
-                double[] runTimes = GetRunTimesMS;
-                double max = 0;
-                for (int index = 0; index < runTimes.Length; index++)
-                {
-                    if (runTimes[index] > max)
-                        max = runTimes[index];
-                }
+                var runTimes = GetRunTimesMS;
 
-                return max;
+                return runTimes.Prepend(0).Max();
             }
         }
         
