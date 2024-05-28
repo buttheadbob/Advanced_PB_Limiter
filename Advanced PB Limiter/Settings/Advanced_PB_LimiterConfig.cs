@@ -98,5 +98,8 @@ namespace Advanced_PB_Limiter.Settings
 
         private long _PBMemoryThreshold = 10240000; // 10MB
         public long PBMemoryThreshold { get => _PBMemoryThreshold; set => SetValue(ref _PBMemoryThreshold, value); }
+
+        private bool _killBlockProtectedInSafeZone;
+        public bool KillBlockProtectedInSafeZone { get => _killBlockProtectedInSafeZone; set => SetValue(ref _killBlockProtectedInSafeZone, value); }
     }
 }

@@ -1,6 +1,9 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading;
@@ -10,17 +13,39 @@ using Advanced_PB_Limiter.Utils;
 using ExtensionMethods;
 using NLog;
 using Sandbox;
+using Sandbox.Engine.Multiplayer;
+using Sandbox.Game;
+using Sandbox.Game.Entities;
 using Sandbox.Game.Entities.Blocks;
+using Sandbox.Game.Entities.Cube;
 using Sandbox.Game.World;
 using Sandbox.ModAPI.Ingame;
+using Torch.Utils;
+using VRage.Collections;
 using VRage.Game;
+using VRage.Game.ObjectBuilders.Components;
+using VRage.Network;
+using VRage.Replication;
 using VRageMath;
 using static Advanced_PB_Limiter.Utils.Enums;
+using Sandbox.Game.Replication;
+using VRage.Game.Entity;
+using VRage.Game.ModAPI;
 
 namespace Advanced_PB_Limiter.Manager
 {
     public static class PunishmentManager
     {
+        [ReflectedGetter(Name = "m_clientStates")]
+        private static Func<MyReplicationServer, IDictionary> _clientStates;
+        private const string CLIENT_DATA_TYPE_NAME = "VRage.Network.MyClient, VRage";
+        [ReflectedGetter(TypeName = CLIENT_DATA_TYPE_NAME, Name = "Replicables")]
+        private static Func<object, MyConcurrentDictionary<IMyReplicable, MyReplicableClientData>> _replicables;
+        [ReflectedMethod(Name = "RemoveForClient", OverrideTypeNames = new[] { null, CLIENT_DATA_TYPE_NAME, null })]
+        private static Action<MyReplicationServer, IMyReplicable, object, bool> _removeForClient;
+        [ReflectedMethod(Name = "ForceReplicable")]
+        private static Action<MyReplicationServer, IMyReplicable, Endpoint> _forceReplicable;
+        
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
         private static FieldInfo? needsInstansiationField;
@@ -248,19 +273,44 @@ namespace Advanced_PB_Limiter.Manager
             
             // Destroy the block
             if (trackedPbBlock.ProgrammableBlock is not null)
+            {
                 MySandboxGame.Static.Invoke(() =>
                 {
                     try
-                    { 
+                    {
                         needsInstansiationField?.SetValue(trackedPbBlock.ProgrammableBlock, false);
-                        trackedPbBlock.ProgrammableBlock.SlimBlock.DoDamage(trackedPbBlock.ProgrammableBlock.SlimBlock.BuildIntegrity - 1, MyDamageType.Unknown, true, null, 0);
+                        Terminate?.Invoke(trackedPbBlock.ProgrammableBlock, new object[] {  MyProgrammableBlock.ScriptTerminationReason.InstructionOverflow});
+                        
+                        // Check for SafeZone
+                        // Yes, I tried the other method, MySessionComponentSafeZones... but it doesn't always return correctly. 
+
+                        BoundingBoxD blockBoundingBoxD = trackedPbBlock.ProgrammableBlock.SlimBlock.WorldAABB;
+                        List<MyEntity>? foundEntities = MyEntities.GetEntitiesInAABB(ref blockBoundingBoxD);
+                        MySafeZone? safeZone = null;
+                        foreach (MyEntity foundEntity in foundEntities)
+                        {
+                            if (foundEntity is not MySafeZone foundZone) continue;
+                            safeZone = foundZone;
+                            break;
+                        }
+
+                        if (safeZone is not null && (safeZone.AllowedActions & MySafeZoneAction.Damage) != MySafeZoneAction.Damage)
+                        {
+                            string blockDisplayName = trackedPbBlock.ProgrammableBlock.CustomName.ToString(); // need this for resync!
+                            trackedPbBlock.ProgrammableBlock.Enabled = false; // Turn off because it won't need a recompile and restarts when rebuilt by player.
+                            trackedPbBlock.ProgrammableBlock.SlimBlock.FullyDismount(new MyInventory());
+                            PunishReSync(blockDisplayName);
+                        }
+                        else
+                            trackedPbBlock.ProgrammableBlock.SlimBlock.DoDamage(trackedPbBlock.ProgrammableBlock.SlimBlock.BuildIntegrity - 100, MyDamageType.Unknown, true, null, 0);
                     }
                     catch (Exception e)
                     {
                         Log.Error("Error while destroying a programmable block: " + e);
                     }
-                    
+
                 }, "Advanced_PB_Limiter");
+            }
         }
         
         private static void PerformPunishment_Damage(TrackedPlayer player, TrackedPBBlock trackedPbBlock, PunishReason reason, string? notes = null)
@@ -275,8 +325,29 @@ namespace Advanced_PB_Limiter.Manager
                 MySandboxGame.Static.Invoke(() =>
                 {
                     needsInstansiationField?.SetValue(trackedPbBlock.ProgrammableBlock, false);
-                    Terminate?.Invoke(trackedPbBlock.ProgrammableBlock, new object[] {  MyProgrammableBlock.ScriptTerminationReason.InstructionOverflow});
-                    trackedPbBlock.ProgrammableBlock.SlimBlock.DoDamage(Config.PunishDamageAmount, MyDamageType.Radioactivity, true, null, 0);
+
+                    BoundingBoxD blockBoundingBoxD = trackedPbBlock.ProgrammableBlock.SlimBlock.WorldAABB;
+                    List<MyEntity>? foundEntities = MyEntities.GetEntitiesInAABB(ref blockBoundingBoxD);
+                    MySafeZone? safeZone = null;
+                    foreach (MyEntity foundEntity in foundEntities)
+                    {
+                        if (foundEntity is not MySafeZone foundZone) continue;
+                        safeZone = foundZone;
+                        break;
+                    }
+                    
+                    if (safeZone is not null && (safeZone.AllowedActions & MySafeZoneAction.Damage) != MySafeZoneAction.Damage)
+                    {
+                        if (Config.KillBlockProtectedInSafeZone == false) return;
+                        
+                        string blockDisplayName = trackedPbBlock.ProgrammableBlock.CustomName.ToString(); // need this for resync!
+                        trackedPbBlock.ProgrammableBlock.Enabled = false; // Turn off because it won't need a recompile and restarts when rebuilt by player.
+                        trackedPbBlock.ProgrammableBlock.SlimBlock.FullyDismount(new MyInventory());
+                        PunishReSync(blockDisplayName);
+                        return;
+                    }
+                    
+                    trackedPbBlock.ProgrammableBlock.SlimBlock.DoDamage(Config.PunishDamageAmount, MyDamageType.Unknown, true, null, 0);
                 }, "Advanced_PB_Limiter");
         }
         
@@ -297,6 +368,45 @@ namespace Advanced_PB_Limiter.Manager
                 PunishReason.ExtremeUsage => $"Your Programmable Block on grid <{pbBlock.ProgrammableBlock?.CubeGrid.DisplayName}> was punished due to extreme usage. " + message,
                 _ => $"Your Programmable Block on grid <{pbBlock.ProgrammableBlock?.CubeGrid.DisplayName}> was punished for some reason, please check with server admins. " + message
             };
+        }
+
+        private static void PunishReSync(string blockDisplayName)
+        {
+            // Update state to all players, by Jim and slight modification by Senx for better performance.
+            MyReplicationServer? replicationServer = (MyReplicationServer)MyMultiplayer.ReplicationLayer;
+            foreach (MyPlayer onlinePlayer in MySession.Static.Players.GetOnlinePlayers())
+            {
+                Endpoint playerEndpoint = new (onlinePlayer.Client.SteamUserId, 0);
+                IDictionary? clientDataDict = _clientStates.Invoke(replicationServer);
+                object clientData;
+                try
+                {
+                    clientData = clientDataDict[playerEndpoint];
+                }
+                catch
+                {
+                    return;
+                }
+                    
+                MyConcurrentDictionary<IMyReplicable, MyReplicableClientData>? clientReplicables = _replicables.Invoke(clientData);
+
+                List<IMyReplicable> replicableList = new (clientReplicables.Count);
+                foreach (KeyValuePair<IMyReplicable, MyReplicableClientData> pair in clientReplicables)
+                {
+                    ReadOnlySpan<char> instanceName = pair.Key.InstanceName.AsSpan();
+                    if (instanceName.IsEmpty) continue;
+                    if (!instanceName.StartsWith("MyP".AsSpan())) continue; // Quick and Dirty
+                    if (!instanceName.StartsWith("MyProgrammableBlock".AsSpan())) continue;
+                    if (!instanceName.EndsWith(blockDisplayName.AsSpan())) continue;
+                    replicableList.Add(pair.Key);
+                }
+
+                foreach (IMyReplicable? replicable in replicableList)
+                {
+                    _removeForClient.Invoke(replicationServer, replicable, clientData, true);
+                    _forceReplicable.Invoke(replicationServer, replicable, playerEndpoint);
+                }
+            }
         }
     }
 }
