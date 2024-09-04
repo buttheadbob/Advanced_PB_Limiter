@@ -136,11 +136,12 @@ namespace Advanced_PB_Limiter.Manager
                     {
                         MySandboxGame.Static.Invoke(() => // Not sure if this actually needs to be forced on the game thread.
                         {
-                            trackedPbBlock.ProgrammableBlock?.Run($"GracefulShutDown::LastWarning", UpdateType.Script);
+                            trackedPbBlock.ProgrammableBlock?.Run($"GracefulShutDown::-1", UpdateType.Script);
                         }, "Advanced_PB_Limiter");
                     }
                     return;
                 }
+                
                 StringBuilder sb = new();
                 sb.AppendLine();
                 sb.AppendLine($"Your Limit: [{allowedRunTime:0.0000}ms]");
