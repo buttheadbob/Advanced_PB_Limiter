@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:local="clr-namespace:Advanced_PB_Limiter.UI"
+             xmlns:settings="clr-namespace:Advanced_PB_Limiter.Settings"
              xmlns:sys="clr-namespace:System;assembly=mscorlib"
              xmlns:utils="clr-namespace:Advanced_PB_Limiter.Utils"
              mc:Ignorable="d"
@@ -84,7 +85,7 @@
             <Setter Property="FontSize" Value="12"/>
         </Style>
     </UserControl.Resources>
-    <TabControl>
+    <TabControl d:DataContext="{d:DesignInstance settings:Advanced_PB_LimiterConfig}">
         <TabItem Header="Main Settings">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -128,25 +129,33 @@
                 <CheckBox Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsChecked="{Binding Enabled}"/>
                 <TextBlock Grid.Row="0" Grid.Column="2" Text="Enable or Disable the plugin" Margin="3" TextWrapping="Wrap"/>
                 
-                <TextBlock Grid.Row="19" Grid.Column="0" Text="Turn off when owned by Nobody" Margin="3" VerticalAlignment="Center"/>
-                <CheckBox Grid.Row="19" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding TurnOffUnownedBlocks}"/>
-                <TextBlock Grid.Row="19" Grid.Column="2" Text="PB's with no owner can still run... but should they?" Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Debug Logging" Margin="3"/>
+                <CheckBox Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsChecked="{Binding DebugReporting}"/>
+                <TextBlock Grid.Row="1" Grid.Column="2" Text="Shows some extra stuff that will fill your log file." Margin="3"/>
                 
-                <TextBlock Grid.Row="20" Grid.Column="0" Text="Auto Enable" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
-                <CheckBox Grid.Row="20" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding AllowSelfTurnOnExploit}"/>
-                <TextBlock Grid.Row="20" Grid.Column="2" Text="Players use the Save() function to turn on their pb automatically.  This runs regardless if the pb is enabled or not.  Uncheck this box to prevent that." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Turn off when owned by Nobody" Margin="3" VerticalAlignment="Center"/>
+                <CheckBox Grid.Row="2" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding TurnOffUnownedBlocks}"/>
+                <TextBlock Grid.Row="2" Grid.Column="2" Text="PB's with no owner can still run... but should they?" Margin="3" TextWrapping="Wrap"/>
                 
-                <TextBlock Grid.Row="21" Grid.Column="0" Text="Auto Enable NPC" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
-                <CheckBox Grid.Row="21" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding AllowNPCToAutoTurnOn}"/>
-                <TextBlock Grid.Row="21" Grid.Column="2" Text="If Auto Enable for Players is checked, NPC will automatically be allowed.  Check this box to allow NPC programmable block Save() command to run.  Useful for custom operations on server!" Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Auto Enable" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+                <CheckBox Grid.Row="3" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding AllowSelfTurnOnExploit}"/>
+                <TextBlock Grid.Row="3" Grid.Column="2" Text="Players use the Save() function or ctor to turn on their pb automatically.  This runs regardless if the pb is enabled or not.  Uncheck this box to prevent that." Margin="3" TextWrapping="Wrap"/>
                 
-                <TextBlock Grid.Row="22" Grid.Column="0" Text="InstaKill Limit" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
-                <TextBox Grid.Row="22" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding InstantKillThreshold}" TextAlignment="Center"/>
-                <TextBlock Grid.Row="22" Grid.Column="2" Text="Any pb that reaches this limit will be damaged beyond function immediately, regardless if no offences have previously occured.  No Graceful shutdown request will be sent.  Set to 0 to disable." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="Auto Enable NPC" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+                <CheckBox Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding AllowNPCToAutoTurnOn}"/>
+                <TextBlock Grid.Row="4" Grid.Column="2" Text="If Auto Enable for Players is checked, NPC will automatically be allowed.  Check this box to allow NPC programmable block Save() command to run.  Useful for custom operations on server!" Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="InstaKill Limit" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+                <TextBox Grid.Row="5" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding InstantKillThreshold}" TextAlignment="Center"/>
+                <TextBlock Grid.Row="5" Grid.Column="2" Text="Any pb that reaches this limit will be damaged beyond function immediately, regardless if no offences have previously occured.  No Graceful shutdown request will be sent.  Set to 0 to disable." Margin="3" TextWrapping="Wrap"/>
 
-                <TextBlock Grid.Row="23" Grid.Column="0" Text="Use SimTime" Margin="3" VerticalAlignment="Center" Foreground="Red" />
-                <CheckBox Grid.Row="23" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding UseSimTime}" />
-                <TextBlock Grid.Row="23" Grid.Column="2" Text="Use SimTime will adjust the runtime for Sim Speed.  When sim speed tanks then the script running can also take longer to run at no fault of the player." Margin="3" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="6" Grid.Column="0" Text="Use SimTime" Margin="3" VerticalAlignment="Center" Foreground="Red" />
+                <CheckBox Grid.Row="6" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding UseSimTime}" />
+                <TextBlock Grid.Row="6" Grid.Column="2" Text="Use SimTime will adjust the runtime for Sim Speed.  When sim speed tanks then the script running can also take longer to run at no fault of the player." Margin="3" TextWrapping="Wrap" />
+                
+                <TextBlock Grid.Row="7" Grid.Column="0" Text="Monitor Memory Usage" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+                <CheckBox Grid.Row="7" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding EnableMemoryMonitoring}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Row="7" Grid.Column="2" Text="Limit PB use of system memory (Prevents some script attacks against the server and shitty scripts from making the system unstable.  Set to 0 to ignore." Margin="3" TextWrapping="Wrap" />
                 
                 <TextBlock Grid.Row="24" Grid.Column="0" Text="Max Memory per PB (in bytes)" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
                 <TextBox Grid.Row="24" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="75"  Text="{Binding PBMemoryThreshold}" TextAlignment="Center"/>

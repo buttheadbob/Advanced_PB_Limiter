@@ -35,7 +35,7 @@ namespace Advanced_PB_Limiter
         private Persistent<Advanced_PB_LimiterConfig>? _config;
         public Advanced_PB_LimiterConfig? Config => _config?.Data;
         public static Dispatcher UI_Dispatcher { get; set; } = Dispatcher.CurrentDispatcher;
-        private static Timer NexusConnectionChecker { get; set; } = new Timer(10000);
+        private static Timer NexusConnectionChecker { get; set; } = new (10000);
         public static bool GameOnline { get; set; }
         public PatchManager? _pm;
         public PatchContext? _context;

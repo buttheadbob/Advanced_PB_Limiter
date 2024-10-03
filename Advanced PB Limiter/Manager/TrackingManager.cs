@@ -3,13 +3,19 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Timers;
+using System.Threading;
+using System.Threading.Tasks;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
 using NLog;
+using NLog.Fluent;
 using Sandbox.Game.Entities.Blocks;
+using Sandbox.Game.Entities.Cube;
 using Sandbox.Game.World;
+using Sandbox.ModAPI;
 using VRage.Game.VisualScripting.Utils;
+using VRage.ModAPI;
+using Timer = System.Timers.Timer;
 
 namespace Advanced_PB_Limiter.Manager
 {
@@ -20,6 +26,8 @@ namespace Advanced_PB_Limiter.Manager
         private static readonly Timer _cleanupTimer = new ();
         private static readonly int _lastKnownCleanupInterval = Config.RemoveInactivePBsAfterSeconds;
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
+        private static ConcurrentDictionary<long, ProgramInfo> ProgrammablePrograms = new();
+        private static readonly Timer _memoryCheckTimer = new (5000);
 
         public static void Init()
         {
@@ -27,6 +35,8 @@ namespace Advanced_PB_Limiter.Manager
             if (Config.RemovePlayersWithNoPBFrequencyInMinutes <= 0) return;
             _cleanupTimer.Interval = TimeSpan.FromMinutes(1).TotalMilliseconds;
             _cleanupTimer.Start();
+            _memoryCheckTimer.Elapsed += (sender, args) => CheckInstanceMemoryUsages();
+            _memoryCheckTimer.Start();
         }
         
         public static List<TrackedPlayer> GetTrackedPlayerData()
@@ -56,7 +66,7 @@ namespace Advanced_PB_Limiter.Manager
             }
         }
 
-        public static void UpdateTrackingData(MyProgrammableBlock pb, double runTime, long memoryUsage)
+        public static void UpdateTrackingData(MyProgrammableBlock pb, double runTime)
         {
             if (pb.OwnerId == 0)
             {
@@ -75,13 +85,13 @@ namespace Advanced_PB_Limiter.Manager
             
             if (PlayersTracked.TryGetValue(pb.OwnerId, out TrackedPlayer? player))
             {
-                player.UpdatePBBlockData(pb, runTime, memoryUsage);
+                player.UpdatePBBlockData(pb, runTime);
                 return;
             }
             
             player = new TrackedPlayer(pb.OwnerId);
             PlayersTracked.TryAdd(pb.OwnerId, player);
-            player.UpdatePBBlockData(pb, runTime, memoryUsage);
+            player.UpdatePBBlockData(pb, runTime);
         }
         
         private static void RemovePlayer(long Id)
@@ -163,6 +173,88 @@ namespace Advanced_PB_Limiter.Manager
                         Random random = new(DateTime.Now.Millisecond);
                         PunishmentManager.PunishPB(trackedPlayer.Value, trackedPlayer.Value.GetAllPBBlocks[random.Next(0,trackedPlayer.Value.GetAllPBBlocks.Count()-1)], PunishmentManager.PunishReason.CombinedAverageRuntimeOverLimit);
                     }
+                }
+            }
+        }
+
+        public static bool IsPBInstanceReferenceValid(long pbEntityID)
+        {
+            if (!ProgrammablePrograms.TryGetValue(pbEntityID, out ProgramInfo? programmableProgram)) return false;
+            if (programmableProgram == null) return false;
+            if (!programmableProgram.ProgramReference.TryGetTarget(out IMyGridProgram? program)) return false;
+            return program != null;
+        }
+
+        public static bool IsMemoryCheckInProgress(long entityID)
+        {
+            if (!ProgrammablePrograms.TryGetValue(entityID, out ProgramInfo? programmableProgram)) return false;
+
+            return Volatile.Read(ref programmableProgram.IsChecking) == 1;
+        }
+
+        public static void AddPBInstanceReference(long entityID, ProgramInfo programInfo)
+        {
+            ProgrammablePrograms.AddOrUpdate(entityID, programInfo, (l, info) => info);
+        }
+
+        public static void RemovePBInstanceReference(long entityId)
+        {
+            ProgrammablePrograms.TryRemove(entityId, out _);
+        }
+
+        private static void CheckInstanceMemoryUsages()
+        {
+            if (!Config.EnableMemoryMonitoring) return;
+            
+            foreach (KeyValuePair<long,ProgramInfo> programInfo in ProgrammablePrograms)
+            {
+                if (Interlocked.CompareExchange(ref programInfo.Value.IsChecking, 1, 0) != 0)
+                    continue;
+
+                try
+                {
+                    if (!programInfo.Value.ProgramReference.TryGetTarget(out IMyGridProgram? program))
+                    {
+                        RemovePBInstanceReference(programInfo.Key);
+                        continue;
+                    }
+
+                    if (program == null)
+                    {
+                        RemovePBInstanceReference(programInfo.Key);
+                        continue;
+                    }
+                
+                    GetSize.OfAssembly(program, out long size, out long time);
+                    if (Config.DebugReporting)
+                        Log.Info($"Programmable Block[{MyAPIGateway.Entities.GetEntityById(programInfo.Key).Name}] Size[{size}] Time[{TimeSpan.FromTicks(time).TotalMilliseconds}ms]");
+                
+                    programInfo.Value.LastUpdate = DateTime.Now;
+
+                    PlayersTracked.TryGetValue(programInfo.Value.OwnerID, out TrackedPlayer? trackedPlayer);
+                    TrackedPBBlock? block = null;
+                
+                    if (trackedPlayer == null)
+                    {
+                        foreach (TrackedPlayer player in PlayersTracked.Values)
+                        {
+                            block = player.GetTrackedPB(programInfo.Key);
+                            if (block != null)
+                                break;
+                        }
+                    }
+                    else
+                    {
+                        block = trackedPlayer.GetTrackedPB(programInfo.Key);
+                    }
+                
+                    if (block == null) continue;
+                
+                    block.updateMemoryUsage(size);
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref programInfo.Value.IsChecking, 0);
                 }
             }
         }

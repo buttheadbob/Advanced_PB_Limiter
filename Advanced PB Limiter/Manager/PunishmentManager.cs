@@ -108,7 +108,7 @@ namespace Advanced_PB_Limiter.Manager
             while (true)
             {
                 if (trackedPbBlock.Offences.TryPeek(out long lastOffense_cleanup))
-                {                                                                                                                    // Limit is in minutes
+                {                           // Limit is in minutes
                     if (lastOffense_cleanup.TicksTillNow_TimeSpan().TotalMinutes > Config.OffenseDurationBeforeDeletion)
                         if (trackedPbBlock.Offences.TryDequeue(out _)) continue;
                 }
@@ -259,6 +259,7 @@ namespace Advanced_PB_Limiter.Manager
             if (trackedPbBlock.ProgrammableBlock is not null)
                 MySandboxGame.Static.Invoke(() =>
                 {
+                    trackedPbBlock.ProgrammableBlock.Enabled = false;
                     needsInstansiationField?.SetValue(trackedPbBlock.ProgrammableBlock, false);
                     Terminate?.Invoke(trackedPbBlock.ProgrammableBlock, new object[] {  MyProgrammableBlock.ScriptTerminationReason.InstructionOverflow});
                     trackedPbBlock.ProgrammableBlock.Enabled = false;
@@ -279,6 +280,7 @@ namespace Advanced_PB_Limiter.Manager
                 {
                     try
                     {
+                        trackedPbBlock.ProgrammableBlock.Enabled = false;
                         needsInstansiationField?.SetValue(trackedPbBlock.ProgrammableBlock, false);
                         Terminate?.Invoke(trackedPbBlock.ProgrammableBlock, new object[] {  MyProgrammableBlock.ScriptTerminationReason.InstructionOverflow});
                         

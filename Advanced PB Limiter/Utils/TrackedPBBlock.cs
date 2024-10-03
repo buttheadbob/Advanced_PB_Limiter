@@ -40,9 +40,7 @@ namespace Advanced_PB_Limiter.Utils
 
         public void updateMemoryUsage(long bytes)
         {
-            memoryUsage += bytes;
-            if (memoryUsage < 0)
-                memoryUsage = 0;
+            memoryUsage = bytes;
         }
         
         public void ResetMemoryUsage()
@@ -50,18 +48,16 @@ namespace Advanced_PB_Limiter.Utils
             memoryUsage = 0;
         }
 
-        public TrackedPBBlock(string gridName, MyProgrammableBlock pbBlock, long memoryUsage)
+        public TrackedPBBlock(string gridName, MyProgrammableBlock pbBlock)
         {
             GridName = gridName;
             PBStartTime = Stopwatch.GetTimestamp();
             ProgrammableBlock = pbBlock;
             LastUpdateTick = Stopwatch.GetTimestamp();
-            this.memoryUsage = memoryUsage;
         }
 
-        public void AddRuntimeData(double lastRunTimeMS, ulong steamId, long updatedMemoryUsage)
+        public void AddRuntimeData(double lastRunTimeMS, ulong steamId)
         {
-            updateMemoryUsage(updatedMemoryUsage);
             if (IsUnderGracePeriod(steamId)) return;
             if (lastRunTimeMS > PeekRunTimeMS)
                 PeekRunTimeMS = lastRunTimeMS;

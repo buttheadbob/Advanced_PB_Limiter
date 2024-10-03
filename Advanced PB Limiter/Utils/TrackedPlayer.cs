@@ -42,12 +42,12 @@ namespace Advanced_PB_Limiter.Utils
                 : null;
         }
         
-        public void UpdatePBBlockData(MyProgrammableBlock pbBlock, double lastRunTimeMS, long memoryUsage)
+        public void UpdatePBBlockData(MyProgrammableBlock pbBlock, double lastRunTimeMS)
         {
             LastDataUpdateTick = Stopwatch.GetTimestamp();
             if (!PBBlocks.TryGetValue(pbBlock.EntityId, out TrackedPBBlock? trackedPBBlock))
             {
-                trackedPBBlock = new TrackedPBBlock(pbBlock.CubeGrid.DisplayName, pbBlock, memoryUsage);
+                trackedPBBlock = new TrackedPBBlock(pbBlock.CubeGrid.DisplayName, pbBlock);
                 PBBlocks.TryAdd(pbBlock.EntityId, trackedPBBlock);
                 return;
             }
@@ -55,7 +55,7 @@ namespace Advanced_PB_Limiter.Utils
             if (trackedPBBlock.IsUnderGracePeriod(MySession.Static.Players.TryGetSteamId(pbBlock.OwnerId)))
                 return;
             
-            trackedPBBlock.AddRuntimeData(lastRunTimeMS, SteamId, memoryUsage);
+            trackedPBBlock.AddRuntimeData(lastRunTimeMS, SteamId);
             PunishmentManager.CheckForPunishment(this, trackedPBBlock.ProgrammableBlock!.EntityId, lastRunTimeMS);
         }
         

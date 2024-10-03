@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Advanced_PB_Limiter.Utils;
 using Torch;
@@ -95,6 +96,9 @@ namespace Advanced_PB_Limiter.Settings
 
         private bool _debugReporting;
         public bool DebugReporting { get => _debugReporting; set => SetValue(ref _debugReporting, value); }
+
+        private bool _enableMemoryMonitoring = true;
+        public bool EnableMemoryMonitoring {get=> _enableMemoryMonitoring; set => SetValue(ref _enableMemoryMonitoring, value); }
 
         private long _PBMemoryThreshold = 10240000; // 10MB
         public long PBMemoryThreshold { get => _PBMemoryThreshold; set => SetValue(ref _PBMemoryThreshold, value); }
