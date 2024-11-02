@@ -84,6 +84,7 @@ namespace Advanced_PB_Limiter
                     if (!NexusInstalled)
                         NexusConnectionChecker.Start();
                     GameOnline = true;
+                    ProfilerPatch_Torch.Init();
                     break;
                 
                 case TorchSessionState.Unloading:

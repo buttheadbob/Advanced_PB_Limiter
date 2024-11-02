@@ -86,6 +86,9 @@ namespace Advanced_PB_Limiter.Settings
         
         private bool _useSimTime = true;
         public bool UseSimTime { get => _useSimTime; set => SetValue(ref _useSimTime, value); }
+
+        private bool _requireRecompileOnRestart = false;
+        public bool RequireRecompileOnRestart {get => _requireRecompileOnRestart; set => SetValue(ref _requireRecompileOnRestart, value); }
         
         // Future update to have players in different tiers.
         // Each tier has a different run time adjustment.

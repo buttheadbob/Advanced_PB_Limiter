@@ -22,7 +22,7 @@ namespace Advanced_PB_Limiter.Manager
     public static class TrackingManager
     {
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
-        private static ConcurrentDictionary<long,TrackedPlayer> PlayersTracked { get; } = new ();
+        public static ConcurrentDictionary<long,TrackedPlayer> PlayersTracked { get; } = new ();
         private static readonly Timer _cleanupTimer = new ();
         private static readonly int _lastKnownCleanupInterval = Config.RemoveInactivePBsAfterSeconds;
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
@@ -227,7 +227,10 @@ namespace Advanced_PB_Limiter.Manager
                 
                     GetSize.OfAssembly(program, out long size, out long time);
                     if (Config.DebugReporting)
-                        Log.Info($"Programmable Block[{MyAPIGateway.Entities.GetEntityById(programInfo.Key).Name}] Size[{size}] Time[{TimeSpan.FromTicks(time).TotalMilliseconds}ms]");
+                    {
+                        string blockName = MyAPIGateway.Entities.GetEntityById(programInfo.Key).Name ?? "Unknown";
+                        Log.Info($"Programmable Block[{blockName}] Size[{size}] Time[{TimeSpan.FromTicks(time).TotalMilliseconds}ms]");
+                    }
                 
                     programInfo.Value.LastUpdate = DateTime.Now;
 

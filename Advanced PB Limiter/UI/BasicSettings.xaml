@@ -137,11 +137,11 @@
                 <CheckBox Grid.Row="2" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding TurnOffUnownedBlocks}"/>
                 <TextBlock Grid.Row="2" Grid.Column="2" Text="PB's with no owner can still run... but should they?" Margin="3" TextWrapping="Wrap"/>
                 
-                <TextBlock Grid.Row="3" Grid.Column="0" Text="Auto Enable" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Auto Enable" Margin="3" VerticalAlignment="Center" />
                 <CheckBox Grid.Row="3" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding AllowSelfTurnOnExploit}"/>
                 <TextBlock Grid.Row="3" Grid.Column="2" Text="Players use the Save() function or ctor to turn on their pb automatically.  This runs regardless if the pb is enabled or not.  Uncheck this box to prevent that." Margin="3" TextWrapping="Wrap"/>
                 
-                <TextBlock Grid.Row="4" Grid.Column="0" Text="Auto Enable NPC" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="Auto Enable NPC" Margin="3" VerticalAlignment="Center" />
                 <CheckBox Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding AllowNPCToAutoTurnOn}"/>
                 <TextBlock Grid.Row="4" Grid.Column="2" Text="If Auto Enable for Players is checked, NPC will automatically be allowed.  Check this box to allow NPC programmable block Save() command to run.  Useful for custom operations on server!" Margin="3" TextWrapping="Wrap"/>
                 
@@ -149,19 +149,23 @@
                 <TextBox Grid.Row="5" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding InstantKillThreshold}" TextAlignment="Center"/>
                 <TextBlock Grid.Row="5" Grid.Column="2" Text="Any pb that reaches this limit will be damaged beyond function immediately, regardless if no offences have previously occured.  No Graceful shutdown request will be sent.  Set to 0 to disable." Margin="3" TextWrapping="Wrap"/>
 
-                <TextBlock Grid.Row="6" Grid.Column="0" Text="Use SimTime" Margin="3" VerticalAlignment="Center" Foreground="Red" />
+                <TextBlock Grid.Row="6" Grid.Column="0" Text="Use SimTime" Margin="3" VerticalAlignment="Center"  />
                 <CheckBox Grid.Row="6" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding UseSimTime}" />
                 <TextBlock Grid.Row="6" Grid.Column="2" Text="Use SimTime will adjust the runtime for Sim Speed.  When sim speed tanks then the script running can also take longer to run at no fault of the player." Margin="3" TextWrapping="Wrap" />
                 
-                <TextBlock Grid.Row="7" Grid.Column="0" Text="Monitor Memory Usage" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
-                <CheckBox Grid.Row="7" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding EnableMemoryMonitoring}" HorizontalAlignment="Center"/>
-                <TextBlock Grid.Row="7" Grid.Column="2" Text="Limit PB use of system memory (Prevents some script attacks against the server and shitty scripts from making the system unstable.  Set to 0 to ignore." Margin="3" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="7" Grid.Column="0" Text="No Recompile On Restart" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+                <CheckBox Grid.Row="7" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding RequireRecompileOnRestart}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Row="7" Grid.Column="2" Text="Checking this will prevent pb's from being compiled during restart when turned off.  This means the player will have to click Recompile instead of Run.  This is best to prevent timers from enabling pb's.  This also means a button will not turn the pb on." Margin="3" TextWrapping="Wrap" />
                 
-                <TextBlock Grid.Row="24" Grid.Column="0" Text="Max Memory per PB (in bytes)" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+                <TextBlock Grid.Row="8" Grid.Column="0" Text="Monitor Memory Usage" Margin="3" VerticalAlignment="Center" />
+                <CheckBox Grid.Row="8" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding EnableMemoryMonitoring}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Row="8" Grid.Column="2" Text="Enable/Disable the limiting and monitoring of memory usage." Margin="3" TextWrapping="Wrap" />
+                
+                <TextBlock Grid.Row="24" Grid.Column="0" Text="Max Memory per PB (in bytes)" Margin="3" VerticalAlignment="Center"/>
                 <TextBox Grid.Row="24" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="75"  Text="{Binding PBMemoryThreshold}" TextAlignment="Center"/>
                 <TextBlock Grid.Row="24" Grid.Column="2" Text="Limit PB use of system memory (Prevents some script attacks against the server and shitty scripts from making the system unstable.  Set to 0 to ignore." Margin="3" TextWrapping="Wrap" />
                 
-                <TextBlock Grid.Row="25" Grid.Column="0" Text="Destroy Protected PB" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+                <TextBlock Grid.Row="25" Grid.Column="0" Text="Destroy Protected PB" Margin="3" VerticalAlignment="Center" />
                 <CheckBox Grid.Row="25" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding KillBlockProtectedInSafeZone}"/>
                 <TextBlock Grid.Row="25" Grid.Column="2" Text="Programmable Blocks in a SafeZone with damage disabled wont receive any damage.  Enable this will cause the block to be have all its building materials removed and reset to an unwelded block." Margin="3" TextWrapping="Wrap"/>
                 

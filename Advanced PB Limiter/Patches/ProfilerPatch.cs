@@ -12,6 +12,8 @@ using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
 using ExtensionMethods;
 using NLog;
+using NLog.Fluent;
+using Sandbox;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.Multiplayer;
 using Sandbox.Game.World;
@@ -20,6 +22,7 @@ using Torch.Managers.PatchManager;
 using Torch.Utils;
 using Torch.Utils.Reflected;
 using VRage;
+using VRage.Library.Net;
 using static Advanced_PB_Limiter.Utils.HelperUtils;
 
 // ReSharper disable IdentifierTypo
@@ -36,12 +39,11 @@ namespace Advanced_PB_Limiter.Patches
         // There is overhead to setting up the pb and running its code that is tracked by this and not by the in-game profiler. 
         // We're punishing shitty scripts, nothing more.
         private const double overhead = 0.00;
+
+        private static ConcurrentDictionary<long,MyProgrammableBlock?> _disabledProgrammableBlocks = new();
         
         private static readonly Logger Log = LogManager.GetLogger("Advanced PB Limiter Profile Patcher");
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
-
-        private const string termToRemove = "Me.Enabled";
-        private static string pattern = $@"\s*{Regex.Escape(termToRemove)}\s*=\s*True\s*";
         
         [ReflectedMethodInfo(typeof(MyProgrammableBlock), "RunSandboxedProgramActionCore")]
         private static readonly MethodInfo? _programmableRun;
@@ -57,9 +59,38 @@ namespace Advanced_PB_Limiter.Patches
         
         [ReflectedGetter(Name = "m_instance")]
         private static readonly Func<MyProgrammableBlock, IMyGridProgram> get_AssemblyInstance;
-        
-        
-        
+
+        public static async void Init()
+        {
+            if (Config.AllowSelfTurnOnExploit)
+                return;
+            
+            if (Config.RequireRecompileOnRestart)
+                return;
+            
+            if (Config.DebugReporting)
+                Log.Warn("Shutting down all pb's that were off during startup in 30 seconds...");
+            
+            await Task.Delay(30000);
+            
+            if (Config.DebugReporting)
+                Log.Info("Shutting down all pb's that should not be running....");
+            
+            MySandboxGame.Static.Invoke(() =>
+            {
+                foreach (KeyValuePair<long, MyProgrammableBlock?> kvp in _disabledProgrammableBlocks)
+                {
+                    if (kvp.Value == null) continue;
+                    
+                    if (Config.DebugReporting)
+                        Log.Warn("Shutting down: " + kvp.Value.CustomName);
+                    
+                    kvp.Value.Enabled = false;
+                    _disabledProgrammableBlocks.TryRemove(kvp.Key, out _);
+                }
+            },"PB Limiter");
+            
+        }
         
         public static void Patch(PatchContext ctx)
         {
@@ -69,6 +100,8 @@ namespace Advanced_PB_Limiter.Patches
             ctx.GetPattern(_programmableRun).Suffixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(SuffixProfilePb)));
             
             ctx.GetPattern(_programmableRecompile).Prefixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(PrefixRecompilePb)));
+            ctx.GetPattern(_programmableRecompile).Suffixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(SuffixRecompilePb)));
+            
             ctx.GetPattern(_programmableSaveMethod).Prefixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(PrefixSaveMethod)));
 
             Log.Info("Finished Patching!");
@@ -84,14 +117,29 @@ namespace Advanced_PB_Limiter.Patches
                 return false;
             }
 
-            if (__instance is { Enabled: false } && !Config.AllowSelfTurnOnExploit)
+            if (!__instance.Enabled)
             {
-                __localSkipped = true;
-                return false;
+                if (Config.RequireRecompileOnRestart)
+                {
+                    if (Config.DebugReporting)
+                        Log.Warn("Skipping recompile for pb: " + __instance.CustomName);
+                    
+                    __localSkipped = true;
+                    return false;
+                }
+                
+                if (!Config.AllowSelfTurnOnExploit)
+                {
+                    if (Config.DebugReporting)
+                        Log.Warn();
+                    _disabledProgrammableBlocks.TryAdd(__instance.EntityId, __instance);
+                }
             }
 
             if (TrackingManager.IsMemoryCheckInProgress(__instance.EntityId))
             {
+                if (Config.DebugReporting)
+                    Log.Warn("Skipping pb run for memory check.");
                 __localSkipped = true;
                 return false;
             }
@@ -103,16 +151,13 @@ namespace Advanced_PB_Limiter.Patches
         private static void SuffixProfilePb(ref string response, MyProgrammableBlock? __instance, ref long __localTimingStart, ref bool __localSkipped, ref MyProgrammableBlock.ScriptTerminationReason __result)
         {
             TimeSpan measuredSpan = Stopwatch.GetTimestamp().TimeElapsed(__localTimingStart);
+            if (__instance == null) return;
             
             if (__localSkipped)
             {
                 __result = MyProgrammableBlock.ScriptTerminationReason.AlreadyRunning;
-                response = "";
                 return;
             }
-            
-            if (__instance == null) return;
-            if (__localTimingStart == 0) return;
             
             // the pb will still run up to the point of executing the script even when disabled by script termination fault, this will stop some of that.
             // also stops the limiter from checking the block.
@@ -148,7 +193,7 @@ namespace Advanced_PB_Limiter.Patches
             TrackingManager.UpdateTrackingData(__instance, runTime); 
         }
 
-        private static void PrefixRecompilePb(MyProgrammableBlock? __instance, ref string program)
+        private static void PrefixRecompilePb(MyProgrammableBlock? __instance, ref string program, ref bool __localDisable)
         {
             if (__instance is null)
             {
@@ -156,12 +201,24 @@ namespace Advanced_PB_Limiter.Patches
                 return;
             }
 
+            if (__instance.Enabled == false && !Config.AllowSelfTurnOnExploit)
+            {
+                __instance.Enabled = false;
+                __localDisable = true;
+            }
+
             TrackingManager.RemovePBInstanceReference(__instance.EntityId);
             
-            if (!Config.AllowSelfTurnOnExploit)
-                program = Regex.Replace(program, pattern, string.Empty, RegexOptions.IgnoreCase);
+            //if (!Config.AllowSelfTurnOnExploit)
+            //    program = Regex.Replace(program, pattern, string.Empty, RegexOptions.IgnoreCase);
             
             TrackingManager.PBRecompiled(__instance);
+        }
+
+        private static void SuffixRecompilePb(MyProgrammableBlock? __instance, ref bool __localDisable)
+        {
+            if (__instance is null) return;
+            if (__localDisable) __instance.Enabled = false;
         }
         
         private static bool PrefixSaveMethod(MyProgrammableBlock? __instance)

@@ -3,6 +3,8 @@ using System.Threading.Tasks;
 using Advanced_PB_Limiter.Manager;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
+using Sandbox;
+using Sandbox.ModAPI.Ingame;
 using Torch.Commands;
 using Torch.Commands.Permissions;
 using VRage.Game.ModAPI;
@@ -14,6 +16,22 @@ namespace Advanced_PB_Limiter.Commands
     {
         private Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
 
+        [Command("requestpbshutdown", "Send the shutdown request to all pb scripts that monitor for it.  add the amount of seconds until restart if desired.  Eg: !requestpbshutdown 10")]
+        [Permission(MyPromoteLevel.Admin)]
+        public void RequestPbShutdown(int seconds = 1)
+        {
+            MySandboxGame.Static.Invoke(() => // Not sure if this actually needs to be forced on the game thread.
+            {
+                foreach (TrackedPlayer? tplayer in TrackingManager.PlayersTracked.Values)
+                {
+                    if (tplayer == null) continue;
+                    foreach (TrackedPBBlock? pbBlock in tplayer.GetAllPBBlocks)
+                    {
+                        pbBlock?.ProgrammableBlock?.Run($"GracefulShutDown::{seconds}", UpdateType.Script);
+                    }
+                }
+            }, "Advanced_PB_Limiter");
+        }
         
         [Command("debug", "Only for debugging, not regular use for servers.")]
         [Permission(MyPromoteLevel.Admin)]
