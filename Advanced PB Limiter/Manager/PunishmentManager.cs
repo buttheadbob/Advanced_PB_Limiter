@@ -18,6 +18,7 @@ using Sandbox.Game;
 using Sandbox.Game.Entities;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.Entities.Cube;
+using Sandbox.Game.Multiplayer;
 using Sandbox.Game.World;
 using Sandbox.ModAPI.Ingame;
 using Torch.Utils;
@@ -31,6 +32,7 @@ using static Advanced_PB_Limiter.Utils.Enums;
 using Sandbox.Game.Replication;
 using VRage.Game.Entity;
 using VRage.Game.ModAPI;
+using VRage.Sync;
 
 namespace Advanced_PB_Limiter.Manager
 {
@@ -63,6 +65,7 @@ namespace Advanced_PB_Limiter.Manager
         public static void CheckForPunishment(TrackedPlayer player, long pbEntityId, double lastRunTimeMS)
         {
             if (!Config.Enabled) return;
+            if (Config.EnforceOnlyBelowSimThreshold && Sync.ServerSimulationRatio >= Config.EnforceOnlyBelowSimRate) return;
             if (GracefulShutdownsInProgress.TryGetValue(pbEntityId, out _)) return;
             
             TrackedPBBlock? trackedPbBlock = player.GetTrackedPB(pbEntityId);
@@ -120,6 +123,7 @@ namespace Advanced_PB_Limiter.Manager
             if (trackedPbBlock.LastOffenceTick.TicksTillNow_TimeSpan().TotalSeconds <= Config.GraceAfterOffence)
                 return;
             
+            // Check for runtime offense
             if (allowedRunTime != 0 && lastRunTimeMS > allowedRunTime)
             {
                 trackedPbBlock.Offences.Enqueue(Stopwatch.GetTimestamp());
@@ -130,11 +134,11 @@ namespace Advanced_PB_Limiter.Manager
                 if (trackedPbBlock.Offences.Count <= allowedOffenses)
                 {
                     if (Config.WarnUserOnOffense)
-                        Chat.Send($"You have received an offense [{trackedPbBlock.Offences.Count} of {allowedOffenses}] for exceeding your run-time limit [{allowedRunTime:0.0000}ms] for [{trackedPbBlock.GridName} >> {trackedPbBlock.ProgrammableBlock?.CustomName}].  Please reduce the run time of your Programmable Block or it will be punished.", player.SteamId, Color.Red);
+                        Chat.Send($"You have received offense [{trackedPbBlock.Offences.Count} of {allowedOffenses}] for exceeding your run-time limit [{allowedRunTime:0.0000}ms] for [{trackedPbBlock.GridName} >> {trackedPbBlock.ProgrammableBlock?.CustomName}].  Please reduce the run time of your Programmable Block or it will be punished.", player.SteamId, Color.Red);
 
                     if (trackedPbBlock.Offences.Count == allowedOffenses)
                     {
-                        MySandboxGame.Static.Invoke(() => // Not sure if this actually needs to be forced on the game thread.
+                        MySandboxGame.Static.Invoke(() =>
                         {
                             trackedPbBlock.ProgrammableBlock?.Run($"GracefulShutDown::-1", UpdateType.Script);
                         }, "Advanced_PB_Limiter");
@@ -150,7 +154,8 @@ namespace Advanced_PB_Limiter.Manager
                 return; // Block is punished, no need to punish again with average run-time violations.
             }
             
-            if (combinedLimitRestriction && trackedPbBlock.RunTimeMSAvg > allowedRunTimeAvg)
+            // check for block average runtime offense
+            if (trackedPbBlock.RunTimeMSAvg > allowedRunTimeAvg)
             {
                 trackedPbBlock.Offences.Enqueue(Stopwatch.GetTimestamp());
                 trackedPbBlock.LastOffenceTick = Stopwatch.GetTimestamp();
@@ -160,13 +165,13 @@ namespace Advanced_PB_Limiter.Manager
                 if (trackedPbBlock.Offences.Count <= allowedOffenses)
                 {
                     if (Config.WarnUserOnOffense)
-                        Chat.Send($"You have received an offense [{trackedPbBlock.Offences.Count} of {allowedOffenses}] for exceeding your average-run-time limit [{allowedRunTimeAvg:0.0000}ms] for [{trackedPbBlock.GridName} >> {trackedPbBlock.ProgrammableBlock?.CustomName}].  Please reduce the run time of your Programmable Block or it will be punished.", player.SteamId, Color.Red);
+                        Chat.Send($"You have received offense [{trackedPbBlock.Offences.Count} of {allowedOffenses}] for exceeding your average-run-time limit [{allowedRunTimeAvg:0.0000}ms] for [{trackedPbBlock.GridName} >> {trackedPbBlock.ProgrammableBlock?.CustomName}].  Please reduce the run time of your Programmable Block or it will be punished.", player.SteamId, Color.Red);
                     
                     if (trackedPbBlock.Offences.Count == allowedOffenses)
                     {
-                        MySandboxGame.Static.Invoke(() => // Not sure if this actually needs to be forced on the game thread.
+                        MySandboxGame.Static.Invoke(() =>
                         {
-                            trackedPbBlock.ProgrammableBlock?.Run($"GracefulShutDown::LastWarning", UpdateType.Script);
+                            trackedPbBlock.ProgrammableBlock?.Run($"GracefulShutDown::-2", UpdateType.Script);
                         }, "Advanced_PB_Limiter");
                     }
                     return;
@@ -190,6 +195,7 @@ namespace Advanced_PB_Limiter.Manager
             }
             
             int gracePeriodSeconds = Config.GracefulShutDownRequestDelay;
+            
             if (Config.PrivilegedPlayers.TryGetValue(player.SteamId, out PrivilegedPlayer privilegedPlayer))
                 gracePeriodSeconds = privilegedPlayer.GracefulShutDownRequestDelay;
             
@@ -207,7 +213,7 @@ namespace Advanced_PB_Limiter.Manager
 
             GracefulShutdownsInProgress.TryAdd(trackedPbBlock.ProgrammableBlock.EntityId, player.SteamId);
             
-            MySandboxGame.Static.Invoke(() => // Not sure if this actually needs to be forced on the game thread.
+            MySandboxGame.Static.Invoke(() =>
             {
                 trackedPbBlock.ProgrammableBlock.Run($"GracefulShutDown::{gracePeriodSeconds}", UpdateType.Script);
             }, "Advanced_PB_Limiter");
@@ -309,7 +315,7 @@ namespace Advanced_PB_Limiter.Manager
                     }
                     catch (Exception e)
                     {
-                        Log.Error("Error while destroying a programmable block: " + e);
+                        Log.Error(e, "Error while destroying a programmable block");
                     }
 
                 }, "Advanced_PB_Limiter");
@@ -339,10 +345,8 @@ namespace Advanced_PB_Limiter.Manager
                         break;
                     }
                     
-                    if (safeZone is not null && (safeZone.AllowedActions & MySafeZoneAction.Damage) != MySafeZoneAction.Damage)
+                    if ((safeZone is not null && (safeZone.AllowedActions & MySafeZoneAction.Damage) != MySafeZoneAction.Damage) || Config.KillProtectedBlock)
                     {
-                        if (Config.KillBlockProtectedInSafeZone == false) return;
-                        
                         string blockDisplayName = trackedPbBlock.ProgrammableBlock.CustomName.ToString(); // need this for resync!
                         trackedPbBlock.ProgrammableBlock.Enabled = false; // Turn off because it won't need a recompile and restarts when rebuilt by player.
                         trackedPbBlock.ProgrammableBlock.SlimBlock.FullyDismount(new MyInventory());

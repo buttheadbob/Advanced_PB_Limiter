@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Threading.Tasks;
 using Advanced_PB_Limiter.Utils;
+using Advanced_PB_Limiter.Utils.Reports;
 using Nexus;
 using NLog;
 using Sandbox.Game.World;
@@ -353,7 +354,7 @@ namespace Advanced_PB_Limiter.Manager
                     
                     PBReport pbReport = new(list[index].SteamId,
                         list[index].GetAllPBBlocks[ii].ProgrammableBlock!.SlimBlock.CubeGrid.DisplayName,
-                        list[index].GetAllPBBlocks[ii].ProgrammableBlock!.DisplayName,
+                        list[index].GetAllPBBlocks[ii].ProgrammableBlock!.CustomName.ToString(),
                         myNexusId,
                         list[index].GetAllPBBlocks[ii].LastRunTimeMS,
                         list[index].GetAllPBBlocks[ii].RunTimeMSAvg,

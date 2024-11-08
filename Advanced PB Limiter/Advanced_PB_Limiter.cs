@@ -3,8 +3,8 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
-using System.Timers;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using Advanced_PB_Limiter.Manager;
@@ -19,9 +19,12 @@ using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.UI;
 using Advanced_PB_Limiter.Utils;
 using Nexus;
+using NLog.Config;
+using Sandbox;
 using Sandbox.ModAPI;
 using Torch.Managers;
 using Torch.Managers.PatchManager;
+using Timer = System.Timers.Timer;
 
 namespace Advanced_PB_Limiter
 {
@@ -35,6 +38,9 @@ namespace Advanced_PB_Limiter
         private Persistent<Advanced_PB_LimiterConfig>? _config;
         public Advanced_PB_LimiterConfig? Config => _config?.Data;
         public static Dispatcher UI_Dispatcher { get; set; } = Dispatcher.CurrentDispatcher;
+        private static Thread? UpdateThread { get; set; }
+        private static Thread? MainThread { get; set; }
+        private static Thread? DrawThread { get; set; }
         private static Timer NexusConnectionChecker { get; set; } = new (10000);
         public static bool GameOnline { get; set; }
         public PatchManager? _pm;
@@ -73,14 +79,24 @@ namespace Advanced_PB_Limiter
             NexusConnectionChecker.Elapsed += (o, args) => ConnectNexus();
         }
 
+        public string GetThreadName()
+        {
+            if (Thread.CurrentThread == MainThread) return "MAIN";
+            if (Thread.CurrentThread == UpdateThread) return "UPDATE";
+            if (Thread.CurrentThread == DrawThread) return "DRAW";
+            return "BACKGROUND";
+        }
+
         private void SessionChanged(ITorchSession session, TorchSessionState state)
         {
             switch (state)
             {
                 case TorchSessionState.Loaded:
                     Log.Info("Session Loaded!");
+                    UpdateThread = MySandboxGame.Static.UpdateThread;
+                    MySandboxGame.Static.Invoke(()=> {MainThread = Thread.CurrentThread;}, "Advanced PB Limiter");
                     ConnectNexus();
-                    TrackingManager.Init();
+                    TrackingManager.Start();
                     if (!NexusInstalled)
                         NexusConnectionChecker.Start();
                     GameOnline = true;
@@ -90,6 +106,7 @@ namespace Advanced_PB_Limiter
                 case TorchSessionState.Unloading:
                     Log.Info("Session Unloading!");
                     GameOnline = false;
+                    TrackingManager.Stop();
                     break;
             }
         }
@@ -125,7 +142,7 @@ namespace Advanced_PB_Limiter
             }
             NexusInstalled = true;
             NexusConnectionChecker.Stop();
-            Log.Info("Nexus Connected!");
+            Log.Info("Connected to Nexus v2");
         }
 
         public Task UpdateConfigFromNexus(Advanced_PB_LimiterConfig _newConfig)

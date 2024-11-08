@@ -44,6 +44,9 @@ namespace Advanced_PB_Limiter.Settings
         
         private int _MaxOffencesBeforePunishment = 3;
         public int MaxOffencesBeforePunishment { get => _MaxOffencesBeforePunishment; set => SetValue(ref _MaxOffencesBeforePunishment, value); }
+        
+        private int _maxCombinedBlockOffencesBeforePunishment = 3;
+        public int MaxCombinedOffencesBeforePunishment { get => _maxCombinedBlockOffencesBeforePunishment; set => SetValue(ref _maxCombinedBlockOffencesBeforePunishment, value); }
 
         private int _OffenseDurationBeforeDeletion = 1; // In minutes
         public int OffenseDurationBeforeDeletion { get => _OffenseDurationBeforeDeletion; set => SetValue(ref _OffenseDurationBeforeDeletion, value); }
@@ -106,7 +109,34 @@ namespace Advanced_PB_Limiter.Settings
         private long _PBMemoryThreshold = 10240000; // 10MB
         public long PBMemoryThreshold { get => _PBMemoryThreshold; set => SetValue(ref _PBMemoryThreshold, value); }
 
-        private bool _killBlockProtectedInSafeZone;
-        public bool KillBlockProtectedInSafeZone { get => _killBlockProtectedInSafeZone; set => SetValue(ref _killBlockProtectedInSafeZone, value); }
+        private bool _killProtectedBlock;
+        public bool KillProtectedBlock { get => _killProtectedBlock; set => SetValue(ref _killProtectedBlock, value); }
+        
+        private int _startupAllowance = 60;
+        public int StartupAllowance { get => _startupAllowance; set => SetValue(ref _startupAllowance, value); }
+
+        private bool _showTimingsBurp;
+        public bool ShowTimingsBurp { get => _showTimingsBurp; set => SetValue(ref _showTimingsBurp, value); }
+
+        private bool _deferRunAlways;
+        public bool DeferRunAlways { get => _deferRunAlways; set => SetValue(ref _deferRunAlways, value); }
+
+        private bool _deferRunOnSimSpeedRate;
+        public bool DeferRunOnSimspeedRate {get => _deferRunOnSimSpeedRate; set => SetValue(ref _deferRunOnSimSpeedRate, value); }
+        
+        private double _deferRunBelowSimRate = 0.7;
+        public double DeferRunBelowSimRate { get=>_deferRunBelowSimRate; set => SetValue(ref _deferRunBelowSimRate, value); }
+
+        private int _deferRunCount;
+        public int DeferRunCount { get => _deferRunCount; set => SetValue(ref _deferRunCount, value); }
+
+        private bool _disableUpdate1;
+        public bool DisableUpdate1 { get => _disableUpdate1; set => SetValue(ref _disableUpdate1, value); }
+
+        private bool _EnforceOnlyBelowSimThreshold;
+        public bool EnforceOnlyBelowSimThreshold {get => _EnforceOnlyBelowSimThreshold; set => SetValue(ref _EnforceOnlyBelowSimThreshold, value); }
+        
+        private double _enforceOnlyBelowSimRate = 0.7;
+        public double EnforceOnlyBelowSimRate {get => _enforceOnlyBelowSimRate; set => SetValue(ref _enforceOnlyBelowSimRate, value); }
     }
 }

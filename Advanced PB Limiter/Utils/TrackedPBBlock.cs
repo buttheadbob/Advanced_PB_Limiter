@@ -121,7 +121,7 @@ namespace Advanced_PB_Limiter.Utils
                 return PBStartTime.TicksTillNow_TimeSpan().TotalSeconds < privilegedPlayer.StartupAllowance;
             
             double result = PBStartTime.TicksTillNow_TimeSpan().TotalSeconds;
-            return result < 10;
+            return result <= Config.StartupAllowance;
         }
         
         public void ClearRunTimes()

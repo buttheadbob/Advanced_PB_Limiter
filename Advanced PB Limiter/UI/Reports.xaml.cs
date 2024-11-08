@@ -17,6 +17,10 @@ using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
 using System.Windows.Forms;
 using System.Windows.Media;
+using Advanced_PB_Limiter.Utils.Reports;
+using NLog.Fluent;
+using Sandbox;
+using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.World;
 using MessageBox = System.Windows.MessageBox;
 using Timer = System.Timers.Timer;
@@ -40,6 +44,8 @@ namespace Advanced_PB_Limiter.UI
             InitializeComponent();
             DataContext = this;
             _refreshTimer.Elapsed += TimedRefreshAsync;
+            PerPBDataGrid.ItemsSource = datagrid_BlockReports;
+            PerPlayerDataGrid.ItemsSource = datagrid_PlayerReports;
         }
         
         private async Task Save()
@@ -86,7 +92,8 @@ namespace Advanced_PB_Limiter.UI
                         data[index].GetAllPBBlocks[ii].PeekRunTimeMS,
                         data[index].GetAllPBBlocks[ii].Offences.Count,
                         data[index].GetAllPBBlocks[ii].Recompiles,
-                        data[index].GetAllPBBlocks[ii].memoryUsage
+                        data[index].GetAllPBBlocks[ii].memoryUsage,
+                        data[index].GetAllPBBlocks[ii].ProgrammableBlock
                     );
                     BlockReports.TryAdd(data[index].GetAllPBBlocks[ii].ProgrammableBlock!.EntityId, blockReport);
                     
@@ -101,7 +108,7 @@ namespace Advanced_PB_Limiter.UI
                     calculatedLastRunTimeMs = lastRunTimeMs;
                 }
 
-                CustomPlayerReport report = new(data[index].SteamId, data[index].PlayerName ?? "Unknown", calculatedLastRunTimeMs, calculatedAvgMs, offences, data[index].PBBlockCount, recompiles, memoryUsed);
+                CustomPlayerReport report = new(data[index].SteamId, data[index].PlayerName ?? "Unknown", calculatedLastRunTimeMs, calculatedAvgMs, offences, data[index].PBBlockCount, recompiles, memoryUsed, data[index]);
                 PlayerReports.TryAdd(data[index].SteamId, report);
 
                 lastRunTimeMs = 0;
@@ -120,59 +127,7 @@ namespace Advanced_PB_Limiter.UI
 
             return Task.CompletedTask;
         }
-
-        private sealed class CustomPlayerReport
-        {
-            public ulong SteamId { get; }
-            public string PlayerName { get; }
-            public double CombinedLastRunTimeMS { get; }
-            public double CombinedAvgMS { get; }
-            public int Offences { get; }
-            public int PbCount { get; }
-            public int Recompiles { get; }
-            public string MemoryUsed { get; }
-
-            public CustomPlayerReport(ulong steamId, string playerName, double combinedLastRunTimeMs, double combinedAvgMs, int offences, int pbCount, int recompiles, long memoryUsed)
-            {
-                SteamId = steamId;
-                PlayerName = playerName;
-                CombinedLastRunTimeMS = Math.Round(combinedLastRunTimeMs,4);
-                CombinedAvgMS = Math.Round(combinedAvgMs, 4);
-                Offences = offences;
-                PbCount = pbCount;
-                Recompiles = recompiles;
-                MemoryUsed = HelperUtils.FormatBytesToKB(memoryUsed);
-            }
-        }
         
-        private sealed class CustomBlockReport
-        {
-            public ulong SteamId { get; }
-            public string PlayerName { get; }
-            public string GridName { get; }
-            public string? BlockName { get; }
-            public double LastRunTimeMS { get; }
-            public double AvgMS { get; }
-            public double PeekRunTimeMS { get; }
-            public int Offences { get; }
-            public int Recompiles { get; }
-            public string MemoryUsed { get; }
-
-            public CustomBlockReport(ulong steamId, string playerName, string gridName, string blockName, double lastRunTimeMs, double avgMs, double peekRunTimeMS, int offences, int recompiles, long memoryUsed)
-            {
-                SteamId = steamId;
-                PlayerName = playerName;
-                GridName = gridName;
-                BlockName = blockName;
-                LastRunTimeMS = Math.Round(lastRunTimeMs, 4);
-                AvgMS = Math.Round(avgMs, 4);
-                PeekRunTimeMS = peekRunTimeMS;
-                Offences = offences;
-                Recompiles = recompiles;
-                MemoryUsed = HelperUtils.FormatBytesToKB(memoryUsed);
-            }
-        }
-
         private void EnableLiveViewButton_OnClick(object sender, RoutedEventArgs e)
         {
             if (!Advanced_PB_Limiter.GameOnline)
@@ -389,6 +344,29 @@ namespace Advanced_PB_Limiter.UI
             }
 
             return sb.ToString();
+        }
+
+        private void TurnOff_PB(object sender, RoutedEventArgs e)
+        {
+            if (sender is not System.Windows.Controls.Button clickedbutton) return;
+            if (clickedbutton.Tag is not MyProgrammableBlock pb) return;
+            MySandboxGame.Static.Invoke(() => { pb.Enabled = false;},"Advanced PB Limiter");
+            Log.Info($"Request to turn off the programmable block [{pb.CustomName}] from the plugin UI.");
+        }
+
+        private void TurnOff_AllPB(object sender, RoutedEventArgs e)
+        {
+            if (sender is not System.Windows.Controls.Button clickedbuttonAll) return;
+            if (clickedbuttonAll.Tag is not TrackedPlayer player) return;
+            MySandboxGame.Static.Invoke(() =>
+            {
+                foreach (TrackedPBBlock? pb in player.GetAllPBBlocks)
+                {
+                    if (pb?.ProgrammableBlock is null) continue;
+                    pb.ProgrammableBlock.Enabled = false;
+                }
+            }, "Advanced PB Limiter");
+            Log.Info($"Request to turn off ALL the programmable blocks for [{player.PlayerName}] from the plugin UI.");
         }
     }
 }

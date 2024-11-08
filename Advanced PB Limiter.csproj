@@ -25,7 +25,7 @@
     <WarningLevel>4</WarningLevel>
     <OutputPath>bin\x64\Release\</OutputPath>
     <PlatformTarget>x64</PlatformTarget>
-    <DebugSymbols>false</DebugSymbols>
+    <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
     <DebugSymbols>true</DebugSymbols>
@@ -45,10 +45,10 @@
     <Reference Include="netstandard" />
     <Reference Include="Newtonsoft.Json">
       <HintPath>..\..\..\Torch\Newtonsoft.Json.dll</HintPath>
+      <Private>False</Private>
     </Reference>
-    <Reference Include="NLog, Version=4.0.0.0, Culture=neutral, PublicKeyToken=5120e14c03d0593c, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>TorchBinaries\NLog.dll</HintPath>
+    <Reference Include="NLog">
+      <HintPath>..\..\..\Torch\NLog.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="PresentationCore">
@@ -59,6 +59,7 @@
     </Reference>
     <Reference Include="ProtoBuf.Net.Core">
       <HintPath>..\..\..\Torch\DedicatedServer64\ProtoBuf.Net.Core.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="Sandbox.Common, Version=1.0.0.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
@@ -92,8 +93,10 @@
     <Reference Include="System.Collections.Immutable, Version=7.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>packages\System.Collections.Immutable.7.0.0\lib\net462\System.Collections.Immutable.dll</HintPath>
     </Reference>
+    <Reference Include="System.Configuration" />
     <Reference Include="System.Core" />
     <Reference Include="System.IdentityModel" />
+    <Reference Include="System.IO.Compression" />
     <Reference Include="System.Memory, Version=4.0.1.2, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>packages\System.Memory.4.5.5\lib\net461\System.Memory.dll</HintPath>
     </Reference>
@@ -204,14 +207,18 @@
     <Compile Include="Advanced PB Limiter\Utils\GetSizeOfObject.cs" />
     <Compile Include="Advanced PB Limiter\Utils\HelperUtils.cs" />
     <Compile Include="Advanced PB Limiter\Utils\MtObservableSortedSerializableDictionary.cs" />
+    <Compile Include="Advanced PB Limiter\Utils\MyEnums.cs" />
     <Compile Include="Advanced PB Limiter\Utils\NexusAPI.cs" />
+    <Compile Include="Advanced PB Limiter\Utils\NexusApiV3.cs" />
     <Compile Include="Advanced PB Limiter\Utils\PrivilegedPlayer.cs" />
+    <Compile Include="Advanced PB Limiter\Utils\ProfileData.cs" />
     <Compile Include="Advanced PB Limiter\Utils\ProgramInfo.cs" />
     <Compile Include="Advanced PB Limiter\Utils\ReflectionUtils.cs" />
-    <Compile Include="Advanced PB Limiter\Utils\Report.cs" />
+    <Compile Include="Advanced PB Limiter\Utils\Reports.cs" />
     <Compile Include="Advanced PB Limiter\Utils\TierData.cs" />
     <Compile Include="Advanced PB Limiter\Utils\TrackedPBBlock.cs" />
     <Compile Include="Advanced PB Limiter\Utils\TrackedPlayer.cs" />
+    <Compile Include="Advanced PB Limiter\Utils\TrackingDataUpdateRequest.cs" />
     <EmbeddedResource Include="Advanced PB Limiter\Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
@@ -242,6 +249,14 @@
     <Page Include="Advanced PB Limiter\UI\Reports.xaml" />
     <Page Include="Advanced PB Limiter\UI\TierDataSettings.xaml" />
   </ItemGroup>
+  <Target Name="RemoveXmlFiles" BeforeTargets="Zip">
+    <ItemGroup>
+      <!-- Find all XML files except manifest.xml -->
+      <XmlFiles Include="$(OutputPath)**\*.xml" Exclude="$(OutputPath)**\manifest.xml" />
+    </ItemGroup>
+    <!-- Delete the XML files -->
+    <Delete Files="@(XmlFiles)" />
+  </Target>
   <Target Name="Zip" BeforeTargets="AfterBuild">
     <MakeDir Directories="$(SolutionDir)\Build\" />
     <ZipDirectory SourceDirectory="$(OutputPath)" DestinationFile="$(SolutionDir)\Build\$(MSBuildProjectName).zip" Overwrite="true" />

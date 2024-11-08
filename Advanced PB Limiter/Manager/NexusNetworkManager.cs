@@ -3,6 +3,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
+using Advanced_PB_Limiter.Utils.Reports;
 using Newtonsoft.Json;
 using Nexus;
 using NLog;
@@ -15,6 +16,7 @@ namespace Advanced_PB_Limiter.Manager
     {
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
+        private static NexusVersion Nexus_Version = NexusVersion.None;
         public static NexusAPI.Server? ThisServer => Advanced_PB_Limiter.ThisServer;
 
         public enum NexusMessageType

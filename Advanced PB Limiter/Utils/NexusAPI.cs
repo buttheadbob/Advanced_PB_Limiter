@@ -85,7 +85,7 @@ namespace Nexus
             string EmbedTitle,
             string EmbedMsg,
             string EmbedFooter,
-            string EmbedColor = null)
+            string? EmbedColor = null)
         {
         }
 

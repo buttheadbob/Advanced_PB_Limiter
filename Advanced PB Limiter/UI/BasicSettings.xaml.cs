@@ -1,4 +1,5 @@
 ﻿using System.Threading.Tasks;
+using System.Timers;
 using System.Windows;
 using System.Windows.Controls;
 using Advanced_PB_Limiter.Manager;
@@ -10,6 +11,7 @@ namespace Advanced_PB_Limiter.UI
     public partial class BasicSettings
     {
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
+        private static Timer _burpTimer = new (5000);
 
         public BasicSettings()
         {
@@ -25,6 +27,15 @@ namespace Advanced_PB_Limiter.UI
             PunishmentComboBox.Items.Add(item3);
 
             PunishmentLabel.Text = $"Punishment type: [Active:{Config.Punishment.ToString()}]";
+
+            _burpTimer.Elapsed += (sender, args) => EndBurp();
+            Config.ShowTimingsBurp = false;
+        }
+
+        private void EndBurp()
+        {
+            _burpTimer.Stop();
+            Config.ShowTimingsBurp = false;
         }
 
         private async Task Save()
@@ -54,6 +65,12 @@ namespace Advanced_PB_Limiter.UI
                 _ => Config.Punishment = Enums.Punishment.TurnOff
             };
             PunishmentLabel.Text = $"Punishment type: [Active:{Config.Punishment.ToString()}]";
+        }
+
+        private void TimingBurp_OnClick(object sender, RoutedEventArgs e)
+        {
+            Config.ShowTimingsBurp = true;
+            _burpTimer.Start();
         }
     }
 }

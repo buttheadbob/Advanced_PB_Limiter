@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -23,6 +24,7 @@ namespace Advanced_PB_Limiter.Utils
         private readonly Timer _cleanupTimer = new (Config.RemoveInactivePBsAfterSeconds * 1000);
         private int _lastKnownCleanupInterval = Config.RemoveInactivePBsAfterSeconds * 1000;
         public int Offences = 0;
+        public List<long> CombinedOffences = new();
         
         public TrackedPlayer(long playerId)
         {
@@ -42,21 +44,23 @@ namespace Advanced_PB_Limiter.Utils
                 : null;
         }
         
-        public void UpdatePBBlockData(MyProgrammableBlock pbBlock, double lastRunTimeMS)
+        public void UpdatePBBlockData(TrackingDataUpdateRequest data)
         {
+            if (data.ProgBlock == null) return;
+            
             LastDataUpdateTick = Stopwatch.GetTimestamp();
-            if (!PBBlocks.TryGetValue(pbBlock.EntityId, out TrackedPBBlock? trackedPBBlock))
+            if (!PBBlocks.TryGetValue(data.ProgBlock.EntityId, out TrackedPBBlock? trackedPBBlock) || trackedPBBlock == null)
             {
-                trackedPBBlock = new TrackedPBBlock(pbBlock.CubeGrid.DisplayName, pbBlock);
-                PBBlocks.TryAdd(pbBlock.EntityId, trackedPBBlock);
+                trackedPBBlock = new TrackedPBBlock(data.ProgBlock.CubeGrid.DisplayName, data.ProgBlock);
+                PBBlocks.TryAdd(data.ProgBlock.EntityId, trackedPBBlock);
                 return;
             }
 
-            if (trackedPBBlock.IsUnderGracePeriod(MySession.Static.Players.TryGetSteamId(pbBlock.OwnerId)))
+            if (trackedPBBlock.IsUnderGracePeriod(MySession.Static.Players.TryGetSteamId(data.ProgBlock.OwnerId)))
                 return;
             
-            trackedPBBlock.AddRuntimeData(lastRunTimeMS, SteamId);
-            PunishmentManager.CheckForPunishment(this, trackedPBBlock.ProgrammableBlock!.EntityId, lastRunTimeMS);
+            trackedPBBlock.AddRuntimeData(data.RunTime, SteamId);
+            PunishmentManager.CheckForPunishment(this, trackedPBBlock.ProgrammableBlock!.EntityId, data.RunTime);
         }
         
         public List<TrackedPBBlock> GetAllPBBlocks
@@ -74,31 +78,21 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
         
-        public ReadOnlySpan<double> GetAllPBBlocksLastRunTimeMS
+        public void GetAllPBBlocksLastRunTimeMS(Span<double> runtimeTimeMS)
         {
-            get
+            int index = PBBlocks.Count - 1;
+            foreach (KeyValuePair<long, TrackedPBBlock> kvp in PBBlocks)
             {
-                double[] total = new double[PBBlocks.Count];
-                for (int index = 0; index < PBBlocks.Count; index++)
-                {
-                    total[index] = PBBlocks[PBBlocks.Count - 1 - index].LastRunTimeMS;
-                }
-
-                return new ReadOnlySpan<double>(total);
+                runtimeTimeMS[index--] = kvp.Value.LastRunTimeMS;
             }
         }
         
-        public ReadOnlySpan<double> GetAllPBBlocksMSAvg
+        public void GetAllPBBlocksMSAvg(Span<double> runtimeTimeMSAvg)
         {
-            get
+            int index = PBBlocks.Count - 1;
+            foreach (KeyValuePair<long, TrackedPBBlock> kvp in PBBlocks)
             {
-                double[] total = new double[PBBlocks.Count];
-                for (int index = 0; index < PBBlocks.Count; index++)
-                {
-                    total[index] = PBBlocks[PBBlocks.Count - 1 - index].RunTimeMSAvg;
-                }
-
-                return new ReadOnlySpan<double>(total);
+                runtimeTimeMSAvg[index--] = kvp.Value.LastRunTimeMS;
             }
         }
         
