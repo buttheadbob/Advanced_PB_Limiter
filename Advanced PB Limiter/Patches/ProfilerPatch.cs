@@ -38,7 +38,7 @@ namespace Advanced_PB_Limiter.Patches
         /// <summary>
         /// Gracefully stolen (and heavily modified by me) from the original PB Limiter, Credits to SirHamsterAlot, and Equinox
         /// </summary>
-        private static ConcurrentDictionary<long,MyProgrammableBlock?> _disabledProgrammableBlocks = new();
+        private static readonly ConcurrentDictionary<long,MyProgrammableBlock?> _disabledProgrammableBlocks = new();
         
         private static readonly Logger Log = LogManager.GetLogger("Advanced PB Limiter => Runtime Processor");
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
@@ -264,10 +264,21 @@ namespace Advanced_PB_Limiter.Patches
             return true;
         }
         
-        private static void SuffixProfilePb(ref string response, MyProgrammableBlock __instance, ref MyProgrammableBlock.ScriptTerminationReason __result)
+        private static void SuffixProfilePb(ref string response, MyProgrammableBlock? __instance, ref MyProgrammableBlock.ScriptTerminationReason __result)
         {
+            if (__instance == null) return; // Something funky is going on so we won't track it this pass but don't block it either.
+            
             long debugStamp = Stopwatch.GetTimestamp();
+            
+            if (!Config.Enabled) return;
 
+            if (!_profileData.ContainsKey(__instance.EntityId) || _profileData[__instance.EntityId] == null)
+                if (Config.DebugReporting)
+                {
+                    Log.Warn("Profile data for PB is missing!");
+                    return;
+                }
+            
             if (string.IsNullOrEmpty(response))
                 response = "";
 
