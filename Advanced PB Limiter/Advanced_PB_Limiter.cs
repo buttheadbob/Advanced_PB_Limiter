@@ -56,7 +56,7 @@ namespace Advanced_PB_Limiter
         public static bool NexusInstalled { get; private set; }
         private static int TickUpdateCount = 0;
 
-        public override async void Init(ITorchBase torch)
+        public override void Init(ITorchBase torch)
         {
             base.Init(torch);
             SetupConfig();
@@ -68,8 +68,6 @@ namespace Advanced_PB_Limiter
                 sessionManager.SessionStateChanged += SessionChanged;
             else
                 Log.Warn("No session manager loaded!");
-
-            await Save();
             
             Instance = this;
             _pm = DependencyProviderExtensions.GetManager<PatchManager>(torch.Managers);
@@ -151,30 +149,30 @@ namespace Advanced_PB_Limiter
             UI_Dispatcher.Invoke(() =>
             {
                 Instance.Config.Enabled = _newConfig.Enabled;
-            Instance.Config.AllowStaffCommands = _newConfig.AllowStaffCommands;
-            Instance.Config.RemovePlayersWithNoPBFrequencyInMinutes = _newConfig.RemovePlayersWithNoPBFrequencyInMinutes;
-            Instance.Config.MaxRunsToTrack = _newConfig.MaxRunsToTrack;
-            Instance.Config.ClearHistoryOnRecompile = _newConfig.ClearHistoryOnRecompile;
-            Instance.Config.GracefulShutDownRequestDelay = _newConfig.GracefulShutDownRequestDelay;
-            Instance.Config.PrivilegedPlayers = _newConfig.PrivilegedPlayers; //
-            Instance.Config.InstantKillThreshold = _newConfig.InstantKillThreshold;
-            Instance.Config.PunishDamageAmount = _newConfig.PunishDamageAmount;
-            Instance.Config.GraceAfterOffence = _newConfig.GraceAfterOffence;
-            Instance.Config.MaxOffencesBeforePunishment = _newConfig.MaxOffencesBeforePunishment;
-            Instance.Config.OffenseDurationBeforeDeletion = _newConfig.OffenseDurationBeforeDeletion;
-            Instance.Config.MaxRunTimeMS = _newConfig.MaxRunTimeMS;
-            Instance.Config.MaxRunTimeMSAvg = _newConfig.MaxRunTimeMSAvg;
-            Instance.Config.Punishment = _newConfig.Punishment;
-            Instance.Config.CheckAllUserBlocksCombined = _newConfig.CheckAllUserBlocksCombined;
-            Instance.Config.PunishAllUserBlocksCombinedOnExcessLimits = _newConfig.PunishAllUserBlocksCombinedOnExcessLimits;
-            Instance.Config.MaxAllBlocksCombinedRunTimeMS = _newConfig.MaxAllBlocksCombinedRunTimeMS;
-            Instance.Config.MaxAllBlocksCombinedRunTimeMSAvg = _newConfig.MaxAllBlocksCombinedRunTimeMSAvg;
-            Instance.Config.IgnoreNPCs = _newConfig.IgnoreNPCs;
-            Instance.Config.AllowSelfTurnOnExploit = _newConfig.AllowSelfTurnOnExploit;
-            Instance.Config.AllowNPCToAutoTurnOn = _newConfig.AllowNPCToAutoTurnOn;
-            Instance.Config.WarnUserOnOffense = _newConfig.WarnUserOnOffense;
-            Instance.Config.TurnOffUnownedBlocks = _newConfig.TurnOffUnownedBlocks;
-            Instance.Config.UseSimTime = _newConfig.UseSimTime;
+                Instance.Config.AllowStaffCommands = _newConfig.AllowStaffCommands;
+                Instance.Config.RemovePlayersWithNoPBFrequencyInMinutes = _newConfig.RemovePlayersWithNoPBFrequencyInMinutes;
+                Instance.Config.MaxRunsToTrack = _newConfig.MaxRunsToTrack;
+                Instance.Config.ClearHistoryOnRecompile = _newConfig.ClearHistoryOnRecompile;
+                Instance.Config.GracefulShutDownRequestDelay = _newConfig.GracefulShutDownRequestDelay;
+                Instance.Config.PrivilegedPlayers = _newConfig.PrivilegedPlayers; //
+                Instance.Config.InstantKillThreshold = _newConfig.InstantKillThreshold;
+                Instance.Config.PunishDamageAmount = _newConfig.PunishDamageAmount;
+                Instance.Config.GraceAfterOffence = _newConfig.GraceAfterOffence;
+                Instance.Config.MaxOffencesBeforePunishment = _newConfig.MaxOffencesBeforePunishment;
+                Instance.Config.OffenseDurationBeforeDeletion = _newConfig.OffenseDurationBeforeDeletion;
+                Instance.Config.MaxRunTimeMS = _newConfig.MaxRunTimeMS;
+                Instance.Config.MaxRunTimeMSAvg = _newConfig.MaxRunTimeMSAvg;
+                Instance.Config.Punishment = _newConfig.Punishment;
+                Instance.Config.CheckAllUserBlocksCombined = _newConfig.CheckAllUserBlocksCombined;
+                Instance.Config.PunishAllUserBlocksCombinedOnExcessLimits = _newConfig.PunishAllUserBlocksCombinedOnExcessLimits;
+                Instance.Config.MaxAllBlocksCombinedRunTimeMS = _newConfig.MaxAllBlocksCombinedRunTimeMS;
+                Instance.Config.MaxAllBlocksCombinedRunTimeMSAvg = _newConfig.MaxAllBlocksCombinedRunTimeMSAvg;
+                Instance.Config.IgnoreNPCs = _newConfig.IgnoreNPCs;
+                Instance.Config.AllowSelfTurnOnExploit = _newConfig.AllowSelfTurnOnExploit;
+                Instance.Config.AllowNPCToAutoTurnOn = _newConfig.AllowNPCToAutoTurnOn;
+                Instance.Config.WarnUserOnOffense = _newConfig.WarnUserOnOffense;
+                Instance.Config.TurnOffUnownedBlocks = _newConfig.TurnOffUnownedBlocks;
+                Instance.Config.UseSimTime = _newConfig.UseSimTime;
             });
             
             return Task.CompletedTask;
@@ -187,13 +185,11 @@ namespace Advanced_PB_Limiter
             try { _config = Persistent<Advanced_PB_LimiterConfig>.Load(configFile); }
             catch (Exception e) { Log.Warn(e); }
 
-            if (_config?.Data == null)
-            {
-                Log.Info("Create Default Config, because none was found!");
+            if (_config?.Data != null) return;
+            Log.Info("Create Default Config, because none was found!");
 
-                _config = new Persistent<Advanced_PB_LimiterConfig>(configFile, new Advanced_PB_LimiterConfig());
-                _config.Save();
-            }
+            _config = new Persistent<Advanced_PB_LimiterConfig>(configFile, new Advanced_PB_LimiterConfig());
+            _config.Save();
         }
 
         public Task Save()

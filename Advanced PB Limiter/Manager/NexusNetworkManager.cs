@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 using Advanced_PB_Limiter.Settings;
@@ -31,27 +32,34 @@ namespace Advanced_PB_Limiter.Manager
         
         public static async void HandleReceivedMessage(ushort handlerId, byte[] data, ulong steamID, bool fromServer)
         {
-            if (handlerId != 8697) return;
-            
-            NexusAPI.CrossServerMessage nMessage = MyAPIGateway.Utilities.SerializeFromBinary<NexusAPI.CrossServerMessage>(data);
-            NexusMessage? message = MyAPIGateway.Utilities.SerializeFromBinary<NexusMessage>(nMessage.Message);
-            if (message == null) return;
-            if (message.FromServerID == ThisServer!.ServerID) return; // Don't process messages from itself.
-
-            switch (message.MessageType)
+            try
             {
-                case NexusMessageType.PrivilegedPlayerData:
-                    await HandlePrivilegedPlayerData(message.MessageData);
-                    break;
-                case NexusMessageType.Settings:
-                    HandleUpdatedSettings(message.MessageData);
-                    break;
-                case NexusMessageType.RequestPlayerReports:
-                    HandlePlayerReportRequest(message.FromServerID);
-                    break;
-                case NexusMessageType.PlayerReport:
-                    HandlePlayerReports(message.FromServerID, message.MessageData);
-                    break;
+                if (handlerId != 8697) return;
+            
+                NexusAPI.CrossServerMessage nMessage = MyAPIGateway.Utilities.SerializeFromBinary<NexusAPI.CrossServerMessage>(data);
+                NexusMessage? message = MyAPIGateway.Utilities.SerializeFromBinary<NexusMessage>(nMessage.Message);
+                if (message == null) return;
+                if (message.FromServerID == ThisServer!.ServerID) return; // Don't process messages from itself.
+
+                switch (message.MessageType)
+                {
+                    case NexusMessageType.PrivilegedPlayerData:
+                        await HandlePrivilegedPlayerData(message.MessageData);
+                        break;
+                    case NexusMessageType.Settings:
+                        HandleUpdatedSettings(message.MessageData);
+                        break;
+                    case NexusMessageType.RequestPlayerReports:
+                        HandlePlayerReportRequest(message.FromServerID);
+                        break;
+                    case NexusMessageType.PlayerReport:
+                        HandlePlayerReports(message.FromServerID, message.MessageData);
+                        break;
+                }
+            }
+            catch (Exception e)
+            {
+                Log.Error(e, "Error while handling nexus message.");
             }
         }
 
@@ -77,21 +85,28 @@ namespace Advanced_PB_Limiter.Manager
         
         private static async void HandleUpdatedSettings(byte[] data)
         {
-            Advanced_PB_LimiterConfig? newConfig = JsonConvert.DeserializeObject<Advanced_PB_LimiterConfig>(Encoding.UTF8.GetString(data));
-            
-            if (newConfig == null)
+            try
             {
-                Log.Warn("Received null or invalid settings data from nexus, ignoring it.");
-                return;
-            }
+                Advanced_PB_LimiterConfig? newConfig = JsonConvert.DeserializeObject<Advanced_PB_LimiterConfig>(Encoding.UTF8.GetString(data));
             
-            if (!Config.AllowNexusConfigUpdates)
+                if (newConfig == null)
+                {
+                    Log.Warn("Received null or invalid settings data from nexus, ignoring it.");
+                    return;
+                }
+            
+                if (!Config.AllowNexusConfigUpdates)
+                {
+                    Log.Info("Received settings data from nexus, this server is set to not update from Nexus.");
+                    return;
+                }
+            
+                await Advanced_PB_Limiter.Instance!.UpdateConfigFromNexus(newConfig);
+            }
+            catch (Exception e)
             {
-                Log.Info("Received settings data from nexus, this server is set to not update from Nexus.");
-                return;
+                Log.Error(e, "Error while handling updated settings from nexus.");
             }
-            
-            await Advanced_PB_Limiter.Instance!.UpdateConfigFromNexus(newConfig);
         }
         
         private static void HandlePlayerReports(int fromServer, byte[] data)
@@ -114,8 +129,8 @@ namespace Advanced_PB_Limiter.Manager
                 return Task.FromResult(false); // IF not properly configured, this could happen.
             }
 
-            byte[]? playerData = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(player));
-            if (playerData == null)
+            byte[] playerData = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(player));
+            if (playerData == Array.Empty<byte>())
             {
                 Log.Warn("Unable to serialize privileged player data to send to nexus.");
                 return Task.FromResult(false);
@@ -135,8 +150,8 @@ namespace Advanced_PB_Limiter.Manager
                 return Task.FromResult(false); // IF not properly configured, this could happen.
             }
             
-            byte[]? settingsData = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(Config));
-            if (settingsData == null)
+            byte[] settingsData = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(Config));
+            if (settingsData == Array.Empty<byte>())
             {
                 Log.Warn("Unable to serialize privileged player data to send to nexus.");
                 return Task.FromResult(false);
@@ -175,8 +190,8 @@ namespace Advanced_PB_Limiter.Manager
                 playerReports.Add(playerReport);
             }
 
-            byte[]? FinishedReport = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(playerReports));
-            if (FinishedReport == null)
+            byte[] FinishedReport = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(playerReports));
+            if (FinishedReport == Array.Empty<byte>())
             {
                 Log.Warn("Unable to serialize tracked player data to send through nexus.");
                 return;
@@ -223,7 +238,7 @@ namespace Advanced_PB_Limiter.Manager
             }
         }
 
-        public static void SendNexusMessage(NexusMessage message)
+        private static void SendNexusMessage(NexusMessage message)
         {
             if (!Advanced_PB_Limiter.NexusInstalled) return;
             
