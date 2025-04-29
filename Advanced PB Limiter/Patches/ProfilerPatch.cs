@@ -63,11 +63,14 @@ namespace Advanced_PB_Limiter.Patches
         [ReflectedMethodInfo(typeof(MyProgrammableBlock), "UpdateStorage")]
         private static readonly MethodInfo? _programmableSaveMethod;
         
-        [ReflectedGetter(Name = "m_assembly")]
+        [ReflectedGetter(Name = "m_currentAssembly")]
         private static readonly Func<MyProgrammableBlock, Assembly> get_Assembly;
         
         [ReflectedGetter(Name = "m_instance")]
         private static readonly Func<MyProgrammableBlock, IMyGridProgram> get_AssemblyInstance;
+        
+        [ReflectedGetter(Name = "m_runtime")]
+        private static readonly Func<MyProgrammableBlock, IMyGridProgramRuntimeInfo> get_Runtime;
         
         public static async void Init()
         {
@@ -278,10 +281,14 @@ namespace Advanced_PB_Limiter.Patches
                     Log.Warn("Profile data for PB is missing!");
                     return;
                 }
+
             
+            double runtime = !Config.UseGameReportedRuntime 
+                ? Stopwatch.GetTimestamp().TimeElapsed(_profileData[__instance.EntityId].TimingStart).TotalMilliseconds  
+                : get_Runtime(__instance).LastRunTimeMs;
+
             if (string.IsNullOrEmpty(response))
                 response = "";
-
             if (!Enum.TryParse(__result.ToString(), true, out MyProgrammableBlock.ScriptTerminationReason scriptTerminationReason))
                 __result = MyProgrammableBlock.ScriptTerminationReason.None;
             
@@ -294,8 +301,6 @@ namespace Advanced_PB_Limiter.Patches
             if (_profileData[__instance.EntityId].TimingStart == 0)
                 return;
             
-            TimeSpan measuredSpan = Stopwatch.GetTimestamp().TimeElapsed(_profileData[__instance.EntityId].TimingStart);
-            
             // the pb will still run up to the point of executing the script even when disabled by script termination fault, this will stop some of that.
             // also stops the limiter from checking the block.
             if (__result != MyProgrammableBlock.ScriptTerminationReason.None)
@@ -304,26 +309,25 @@ namespace Advanced_PB_Limiter.Patches
                 TrackingManager.RemovePBInstanceReference(__instance.EntityId);
                 if (Config.DebugReporting)
                 {
-                    Advanced_PB_Limiter.Log.Info($"{__instance.CustomName} : {measuredSpan.TotalMilliseconds / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio)} :: {measuredSpan.TotalMilliseconds / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio)}");
+                    Advanced_PB_Limiter.Log.Info($"{__instance.CustomName} : {runtime / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio)} :: {runtime / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio)}");
                     Log.Info("Script Termination Reason:" + __result);
                 }
 
                 return;
             }
-            
-            double runTime = Config.UseSimTime
-                ? measuredSpan.TotalMilliseconds / (Sync.ServerSimulationRatio >= 1 ? 1 : Sync.ServerSimulationRatio)
-                : measuredSpan.TotalMilliseconds;
+
+            if (Config.UseSimTime)
+                runtime = runtime / (Sync.ServerSimulationRatio >= 1 ? 1 : Sync.ServerSimulationRatio);
             
             if (get_AssemblyInstance(__instance) != null)
                 if (!TrackingManager.IsPBInstanceReferenceValid(__instance.EntityId))
                     TrackingManager.AddPBInstanceReference(__instance.EntityId, new ProgramInfo{ ProgramReference = new WeakReference<IMyGridProgram>(get_AssemblyInstance(__instance)), LastUpdate = DateTime.Now, OwnerID = __instance.OwnerId, PB = __instance} );
             
             if (!ServerSaved)
-                TrackingManager.UpdateTrackingData(__instance, runTime); 
+                TrackingManager.UpdateTrackingData(__instance, runtime); 
             
             if (Config.ShowTimingsBurp)
-                Log.Info($"[{Advanced_PB_Limiter.Instance?.GetThreadName()} THREAD] Tracked PB[{__instance.CustomName}] Runtime in: {debugStamp.TicksTillNow_TimeSpan().TotalMilliseconds.ToString("N4", CultureInfo.InvariantCulture)}ms");
+                Log.Info($"[{Advanced_PB_Limiter.Instance?.GetThreadName()} THREAD] Tracked PB[{__instance.CustomName}] Runtime in: {debugStamp.TicksTillNow_TimeSpan().TotalMilliseconds.ToString("N6", CultureInfo.InvariantCulture)}ms");
         }
 
         private static void PrefixRecompilePb(MyProgrammableBlock? __instance, ref bool __localDisable)

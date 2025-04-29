@@ -38,19 +38,19 @@ namespace Advanced_PB_Limiter.UI
             Config.ShowTimingsBurp = false;
         }
 
-        private async Task Save()
+        private void Save()
         {
-            await Advanced_PB_Limiter.Instance!.Save();
+            Advanced_PB_Limiter.Instance!.Save();
         }
 
-        private async void SaveLocallyButton_OnClick(object sender, RoutedEventArgs e)
+        private void SaveLocallyButton_OnClick(object sender, RoutedEventArgs e)
         {
-            await Save();
+            Save();
         }
 
         private async void SaveAndPush_OnClick(object sender, RoutedEventArgs e)
         {
-            await Save();
+            Save();
             await NexusNetworkManager.UpdateNexusWithSettingsData();
         }
 

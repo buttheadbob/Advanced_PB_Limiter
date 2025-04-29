@@ -26,8 +26,8 @@ namespace Advanced_PB_Limiter.Utils.Reports
             PlayerName = playerName;
             GridName = gridName;
             BlockName = blockName;
-            LastRunTimeMS = Math.Round(lastRunTimeMs, 4);
-            AvgMS = Math.Round(avgMs, 4);
+            LastRunTimeMS = Math.Round(lastRunTimeMs, 6);
+            AvgMS = Math.Round(avgMs, 6);
             PeekRunTimeMS = peekRunTimeMS;
             Offences = offences;
             Recompiles = recompiles;

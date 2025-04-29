@@ -20,9 +20,9 @@ namespace Advanced_PB_Limiter.UI
             NexusConnectionChecker.Start();
         }
         
-        private async Task Save()
+        private void Save()
         {
-            await Advanced_PB_Limiter.Instance!.Save();
+            Advanced_PB_Limiter.Instance!.Save();
         }
         
         private void Nexus_Connected(object? sender, EventArgs e)
@@ -40,9 +40,9 @@ namespace Advanced_PB_Limiter.UI
             NexusConnectionChecker.Stop();
         }
 
-        private async void SaveButton_OnClick(object sender, RoutedEventArgs e)
+        private void SaveButton_OnClick(object sender, RoutedEventArgs e)
         {
-            await Save();
+            Save();
         }
     }
 }

@@ -20,10 +20,5 @@ namespace Advanced_PB_Limiter.UI
             
             Advanced_PB_Limiter.UI_Dispatcher = MainSettingsTab.Dispatcher;
         }
-        
-        private async Task Save()
-        {
-            await Advanced_PB_Limiter.Instance!.Save();
-        }
     }
 }

@@ -138,5 +138,8 @@ namespace Advanced_PB_Limiter.Settings
         
         private double _enforceOnlyBelowSimRate = 0.7;
         public double EnforceOnlyBelowSimRate {get => _enforceOnlyBelowSimRate; set => SetValue(ref _enforceOnlyBelowSimRate, value); }
+
+        private bool _useGameReportedRuntime = true;
+        public bool UseGameReportedRuntime { get => _useGameReportedRuntime; set => SetValue(ref _useGameReportedRuntime, value); }
     }
 }

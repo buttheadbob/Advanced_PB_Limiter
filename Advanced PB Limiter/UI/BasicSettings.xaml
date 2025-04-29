@@ -153,49 +153,49 @@
                 <CheckBox Grid.Row="6" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding UseSimTime}" />
                 <TextBlock Grid.Row="6" Grid.Column="2" Text="Use SimTime will adjust the runtime for Sim Speed.  When sim speed tanks then the script running can also take longer to run at no fault of the player." Margin="3" TextWrapping="Wrap" />
                 
-                <TextBlock Grid.Row="7" Grid.Column="0" Text="No Recompile On Restart" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
-                <CheckBox Grid.Row="7" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding RequireRecompileOnRestart}" HorizontalAlignment="Center"/>
-                <TextBlock Grid.Row="7" Grid.Column="2" Text="Checking this will prevent pb's from being compiled during restart when turned off.  This means the player will have to click Recompile instead of Run.  This is best to prevent timers from enabling pb's.  This also means a button will not turn the pb on." Margin="3" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="7" Grid.Column="0" Text="Use Game Time" Margin="3" VerticalAlignment="Center"  />
+                <CheckBox Grid.Row="7" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding UseGameReportedRuntime}" />
+                <TextBlock Grid.Row="7" Grid.Column="2" Text="Uses the reported runtime from the games internal runtime tracker itself, which is where pb scripts get their LastRuntimeMs reports from.  No further calculations are performed unless you enable Use SimTime." Margin="3" TextWrapping="Wrap" />
                 
-                <TextBlock Grid.Row="8" Grid.Column="0" Text="Monitor Memory Usage" Margin="3" VerticalAlignment="Center" />
-                <CheckBox Grid.Row="8" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding EnableMemoryMonitoring}" HorizontalAlignment="Center"/>
-                <TextBlock Grid.Row="8" Grid.Column="2" Text="Enable/Disable the limiting and monitoring of memory usage." Margin="3" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="8" Grid.Column="0" Text="No Recompile On Restart" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+                <CheckBox Grid.Row="8" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding RequireRecompileOnRestart}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Row="8" Grid.Column="2" Text="Checking this will prevent pb's from being compiled during restart when turned off.  This means the player will have to click Recompile instead of Run.  This is best to prevent timers from enabling pb's.  This also means a button will not turn the pb on." Margin="3" TextWrapping="Wrap" />
                 
-                <TextBlock Grid.Row="9" Grid.Column="0" Text="Defer Run Always" Margin="3" VerticalAlignment="Center" />
-                <CheckBox Grid.Row="9" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding DeferRunAlways}" HorizontalAlignment="Center"/>
-                <TextBlock Grid.Row="9" Grid.Column="2" Text="This will allow the pb to run Update1 only after your limit is reached to allow.... Always!" Margin="3" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="9" Grid.Column="0" Text="Monitor Memory Usage" Margin="3" VerticalAlignment="Center" />
+                <CheckBox Grid.Row="9" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding EnableMemoryMonitoring}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Row="9" Grid.Column="2" Text="Enable/Disable the limiting and monitoring of memory usage." Margin="3" TextWrapping="Wrap" />
                 
-                <TextBlock Grid.Row="10" Grid.Column="0" Text="Defer Run On Sim Rate" Margin="3" VerticalAlignment="Center" />
-                <CheckBox Grid.Row="10" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding DeferRunOnSimspeedRate}" HorizontalAlignment="Center"/>
-                <TextBlock Grid.Row="10" Grid.Column="2" Text="This will allow Update1 to run after your limit is reached if sim speed falls below allowed rate." Margin="3" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="10" Grid.Column="0" Text="Defer Run Always" Margin="3" VerticalAlignment="Center" />
+                <CheckBox Grid.Row="10" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding DeferRunAlways}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Row="10" Grid.Column="2" Text="This will allow the pb to run Update1 only after your limit is reached to allow.... Always!" Margin="3" TextWrapping="Wrap" />
                 
-                <TextBlock Grid.Row="11" Grid.Column="0" Text="Defer Below SimRate" Margin="3" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="11" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding DeferRunBelowSimRate}" TextAlignment="Center"/>
-                <TextBlock Grid.Row="11" Grid.Column="2" Text="Set this between 0.0 and 1.0.  When the sim speed drops below this rate and Defer On SimRate is enabled, this will cause pb's to run less often." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="11" Grid.Column="0" Text="Defer Run On Sim Rate" Margin="3" VerticalAlignment="Center" />
+                <CheckBox Grid.Row="11" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding DeferRunOnSimspeedRate}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Row="11" Grid.Column="2" Text="This will allow Update1 to run after your limit is reached if sim speed falls below allowed rate." Margin="3" TextWrapping="Wrap" />
                 
-                <TextBlock Grid.Row="12" Grid.Column="0" Text="How Many Runs To Defer on" Margin="3" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="12" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding DeferRunCount}" TextAlignment="Center"/>
-                <TextBlock Grid.Row="12" Grid.Column="2" Text="How many times should the PB request to run before allowing it." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="12" Grid.Column="0" Text="Defer Below SimRate" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="12" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding DeferRunBelowSimRate}" TextAlignment="Center"/>
+                <TextBlock Grid.Row="12" Grid.Column="2" Text="Set this between 0.0 and 1.0.  When the sim speed drops below this rate and Defer On SimRate is enabled, this will cause pb's to run less often." Margin="3" TextWrapping="Wrap"/>
                 
-                <TextBlock Grid.Row="13" Grid.Column="0" Text="Disable Update1" Margin="3" VerticalAlignment="Center" />
-                <CheckBox Grid.Row="13" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding DisableUpdate1}"/>
-                <TextBlock Grid.Row="13" Grid.Column="2" Text="Attaches Update1 to Update10 and only runs when Update10 would run.  No changes to the players scripts should be needed.  Update1 is rarely actually needed.  No script really needs to run 60 times per second." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="13" Grid.Column="0" Text="How Many Runs To Defer on" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="13" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding DeferRunCount}" TextAlignment="Center"/>
+                <TextBlock Grid.Row="13" Grid.Column="2" Text="How many times should the PB request to run before allowing it." Margin="3" TextWrapping="Wrap"/>
                 
-                <TextBlock Grid.Row="23" Grid.Column="0" Text="Max Memory per PB (in bytes)" Margin="3" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="23" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="75"  Text="{Binding PBMemoryThreshold}" TextAlignment="Center"/>
-                <TextBlock Grid.Row="23" Grid.Column="2" Text="Limit PB use of system memory (Prevents some script attacks against the server and shitty scripts from making the system unstable.  Set to 0 to ignore." Margin="3" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="14" Grid.Column="0" Text="Disable Update1" Margin="3" VerticalAlignment="Center" />
+                <CheckBox Grid.Row="14" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding DisableUpdate1}"/>
+                <TextBlock Grid.Row="14" Grid.Column="2" Text="Attaches Update1 to Update10 and only runs when Update10 would run.  No changes to the players scripts should be needed.  Update1 is rarely actually needed.  No script really needs to run 60 times per second." Margin="3" TextWrapping="Wrap"/>
                 
-                <TextBlock Grid.Row="24" Grid.Column="0" Text="Destroy Protected PB" Margin="3" VerticalAlignment="Center" />
-                <CheckBox Grid.Row="24" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding KillProtectedBlock}"/>
-                <TextBlock Grid.Row="24" Grid.Column="2" Text="Programmable Blocks in a SafeZone or other modded protected area with damage disabled wont receive any damage.  Enable this will cause the block to be have all its building materials removed and reset to an unwelded block." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="15" Grid.Column="0" Text="Max Memory per PB (in bytes)" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="15" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="75"  Text="{Binding PBMemoryThreshold}" TextAlignment="Center"/>
+                <TextBlock Grid.Row="15" Grid.Column="2" Text="Limit PB use of system memory (Prevents some script attacks against the server and shitty scripts from making the system unstable.  Set to 0 to ignore." Margin="3" TextWrapping="Wrap" />
                 
-                <TextBlock Grid.Row="24" Grid.Column="0" Text="Destroy Protected PB" Margin="3" VerticalAlignment="Center" />
-                <CheckBox Grid.Row="24" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding KillProtectedBlock}"/>
-                <TextBlock Grid.Row="24" Grid.Column="2" Text="" Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="16" Grid.Column="0" Text="Destroy Protected PB" Margin="3" VerticalAlignment="Center" />
+                <CheckBox Grid.Row="16" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding KillProtectedBlock}"/>
+                <TextBlock Grid.Row="16" Grid.Column="2" Text="Programmable Blocks in a SafeZone or other modded protected area with damage disabled wont receive any damage.  Enable this will cause the block to be have all its building materials removed and reset to an unwelded block." Margin="3" TextWrapping="Wrap"/>
                 
-                <TextBlock Grid.Row="25" Grid.Column="0" Text="Startup Allowance for pb startup" Margin="3" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="25" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40"  Text="{Binding StartupAllowance}" TextAlignment="Center"/>
-                <TextBlock Grid.Row="25" Grid.Column="2" Text="Amount of time in seconds when block first starts to ignore its runtime." Margin="3" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="18" Grid.Column="0" Text="Startup Allowance for pb startup" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="18" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40"  Text="{Binding StartupAllowance}" TextAlignment="Center"/>
+                <TextBlock Grid.Row="18" Grid.Column="2" Text="Amount of time in seconds when block first starts to ignore its runtime." Margin="3" TextWrapping="Wrap" />
                 
                 <Button Grid.Row="26" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Save Locally Only" Name="SaveLocallyButton" Click="SaveLocallyButton_OnClick"/>
                 <TextBlock Grid.Row="26" Grid.Column="2" Margin="3" Text="Saves the configuration to this server only."/>

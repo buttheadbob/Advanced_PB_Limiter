@@ -4,12 +4,14 @@ using System.Diagnostics;
 using System.Threading;
 using Advanced_PB_Limiter.Settings;
 using ExtensionMethods;
+using NLog;
 using Sandbox.Game.Entities.Blocks;
 
 namespace Advanced_PB_Limiter.Utils
 {
     public sealed class TrackedPBBlock
     {
+        private static Logger Log = LogManager.GetCurrentClassLogger();
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
         public MyProgrammableBlock? ProgrammableBlock { get; }
         private ConcurrentQueue<double> RunTimesMS { get; set; } = new ();

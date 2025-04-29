@@ -54,7 +54,6 @@ namespace Advanced_PB_Limiter
         public static Type? Plugin;
         public static NexusAPI.Server? ThisServer;
         public static bool NexusInstalled { get; private set; }
-        private static int TickUpdateCount = 0;
 
         public override void Init(ITorchBase torch)
         {
@@ -192,7 +191,7 @@ namespace Advanced_PB_Limiter
             _config.Save();
         }
 
-        public Task Save()
+        public void Save()
         {
             try
             {
@@ -203,8 +202,6 @@ namespace Advanced_PB_Limiter
             {
                 Log.Warn(e, "Configuration failed to save");
             }
-            
-            return Task.CompletedTask;
         }
     }
 }

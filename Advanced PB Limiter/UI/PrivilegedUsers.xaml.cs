@@ -18,9 +18,9 @@ namespace Advanced_PB_Limiter.UI
             DataContext = Config;
         }
         
-        private async Task Save()
+        private void Save()
         {
-            await Advanced_PB_Limiter.Instance!.Save();
+            Advanced_PB_Limiter.Instance!.Save();
         }
 
         private void LoadPrivilegedPlayerDataButton_OnClick(object sender, RoutedEventArgs e)
@@ -158,12 +158,12 @@ namespace Advanced_PB_Limiter.UI
                     }
                 }
             }
-            await Save();
+            Save();
             PrivilegedPlayersGrid.ItemsSource = null;
             PrivilegedPlayersGrid.ItemsSource = Config.PrivilegedPlayers.Values;
         }
 
-        private async void RemoveButton_OnClick(object sender, RoutedEventArgs e)
+        private void RemoveButton_OnClick(object sender, RoutedEventArgs e)
         {
             if (PrivilegedPlayersGrid.SelectedIndex < 0) return;
             
@@ -171,7 +171,7 @@ namespace Advanced_PB_Limiter.UI
             if (selectedPlayer is null) return;
             PrivilegedPlayersGrid.ItemsSource = null;
             Config.PrivilegedPlayers.Remove(selectedPlayer.SteamId);
-            await Save();
+            Save();
             PrivilegedPlayersGrid.ItemsSource = Config.PrivilegedPlayers.Values;
         }
 

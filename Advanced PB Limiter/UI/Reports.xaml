@@ -133,9 +133,9 @@
                     <DataGridTextColumn Header="Player Name" Binding="{Binding PlayerName}"/>
                     <DataGridTextColumn Header="Grid Name" Binding="{Binding GridName}"/>
                     <DataGridTextColumn Header="Block Name" Binding="{Binding BlockName}"/>
-                    <DataGridTextColumn Header="Last MS" Binding="{Binding LastRunTimeMS, StringFormat={}{0:0.####}}"/>
-                    <DataGridTextColumn Header="Avg MS" Binding="{Binding AvgMS, StringFormat={}{0:0.####}}"/>
-                    <DataGridTextColumn Header="Peek MS" Binding="{Binding PeekRunTimeMS, StringFormat={}{0:0.####}}"/>
+                    <DataGridTextColumn Header="Last MS" Binding="{Binding LastRunTimeMS, StringFormat={}{0:0.######}}"/>
+                    <DataGridTextColumn Header="Avg MS" Binding="{Binding AvgMS, StringFormat={}{0:0.######}}"/>
+                    <DataGridTextColumn Header="Peek MS" Binding="{Binding PeekRunTimeMS, StringFormat={}{0:0.######}}"/>
                     <DataGridTextColumn Header="Offenses" Binding="{Binding Offences}"/>
                     <DataGridTextColumn Header="Recompiles" Binding="{Binding Recompiles}"/>
                     <DataGridTextColumn Header="Memory" Binding="{Binding MemoryUsed}"/>

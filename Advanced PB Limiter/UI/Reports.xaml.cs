@@ -18,7 +18,7 @@ using Advanced_PB_Limiter.Utils;
 using System.Windows.Forms;
 using System.Windows.Media;
 using Advanced_PB_Limiter.Utils.Reports;
-using NLog.Fluent;
+using NLog;
 using Sandbox;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.World;
@@ -38,6 +38,7 @@ namespace Advanced_PB_Limiter.UI
         private static ObservableCollection<CustomBlockReport> datagrid_BlockReports = new();
         private static ObservableCollection<CustomPlayerReport> datagrid_PlayerReports = new();
         private const string fileTypes = "Text File (*.txt)|*.txt";
+        private static Logger Log = LogManager.GetCurrentClassLogger();
         
         public Reports()
         {
@@ -48,72 +49,64 @@ namespace Advanced_PB_Limiter.UI
             PerPlayerDataGrid.ItemsSource = datagrid_PlayerReports;
         }
         
-        private async Task Save()
-        {
-            await Advanced_PB_Limiter.Instance!.Save();
-        }
-        
         private void TimedRefreshAsync(object sender, ElapsedEventArgs e)
         {
-            Dispatcher.Invoke(async () => await RefreshReportData());
+            Dispatcher.Invoke(RefreshReportData);
         }
         
-        private Task RefreshReportData()
+        private void RefreshReportData()
         {
             PlayerReports.Clear();
             BlockReports.Clear();
             PerPlayerDataGrid.ItemsSource = null;
             PerPBDataGrid.ItemsSource = null;
             
-            double lastRunTimeMs = 0;
+            double accumulativeLastRunTimeMs = 0;
             double avgMs = 0;
-            double calculatedLastRunTimeMs = 0;
             double calculatedAvgMs = 0;
             int offences = 0;
             int recompiles = 0;
             long memoryUsed = 0;
 
-            List<TrackedPlayer> data = TrackingManager.GetTrackedPlayerData();
-            for (int index = 0; index < data.Count; index++)
+            List<TrackedPlayer> trackedPlayer = TrackingManager.GetTrackedPlayerData();
+            for (int index = 0; index < trackedPlayer.Count; index++)
             {
-                for (int ii = 0; ii < data[index].GetAllPBBlocks.Count; ii++)
+                for (int allpbIndex = 0; allpbIndex < trackedPlayer[index].GetAllPBBlocks.Count; allpbIndex++)
                 {
-                    if (data[index].GetAllPBBlocks[ii]?.ProgrammableBlock is null) continue;
-                    lastRunTimeMs += data[index].GetAllPBBlocks[ii].LastRunTimeMS;
-                    avgMs += data[index].GetAllPBBlocks[ii].RunTimeMSAvg;
+                    if (trackedPlayer[index].GetAllPBBlocks[allpbIndex]?.ProgrammableBlock is null) continue;
+                    accumulativeLastRunTimeMs += trackedPlayer[index].GetAllPBBlocks[allpbIndex].LastRunTimeMS;
+                    avgMs += trackedPlayer[index].GetAllPBBlocks[allpbIndex].RunTimeMSAvg;
                     CustomBlockReport blockReport = new
                     (
-                        data[index].SteamId, 
-                        data[index].PlayerName ?? "Unknown", 
-                        data[index].GetAllPBBlocks[ii].GridName, 
-                        data[index].GetAllPBBlocks[ii]!.ProgrammableBlock!.CustomName.ToString(),
-                        data[index].GetAllPBBlocks[ii].LastRunTimeMS, 
-                        data[index].GetAllPBBlocks[ii].RunTimeMSAvg, 
-                        data[index].GetAllPBBlocks[ii].PeekRunTimeMS,
-                        data[index].GetAllPBBlocks[ii].Offences.Count,
-                        data[index].GetAllPBBlocks[ii].Recompiles,
-                        data[index].GetAllPBBlocks[ii].memoryUsage,
-                        data[index].GetAllPBBlocks[ii].ProgrammableBlock
+                        trackedPlayer[index].SteamId, 
+                        trackedPlayer[index].PlayerName ?? "Unknown", 
+                        trackedPlayer[index].GetAllPBBlocks[allpbIndex].GridName, 
+                        trackedPlayer[index].GetAllPBBlocks[allpbIndex]!.ProgrammableBlock!.CustomName.ToString(),
+                        trackedPlayer[index].GetAllPBBlocks[allpbIndex].LastRunTimeMS, 
+                        trackedPlayer[index].GetAllPBBlocks[allpbIndex].RunTimeMSAvg, 
+                        trackedPlayer[index].GetAllPBBlocks[allpbIndex].PeekRunTimeMS,
+                        trackedPlayer[index].GetAllPBBlocks[allpbIndex].Offences.Count,
+                        trackedPlayer[index].GetAllPBBlocks[allpbIndex].Recompiles,
+                        trackedPlayer[index].GetAllPBBlocks[allpbIndex].memoryUsage,
+                        trackedPlayer[index].GetAllPBBlocks[allpbIndex].ProgrammableBlock
                     );
-                    BlockReports.TryAdd(data[index].GetAllPBBlocks[ii].ProgrammableBlock!.EntityId, blockReport);
+                    BlockReports.TryAdd(trackedPlayer[index].GetAllPBBlocks[allpbIndex].ProgrammableBlock!.EntityId, blockReport);
                     
-                    recompiles += data[index].GetAllPBBlocks[ii].Recompiles;
-                    offences += data[index].GetAllPBBlocks[ii].Offences.Count;
-                    memoryUsed += data[index].GetAllPBBlocks[ii].memoryUsage;
+                    recompiles += trackedPlayer[index].GetAllPBBlocks[allpbIndex].Recompiles;
+                    offences += trackedPlayer[index].GetAllPBBlocks[allpbIndex].Offences.Count;
+                    memoryUsed += trackedPlayer[index].GetAllPBBlocks[allpbIndex].memoryUsage;
                 }
 
-                if (data[index].PBBlockCount is not 0) // Should prevent NaN showing up in the live report.
+                if (trackedPlayer[index].PBBlockCount is not 0) // Should prevent NaN showing up in the live report.
                 {
-                    calculatedAvgMs = avgMs / data[index].PBBlockCount;
-                    calculatedLastRunTimeMs = lastRunTimeMs;
+                    calculatedAvgMs = avgMs / trackedPlayer[index].PBBlockCount;
                 }
 
-                CustomPlayerReport report = new(data[index].SteamId, data[index].PlayerName ?? "Unknown", calculatedLastRunTimeMs, calculatedAvgMs, offences, data[index].PBBlockCount, recompiles, memoryUsed, data[index]);
-                PlayerReports.TryAdd(data[index].SteamId, report);
+                CustomPlayerReport report = new(trackedPlayer[index].SteamId, trackedPlayer[index].PlayerName ?? "Unknown", accumulativeLastRunTimeMs, calculatedAvgMs, offences, trackedPlayer[index].PBBlockCount, recompiles, memoryUsed, trackedPlayer[index]);
+                PlayerReports.TryAdd(trackedPlayer[index].SteamId, report);
 
-                lastRunTimeMs = 0;
+                accumulativeLastRunTimeMs = 0;
                 avgMs = 0;
-                calculatedLastRunTimeMs = 0;
                 calculatedAvgMs = 0;
                 offences = 0;
                 recompiles = 0;
@@ -124,8 +117,6 @@ namespace Advanced_PB_Limiter.UI
                 PerPlayerDataGrid.ItemsSource = datagrid_PlayerReports;
                 PerPBDataGrid.ItemsSource = datagrid_BlockReports;
             }
-
-            return Task.CompletedTask;
         }
         
         private void EnableLiveViewButton_OnClick(object sender, RoutedEventArgs e)
@@ -159,9 +150,9 @@ namespace Advanced_PB_Limiter.UI
             EnableLiveViewButton.Content = "Enable Live View";
         }
 
-        private async void ManualUpdateButton_OnClick(object sender, RoutedEventArgs e)
+        private void ManualUpdateButton_OnClick(object sender, RoutedEventArgs e)
         {
-            await RefreshReportData();
+            RefreshReportData();
         }
 
         private async void GenerateTextReport_OnClick(object sender, RoutedEventArgs e)
@@ -176,7 +167,7 @@ namespace Advanced_PB_Limiter.UI
             saveFileDialog.Filter = fileTypes;
             
             if (saveFileDialog.ShowDialog() != DialogResult.OK) return;
-            await RefreshReportData();
+            RefreshReportData();
             
             Stopwatch sw = new();
             sw.Start();
@@ -189,21 +180,28 @@ namespace Advanced_PB_Limiter.UI
 
         private async void SaveCurrentReport_OnClick(object sender, RoutedEventArgs e)
         {
-            if (PlayerReports.Count == 0 || BlockReports.Count == 0)
+            try
             {
-                MessageBox.Show("No data to save.  Start the live view first.", "No Data", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-            Stopwatch sw = new();
-            sw.Start();
-            string report = await GenerateTextReportForSave(); // Create the report first, so we don't have to wait for the save dialog to show causing the results to be different.
-            sw.Stop();
-            SaveFileDialog saveFileDialog = new();
-            saveFileDialog.Filter = fileTypes;
+                if (PlayerReports.Count == 0 || BlockReports.Count == 0)
+                {
+                    MessageBox.Show("No data to save.  Start the live view first.", "No Data", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+                Stopwatch sw = new();
+                sw.Start();
+                string report = await GenerateTextReportForSave(); // Create the report first, so we don't have to wait for the save dialog to show causing the results to be different.
+                sw.Stop();
+                SaveFileDialog saveFileDialog = new();
+                saveFileDialog.Filter = fileTypes;
 
-            if (saveFileDialog.ShowDialog() != DialogResult.OK) return;
-            await WriteTextAsync(saveFileDialog.FileName, report);
-            MessageBox.Show("Report saved to: " + saveFileDialog.FileName, $"Report Generation Took {sw.Elapsed.TotalMilliseconds}ms", MessageBoxButton.OK, MessageBoxImage.Information);
+                if (saveFileDialog.ShowDialog() != DialogResult.OK) return;
+                await WriteTextAsync(saveFileDialog.FileName, report);
+                MessageBox.Show("Report saved to: " + saveFileDialog.FileName, $"Report Generation Took {sw.Elapsed.TotalMilliseconds}ms", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception err)
+            {
+                Log.Error(err);
+            }
         }
         
         private static async Task WriteTextAsync(string filePath, string text)

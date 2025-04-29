@@ -30,7 +30,7 @@ namespace Advanced_PB_Limiter.Manager
 
         public static int ConnectedNexusServers => NexusAPI.GetAllServers().Count;
         
-        public static async void HandleReceivedMessage(ushort handlerId, byte[] data, ulong steamID, bool fromServer)
+        public static void HandleReceivedMessage(ushort handlerId, byte[] data, ulong steamID, bool fromServer)
         {
             try
             {
@@ -44,7 +44,7 @@ namespace Advanced_PB_Limiter.Manager
                 switch (message.MessageType)
                 {
                     case NexusMessageType.PrivilegedPlayerData:
-                        await HandlePrivilegedPlayerData(message.MessageData);
+                        HandlePrivilegedPlayerData(message.MessageData);
                         break;
                     case NexusMessageType.Settings:
                         HandleUpdatedSettings(message.MessageData);
@@ -63,7 +63,7 @@ namespace Advanced_PB_Limiter.Manager
             }
         }
 
-        private static async Task HandlePrivilegedPlayerData(byte[] data)
+        private static void HandlePrivilegedPlayerData(byte[] data)
         {
             PrivilegedPlayer? privilegedPlayer = JsonConvert.DeserializeObject<PrivilegedPlayer>(Encoding.UTF8.GetString(data));
             
@@ -80,7 +80,7 @@ namespace Advanced_PB_Limiter.Manager
             }
             
             Config.PrivilegedPlayers[privilegedPlayer.SteamId] = privilegedPlayer;
-            await Advanced_PB_Limiter.Instance!.Save();
+            Advanced_PB_Limiter.Instance!.Save();
         }
         
         private static async void HandleUpdatedSettings(byte[] data)
