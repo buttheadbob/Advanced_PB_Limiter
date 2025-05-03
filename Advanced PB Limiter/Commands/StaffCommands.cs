@@ -66,7 +66,7 @@ namespace Advanced_PB_Limiter.Commands
         
         [Command("PushConfig", "Pushes this plugin's config to all Nexus servers.  This is a great way to sync new servers or update servers that were offline during an update.")]
         [Permission(MyPromoteLevel.Admin)]
-        public async void PushConfig()
+        public void PushConfig()
         {
             if (!Config.AllowStaffCommands)
             {
@@ -74,7 +74,7 @@ namespace Advanced_PB_Limiter.Commands
                 return;
             }
             
-            if (await NexusNetworkManager.UpdateNexusWithSettingsData())
+            if (NexusNetworkManager.UpdateNexusWithSettingsData())
                 Context.Respond("Advanced PB Limiter config pushed to all Nexus servers.");
             else
                 Context.Respond("Advanced PB Limiter config failed to push to all Nexus servers.  See logs for more information.");
@@ -82,7 +82,7 @@ namespace Advanced_PB_Limiter.Commands
         
         [Command("PushPrivilegedUserData", "Pushes all privileged user data to all Nexus servers.  This is a great way to sync new servers or update servers that were offline when a new privileged user was added.")]
         [Permission(MyPromoteLevel.Admin)]
-        public async void PushPrivilegedUserData()
+        public void PushPrivilegedUserData()
         {
             if (!Config.AllowStaffCommands)
             {
@@ -93,7 +93,7 @@ namespace Advanced_PB_Limiter.Commands
             bool pushSuccess = true;
             foreach (KeyValuePair<ulong, PrivilegedPlayer> privilegedPlayer in Config.PrivilegedPlayers)
             {
-                if (!await NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(privilegedPlayer.Value))
+                if (!NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(privilegedPlayer.Value))
                     pushSuccess = false;
             }
 
@@ -182,7 +182,7 @@ namespace Advanced_PB_Limiter.Commands
 
         [Command("CreatePrivilegedUser", "Creates a new privileged user or overwrites an existing one.", "SteamId, MaxRunTimeMS, MaxRunTimeMSAvg, CombinedLimits, MaxAllBlocksCombinedRunTimeMS, MaxAllBlocksCombinedRunTimeMSAvg, OffencesBeforePunishment, Punishment, GracefulShutDownRequestDelay, UpdateNexus")]
         [Permission(MyPromoteLevel.Admin)]
-        public async void CreatePrivilegedUser(ulong steamId, double maxRunTimeMS, double maxRunTimeMSAvg, bool combinedLimits, double maxAllBlocksCombinedRunTimeMS, double maxAllBlocksCombinedRunTimeMSAvg, int offencesBeforePunishment, Enums.Punishment punishment, int gracefulShutDownRequestDelay, bool updateNexus = false)
+        public void CreatePrivilegedUser(ulong steamId, double maxRunTimeMS, double maxRunTimeMSAvg, bool combinedLimits, double maxAllBlocksCombinedRunTimeMS, double maxAllBlocksCombinedRunTimeMSAvg, int offencesBeforePunishment, Enums.Punishment punishment, int gracefulShutDownRequestDelay, bool updateNexus = false)
         {
             if (!Config.AllowStaffCommands)
             {
@@ -220,7 +220,7 @@ namespace Advanced_PB_Limiter.Commands
             }
 
             if (updateNexus)
-                await NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(Config.PrivilegedPlayers[steamId]);
+                NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(Config.PrivilegedPlayers[steamId]);
             Advanced_PB_Limiter.Instance!.Save();
             Context.Respond("Privileged user data pushed to all Nexus servers.");
         }

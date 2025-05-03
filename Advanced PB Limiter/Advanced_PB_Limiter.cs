@@ -142,9 +142,9 @@ namespace Advanced_PB_Limiter
             Log.Info("Connected to Nexus v2");
         }
 
-        public Task UpdateConfigFromNexus(Advanced_PB_LimiterConfig _newConfig)
+        public void UpdateConfigFromNexus(Advanced_PB_LimiterConfig _newConfig)
         {
-            if (Instance?.Config is null) return Task.CompletedTask;
+            if (Instance?.Config is null) return;
             UI_Dispatcher.Invoke(() =>
             {
                 Instance.Config.Enabled = _newConfig.Enabled;
@@ -173,8 +173,6 @@ namespace Advanced_PB_Limiter
                 Instance.Config.TurnOffUnownedBlocks = _newConfig.TurnOffUnownedBlocks;
                 Instance.Config.UseSimTime = _newConfig.UseSimTime;
             });
-            
-            return Task.CompletedTask;
         }
 
         private void SetupConfig()

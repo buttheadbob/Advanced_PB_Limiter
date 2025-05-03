@@ -83,7 +83,7 @@ namespace Advanced_PB_Limiter.Manager
             Advanced_PB_Limiter.Instance!.Save();
         }
         
-        private static async void HandleUpdatedSettings(byte[] data)
+        private static void HandleUpdatedSettings(byte[] data)
         {
             try
             {
@@ -101,7 +101,7 @@ namespace Advanced_PB_Limiter.Manager
                     return;
                 }
             
-                await Advanced_PB_Limiter.Instance!.UpdateConfigFromNexus(newConfig);
+                Advanced_PB_Limiter.Instance!.UpdateConfigFromNexus(newConfig);
             }
             catch (Exception e)
             {
@@ -121,45 +121,45 @@ namespace Advanced_PB_Limiter.Manager
             ReportManager.AddOrUpdateReport(fromServer, playerReport);
         }
 
-        public static Task<bool> UpdateNexusWithPrivilegedPlayerData(PrivilegedPlayer player)
+        public static bool UpdateNexusWithPrivilegedPlayerData(PrivilegedPlayer player)
         {
             if (ThisServer is null)
             {
                 Log.Warn("Tries to send privileged player data to nexus, but this server is not configured properly.");
-                return Task.FromResult(false); // IF not properly configured, this could happen.
+                return false; // IF not properly configured, this could happen.
             }
 
             byte[] playerData = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(player));
             if (playerData == Array.Empty<byte>())
             {
                 Log.Warn("Unable to serialize privileged player data to send to nexus.");
-                return Task.FromResult(false);
+                return false;
             }
             
             NexusMessage message = new(ThisServer.ServerID, NexusMessageType.PrivilegedPlayerData, playerData);
             SendNexusMessage(message);
             
-            return Task.FromResult(true);
+            return true;
         }
 
-        public static Task<bool> UpdateNexusWithSettingsData()
+        public static bool UpdateNexusWithSettingsData()
         {
             if (ThisServer is null)
             {
                 Log.Warn("Tries to send settings data to nexus, but this server is not configured properly.");
-                return Task.FromResult(false); // IF not properly configured, this could happen.
+                return false; // IF not properly configured, this could happen.
             }
             
             byte[] settingsData = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(Config));
             if (settingsData == Array.Empty<byte>())
             {
                 Log.Warn("Unable to serialize privileged player data to send to nexus.");
-                return Task.FromResult(false);
+                return false;
             }
             
             NexusMessage message = new(ThisServer.ServerID, NexusMessageType.Settings, settingsData);
             SendNexusMessage(message);
-            return Task.FromResult(true);
+            return true;
         }
 
         private static void HandlePlayerReportRequest(int fromServer)

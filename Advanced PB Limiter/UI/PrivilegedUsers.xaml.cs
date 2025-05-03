@@ -18,7 +18,7 @@ namespace Advanced_PB_Limiter.UI
             DataContext = Config;
         }
         
-        private void Save()
+        private static void Save()
         {
             Advanced_PB_Limiter.Instance!.Save();
         }
@@ -44,7 +44,7 @@ namespace Advanced_PB_Limiter.UI
             StartupBox.Text = selectedPlayer.StartupAllowance.ToString(CultureInfo.InvariantCulture);
         }
 
-        private async void AddOrUpdateButton_OnClick(object sender, RoutedEventArgs e)
+        private void AddOrUpdateButton_OnClick(object sender, RoutedEventArgs e)
         {
             if (string.IsNullOrWhiteSpace(PlayerNameBox.Text))
             {
@@ -142,7 +142,7 @@ namespace Advanced_PB_Limiter.UI
                     MessageBoxResult result = MessageBox.Show("Would you like to update this player on all Nexus instances?", "Player Updated", MessageBoxButton.YesNo, MessageBoxImage.Question);
                     if (result == MessageBoxResult.Yes)
                     {
-                        await NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(newPlayer);
+                        NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(newPlayer);
                     }
                 }
             }
@@ -154,7 +154,7 @@ namespace Advanced_PB_Limiter.UI
                     MessageBoxResult result = MessageBox.Show("Would you like to update this player on all Nexus instances?", "Player Added", MessageBoxButton.YesNo, MessageBoxImage.Question);
                     if (result == MessageBoxResult.Yes)
                     {
-                        await NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(newPlayer);
+                        NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(newPlayer);
                     }
                 }
             }
@@ -175,7 +175,7 @@ namespace Advanced_PB_Limiter.UI
             PrivilegedPlayersGrid.ItemsSource = Config.PrivilegedPlayers.Values;
         }
 
-        private async void PushUserToNexus_OnClick(object sender, RoutedEventArgs e)
+        private void PushUserToNexus_OnClick(object sender, RoutedEventArgs e)
         {
             if (PrivilegedPlayersGrid.SelectedIndex < 0)
             {
@@ -196,7 +196,7 @@ namespace Advanced_PB_Limiter.UI
                 return;
             }
                 
-            await NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(selectedPlayer);
+            NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(selectedPlayer);
         }
     }
 }

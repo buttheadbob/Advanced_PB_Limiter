@@ -72,6 +72,10 @@ namespace Advanced_PB_Limiter.Patches
         [ReflectedGetter(Name = "m_runtime")]
         private static readonly Func<MyProgrammableBlock, IMyGridProgramRuntimeInfo> get_Runtime;
         
+        private static int Gen0CollectionCount = 0;
+        private static int Gen1CollectionCount = 0;
+        private static int Gen2CollectionCount = 0;
+        
         public static async void Init()
         {
             checkforSaveTimer.Elapsed += CheckforSaveTimerOnElapsed;
@@ -83,6 +87,7 @@ namespace Advanced_PB_Limiter.Patches
             if (Config.RequireRecompileOnRestart)
                 return;
             
+            // I delay this to give the freshly started server time to stabilize.
             if (Config.DebugReporting)
                 Log.Warn("Shutting down all pb's that were off during startup in 30 seconds...");
             
@@ -146,14 +151,18 @@ namespace Advanced_PB_Limiter.Patches
             if (Config.DebugReporting)
                 Log.Info("Finished Patching!");
         }
-
+        
         // ReSharper disable once RedundantAssignment
         private static bool PrefixExecuteCode(MyProgrammableBlock? __instance, ref UpdateType updateSource, ref string response)
         {
             if (!Config.Enabled) return true;
             if (__instance == null) return true;
-            long time = Stopwatch.GetTimestamp();
             response = string.Empty;
+            Gen0CollectionCount = GC.CollectionCount(0);
+            Gen1CollectionCount = GC.CollectionCount(1);
+            Gen2CollectionCount = GC.CollectionCount(2);
+            
+            long time = Stopwatch.GetTimestamp();
             if ((Config.DeferRunOnSimspeedRate && Sync.ServerSimulationRatio < Config.DeferRunBelowSimRate) || Config.DeferRunAlways  || Config.DisableUpdate1)
             {
                 if (!deferStatus.TryGetValue(__instance.EntityId, out Dictionary<byte, int>? blockDeferStatus) || blockDeferStatus == null)
@@ -262,6 +271,10 @@ namespace Advanced_PB_Limiter.Patches
                 _profileData[__instance.EntityId].Skipped = true;
                 return false;
             }
+            
+            Gen0CollectionCount = GC.CollectionCount(0);
+            Gen1CollectionCount = GC.CollectionCount(1);
+            Gen2CollectionCount = GC.CollectionCount(2);
 
             _profileData[__instance.EntityId].TimingStart = Stopwatch.GetTimestamp();
             return true;
@@ -269,12 +282,39 @@ namespace Advanced_PB_Limiter.Patches
         
         private static void SuffixProfilePb(ref string response, MyProgrammableBlock? __instance, ref MyProgrammableBlock.ScriptTerminationReason __result)
         {
-            if (__instance == null) return; // Something funky is going on so we won't track it this pass but don't block it either.
+            if (!Config.Enabled) return;
+            if (__instance == null) return; // Something funky is going on, so we won't track it this pass but don't block it either.
+            
+            double runtime = !Config.UseGameReportedRuntime 
+                ? Stopwatch.GetTimestamp().TimeElapsed(_profileData[__instance.EntityId].TimingStart).TotalMilliseconds  
+                : get_Runtime(__instance).LastRunTimeMs;
             
             long debugStamp = Stopwatch.GetTimestamp();
             
-            if (!Config.Enabled) return;
-
+            if (_profileData[__instance.EntityId].Skipped)
+            {
+                __result = MyProgrammableBlock.ScriptTerminationReason.None;
+                _profileData[__instance.EntityId].Skipped = false;
+                return;
+            }
+            
+            // GC JIT stuff
+            if (Gen0CollectionCount != GC.CollectionCount(0))
+            {
+                if (Config.DebugReporting) Log.Warn("GC Gen 1 Occured.  Not reporting runtime.");
+                return;
+            }
+            if (Gen1CollectionCount != GC.CollectionCount(1))
+            {
+                if (Config.DebugReporting) Log.Warn("GC Gen 2 Occured.  Not reporting runtime.");
+                return;
+            }
+            if (Gen2CollectionCount != GC.CollectionCount(2))
+            {
+                if (Config.DebugReporting) Log.Warn("GC Gen 3 Occured.  Not reporting runtime.");
+                return;
+            }
+            
             if (!_profileData.ContainsKey(__instance.EntityId) || _profileData[__instance.EntityId] == null)
                 if (Config.DebugReporting)
                 {
@@ -282,21 +322,11 @@ namespace Advanced_PB_Limiter.Patches
                     return;
                 }
 
-            
-            double runtime = !Config.UseGameReportedRuntime 
-                ? Stopwatch.GetTimestamp().TimeElapsed(_profileData[__instance.EntityId].TimingStart).TotalMilliseconds  
-                : get_Runtime(__instance).LastRunTimeMs;
-
             if (string.IsNullOrEmpty(response))
                 response = "";
+            
             if (!Enum.TryParse(__result.ToString(), true, out MyProgrammableBlock.ScriptTerminationReason scriptTerminationReason))
                 __result = MyProgrammableBlock.ScriptTerminationReason.None;
-            
-            if (_profileData[__instance.EntityId].Skipped)
-            {
-                __result = MyProgrammableBlock.ScriptTerminationReason.None;
-                return;
-            }
             
             if (_profileData[__instance.EntityId].TimingStart == 0)
                 return;
@@ -317,7 +347,7 @@ namespace Advanced_PB_Limiter.Patches
             }
 
             if (Config.UseSimTime)
-                runtime = runtime / (Sync.ServerSimulationRatio >= 1 ? 1 : Sync.ServerSimulationRatio);
+                runtime /= Sync.ServerSimulationRatio >= 1 ? 1 : Sync.ServerSimulationRatio;
             
             if (get_AssemblyInstance(__instance) != null)
                 if (!TrackingManager.IsPBInstanceReferenceValid(__instance.EntityId))
@@ -345,9 +375,6 @@ namespace Advanced_PB_Limiter.Patches
             }
 
             TrackingManager.RemovePBInstanceReference(__instance.EntityId);
-            
-            //if (!Config.AllowSelfTurnOnExploit)
-            //    program = Regex.Replace(program, pattern, string.Empty, RegexOptions.IgnoreCase);
             
             TrackingManager.PBRecompiled(__instance);
         }

@@ -48,10 +48,10 @@ namespace Advanced_PB_Limiter.UI
             Save();
         }
 
-        private async void SaveAndPush_OnClick(object sender, RoutedEventArgs e)
+        private void SaveAndPush_OnClick(object sender, RoutedEventArgs e)
         {
             Save();
-            await NexusNetworkManager.UpdateNexusWithSettingsData();
+            NexusNetworkManager.UpdateNexusWithSettingsData();
         }
 
         private void PunishmentComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
