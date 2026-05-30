@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Globalization;
-using System.Threading.Tasks;
 using System.Windows;
-using Advanced_PB_Limiter.Manager;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
 using MessageBox = System.Windows.MessageBox;
@@ -137,26 +135,10 @@ namespace Advanced_PB_Limiter.UI
             if (Config.PrivilegedPlayers.TryGetValue(steamId, out PrivilegedPlayer? existingPlayer))
             {
                 Config.PrivilegedPlayers[steamId] = newPlayer;
-                if (Advanced_PB_Limiter.NexusInstalled)
-                {
-                    MessageBoxResult result = MessageBox.Show("Would you like to update this player on all Nexus instances?", "Player Updated", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                    if (result == MessageBoxResult.Yes)
-                    {
-                        NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(newPlayer);
-                    }
-                }
             }
             else
             {
                 Config.PrivilegedPlayers.Add(steamId, newPlayer);
-                if (Advanced_PB_Limiter.NexusInstalled)
-                {
-                    MessageBoxResult result = MessageBox.Show("Would you like to update this player on all Nexus instances?", "Player Added", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                    if (result == MessageBoxResult.Yes)
-                    {
-                        NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(newPlayer);
-                    }
-                }
             }
             Save();
             PrivilegedPlayersGrid.ItemsSource = null;
@@ -175,28 +157,5 @@ namespace Advanced_PB_Limiter.UI
             PrivilegedPlayersGrid.ItemsSource = Config.PrivilegedPlayers.Values;
         }
 
-        private void PushUserToNexus_OnClick(object sender, RoutedEventArgs e)
-        {
-            if (PrivilegedPlayersGrid.SelectedIndex < 0)
-            {
-                MessageBox.Show("No player selected", "Invalid Selection", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-            
-            PrivilegedPlayer? selectedPlayer = (PrivilegedPlayer) PrivilegedPlayersGrid.SelectedItem;
-            if (selectedPlayer is null)
-            {
-                MessageBox.Show("Error with selected player, cannot push into Nexus.", "Unknown Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-
-            if (!Advanced_PB_Limiter.NexusInstalled)
-            {
-                MessageBox.Show("Nexus is not installed, this instance is not connected to the Nexus Controller, or this server is not online... cannot push into Nexus.", "Nexus Not Installed", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-                
-            NexusNetworkManager.UpdateNexusWithPrivilegedPlayerData(selectedPlayer);
-        }
     }
 }

@@ -2,8 +2,8 @@
 {
     public class TierData
     {
-        public string Name;
-        public string Description;
+        public string Name = string.Empty;
+        public string Description = string.Empty;
         public int Update1;
         public int Update10;
         public int Update100;

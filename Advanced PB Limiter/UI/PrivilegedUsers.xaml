@@ -189,8 +189,7 @@
                 
                 <Button Grid.Row="12" Grid.Column="0" Grid.ColumnSpan="2" Content="Load Privileged Player Data" Name="LoadPrivilegedPlayerDataButton" Margin="3" Background="Wheat" Click="LoadPrivilegedPlayerDataButton_OnClick"/>
                 <Button Grid.Row="13" Grid.Column="0" Grid.ColumnSpan="2" Content="Add/Update Privileged User" Name="AddOrUpdateButton" Margin="3" Background="Chartreuse" Click="AddOrUpdateButton_OnClick"/>
-                <Button Grid.Row="14" Grid.Column="0" Grid.ColumnSpan="2" Content="Push Selected Player To Nexus" Name="PushToNexusButton" Margin="3" Background="Chartreuse" Click="PushUserToNexus_OnClick"/>
-                <Button Grid.Row="15" Grid.Column="0" Grid.ColumnSpan="2" Content="Remove Privileged User" Name="RemoveButton" Margin="3" Background="OrangeRed" Click="RemoveButton_OnClick"/>
+                <Button Grid.Row="14" Grid.Column="0" Grid.ColumnSpan="2" Content="Remove Privileged User" Name="RemoveButton" Margin="3" Background="OrangeRed" Click="RemoveButton_OnClick"/>
             </Grid>
         </GroupBox>
     </StackPanel>

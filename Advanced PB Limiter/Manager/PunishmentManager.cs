@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading;
@@ -17,7 +16,6 @@ using Sandbox.Engine.Multiplayer;
 using Sandbox.Game;
 using Sandbox.Game.Entities;
 using Sandbox.Game.Entities.Blocks;
-using Sandbox.Game.Entities.Cube;
 using Sandbox.Game.Multiplayer;
 using Sandbox.Game.World;
 using Sandbox.ModAPI.Ingame;
@@ -29,26 +27,30 @@ using VRage.Network;
 using VRage.Replication;
 using VRageMath;
 using static Advanced_PB_Limiter.Utils.Enums;
-using Sandbox.Game.Replication;
 using VRage.Game.Entity;
-using VRage.Game.ModAPI;
-using VRage.Sync;
+// ReSharper disable InconsistentNaming
+// ReSharper disable UnassignedField.Global
+#pragma warning disable CS0649 // Field is never assigned to, and will always have its default value
 
 namespace Advanced_PB_Limiter.Manager
 {
     public static class PunishmentManager
     {
-        [ReflectedGetter(Name = "m_clientStates")]
-        private static Func<MyReplicationServer, IDictionary> _clientStates;
-        private const string CLIENT_DATA_TYPE_NAME = "VRage.Network.MyClient, VRage";
-        [ReflectedGetter(TypeName = CLIENT_DATA_TYPE_NAME, Name = "Replicables")]
-        private static Func<object, MyConcurrentDictionary<IMyReplicable, MyReplicableClientData>> _replicables;
-        [ReflectedMethod(Name = "RemoveForClient", OverrideTypeNames = new[] { null, CLIENT_DATA_TYPE_NAME, null })]
-        private static Action<MyReplicationServer, IMyReplicable, object, bool> _removeForClient;
-        [ReflectedMethod(Name = "ForceReplicable")]
-        private static Action<MyReplicationServer, IMyReplicable, Endpoint> _forceReplicable;
-        
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
+        private const string CLIENT_DATA_TYPE_NAME = "VRage.Network.MyClient, VRage";
+        
+        [ReflectedGetter(Name = "m_clientStates")]
+        private static Func<MyReplicationServer, IDictionary>? _clientStates;
+        
+        [ReflectedGetter(TypeName = CLIENT_DATA_TYPE_NAME, Name = "Replicables")]
+        public static Func<object, MyConcurrentDictionary<IMyReplicable, MyReplicableClientData>>? _replicables;
+        
+        [ReflectedMethod(Name = "RemoveForClient", OverrideTypeNames = new[] { null, CLIENT_DATA_TYPE_NAME, null })]
+        public static Action<MyReplicationServer, IMyReplicable, object, bool>? _removeForClient;
+        
+        [ReflectedMethod(Name = "ForceReplicable")]
+        public static Action<MyReplicationServer, IMyReplicable, Endpoint>? _forceReplicable;
+        
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
         private static FieldInfo? needsInstansiationField;
         private static MethodInfo? Terminate;
@@ -211,7 +213,9 @@ namespace Advanced_PB_Limiter.Manager
                 return;
             }
 
-            GracefulShutdownsInProgress.TryAdd(trackedPbBlock.ProgrammableBlock.EntityId, player.SteamId);
+            long entityId = trackedPbBlock.ProgrammableBlock.EntityId;
+            ulong steamId = player.SteamId;
+            GracefulShutdownsInProgress.TryAdd(entityId, steamId);
             
             MySandboxGame.Static.Invoke(() =>
             {
@@ -220,9 +224,9 @@ namespace Advanced_PB_Limiter.Manager
             
             Task.Delay(gracePeriodSeconds * 1000).ContinueWith(_ =>
             {
+                GracefulShutdownsInProgress.TryRemove(entityId, out ulong _);
                 PerformPunish(trackedPbBlock, player, reason, null, notes);
             });
-            GracefulShutdownsInProgress.TryRemove(trackedPbBlock.ProgrammableBlock.EntityId, out _);
         }
 
         private static void PerformPunish(TrackedPBBlock trackedPbBlock, TrackedPlayer player, PunishReason reason, Punishment? punishment = null, string? notes = null)
@@ -379,13 +383,15 @@ namespace Advanced_PB_Limiter.Manager
 
         private static void PunishReSync(string blockDisplayName)
         {
-            // Update state to all players, by Jim and slight modification by Senx for better performance.
+            // Update state to all players, by Jim and slight modification by Senx.
             MyReplicationServer? replicationServer = (MyReplicationServer)MyMultiplayer.ReplicationLayer;
             foreach (MyPlayer onlinePlayer in MySession.Static.Players.GetOnlinePlayers())
             {
                 Endpoint playerEndpoint = new (onlinePlayer.Client.SteamUserId, 0);
-                IDictionary? clientDataDict = _clientStates.Invoke(replicationServer);
+                IDictionary? clientDataDict = _clientStates?.Invoke(replicationServer);
+                if (clientDataDict == null) continue;
                 object clientData;
+                
                 try
                 {
                     clientData = clientDataDict[playerEndpoint];
@@ -395,8 +401,9 @@ namespace Advanced_PB_Limiter.Manager
                     return;
                 }
                     
-                MyConcurrentDictionary<IMyReplicable, MyReplicableClientData>? clientReplicables = _replicables.Invoke(clientData);
+                MyConcurrentDictionary<IMyReplicable, MyReplicableClientData>? clientReplicables = _replicables?.Invoke(clientData);
 
+                if (clientReplicables == null) continue;
                 List<IMyReplicable> replicableList = new (clientReplicables.Count);
                 foreach (KeyValuePair<IMyReplicable, MyReplicableClientData> pair in clientReplicables)
                 {
@@ -410,8 +417,8 @@ namespace Advanced_PB_Limiter.Manager
 
                 foreach (IMyReplicable? replicable in replicableList)
                 {
-                    _removeForClient.Invoke(replicationServer, replicable, clientData, true);
-                    _forceReplicable.Invoke(replicationServer, replicable, playerEndpoint);
+                    _removeForClient?.Invoke(replicationServer, replicable, clientData, true);
+                    _forceReplicable?.Invoke(replicationServer, replicable, playerEndpoint);
                 }
             }
         }

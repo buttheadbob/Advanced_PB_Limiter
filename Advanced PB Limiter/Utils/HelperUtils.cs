@@ -39,8 +39,7 @@ namespace ExtensionMethods
         /// <returns>TimeSpan of the range between the two points given.</returns>
         public static TimeSpan TimeElapsed(this long endTicks, long startTicks)
         {
-            TimeSpan debug = TimeSpan.FromTicks(endTicks - startTicks);
-            return debug;
+            return TimeSpan.FromSeconds((double)(endTicks - startTicks) / Stopwatch.Frequency);
         }
     }
 }

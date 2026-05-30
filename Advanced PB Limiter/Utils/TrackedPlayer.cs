@@ -92,26 +92,28 @@ namespace Advanced_PB_Limiter.Utils
             int index = PBBlocks.Count - 1;
             foreach (KeyValuePair<long, TrackedPBBlock> kvp in PBBlocks)
             {
-                runtimeTimeMSAvg[index--] = kvp.Value.LastRunTimeMS;
+                runtimeTimeMSAvg[index--] = kvp.Value.RunTimeMSAvg;
             }
         }
         
         private void CleanUpOldPBBlocks()
         {
-            List<TrackedPBBlock> toRemove = new();
-            foreach (TrackedPBBlock pbBlock in PBBlocks.Values)
+            List<long> toRemove = new();
+            foreach (KeyValuePair<long, TrackedPBBlock> kvp in PBBlocks)
             {
-                // Check for null programmable blocks and remove them
-                if (pbBlock.ProgrammableBlock is null)
-                    toRemove.Add(pbBlock);
+                if (kvp.Value.ProgrammableBlock is null)
+                {
+                    toRemove.Add(kvp.Key);
+                    continue;
+                }
                 
-                if ((Stopwatch.GetTimestamp() - pbBlock.LastUpdateTick) / Stopwatch.Frequency > Config.RemoveInactivePBsAfterSeconds)
-                    toRemove.Add(pbBlock);
+                if ((Stopwatch.GetTimestamp() - kvp.Value.LastUpdateTick) / Stopwatch.Frequency > Config.RemoveInactivePBsAfterSeconds)
+                    toRemove.Add(kvp.Key);
             }
 
-            foreach (TrackedPBBlock block in toRemove)
+            foreach (long entityId in toRemove)
             {
-                PBBlocks.TryRemove(block.ProgrammableBlock!.EntityId, out _);
+                PBBlocks.TryRemove(entityId, out _);
             }
 
             // Update cleanup interval if it has changed

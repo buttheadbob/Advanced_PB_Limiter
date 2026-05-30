@@ -70,15 +70,13 @@ namespace Advanced_PB_Limiter.Utils.Reports
         public string PlayerName { get; init; }
         public bool IsPrivileged { get; init; }
         private List<PBReport> PBReports { get; init;}
-        public bool IsNexusReport { get; init; }
 
-        public PlayerReport(ulong steamId, long playerId, string playerName, bool isNexusReport, List<PBReport> pbReports)
+        public PlayerReport(ulong steamId, long playerId, string playerName, List<PBReport> pbReports)
         {
             SteamId = steamId;
             PlayerId = playerId;
             PlayerName = playerName;
             if (Config.PrivilegedPlayers.ContainsKey(steamId)) IsPrivileged = true;
-            IsNexusReport = isNexusReport;
             PBReports = pbReports;
         }
         
@@ -151,7 +149,7 @@ namespace Advanced_PB_Limiter.Utils.Reports
         }
     }
     
-    public record PBReport(ulong OwnerSteamId, string GridName, string BlockName, int ServerId, double LastRunTimeMS, double RunTimeMSAvg, int Offences, int Recompiles)
+    public record PBReport(ulong OwnerSteamId, string GridName, string BlockName, double LastRunTimeMS, double RunTimeMSAvg, int Offences, int Recompiles)
     {
         
     }

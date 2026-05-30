@@ -3,14 +3,10 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
-using Sandbox.Game.Entities.Blocks;
 using Sandbox.ModAPI;
 using VRage;
-using VRage.Game;
 
 namespace Advanced_PB_Limiter.Utils
 {
@@ -30,15 +26,10 @@ namespace Advanced_PB_Limiter.Utils
             {
                 if (instance == null) return;
                 Type programType = instance.GetType();
+                Assembly scriptAssembly = programType.Assembly;
+                HashSet<object> visited = new();
             
-                // Measure fields for the current type
-                MeasureFields(programType, instance, ref size);
-
-                // Measure fields for nested types
-                foreach (Type nestedType in programType.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic))
-                {
-                    MeasureFields(nestedType, instance, ref size);
-                }
+                MeasureFields(programType, instance, ref size, scriptAssembly, visited);
             }
             finally
             {
@@ -47,51 +38,45 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
         
-        private static void MeasureFields(Type type, IMyGridProgram instance, ref long size)
+        private static void MeasureFields(Type type, object instance, ref long size, Assembly scriptAssembly, HashSet<object> visited)
         {
-            // Check fields
-            foreach (FieldInfo field in type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static))
+            foreach (FieldInfo field in type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
             {
                 if (errorToAvoid.Contains(field.Name)) continue;
                 
                 try
                 {
-                    // Use the instance if it's an instance field, or null for static fields
-                    object? value = field.IsStatic ? field.GetValue(null) : field.GetValue(instance);
+                    object? value = field.GetValue(instance);
                     if (value != null && value.GetType() != field.FieldType) continue;
                     
-                    OfObject(value, out long _size);
+                    OfObject(value, out long _size, scriptAssembly, visited);
                     size += _size;
                 }
-                catch (Exception ex)
+                catch
                 {
-                    // Log or handle the exception as needed
                     errorToAvoid.Add(field.Name);
                 }
             }
 
-            // Check properties
-            foreach (PropertyInfo property in type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static))
+            foreach (PropertyInfo property in type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
             {
                 if (errorToAvoid.Contains(property.Name)) continue;
                 
                 try
                 {
-                    // Use the instance if it's an instance property, or null for static properties
-                    object? value = property.GetGetMethod(true)?.IsStatic == true ? property.GetValue(null) : property.GetValue(instance);
+                    object? value = property.GetValue(instance);
 
-                    OfObject(value, out long _size);
+                    OfObject(value, out long _size, scriptAssembly, visited);
                     size += _size;
                 }
-                catch (Exception ex)
+                catch
                 {
-                    // Log or handle the exception as needed
                     errorToAvoid.Add(property.Name);
                 }
             }
         }
         
-        private static void OfObject(object? obj, out long size)
+        private static void OfObject(object? obj, out long size, Assembly scriptAssembly, HashSet<object> visited)
         {
             size = 0;
             if (obj == null) return;
@@ -114,13 +99,12 @@ namespace Advanced_PB_Limiter.Utils
                 Array array = (Array)obj;
                 foreach (object? item in array)
                 {
-                    OfObject(item, out long _size);
+                    OfObject(item, out long _size, scriptAssembly, visited);
                     size += _size;
                 }
             }
             else if (typeof(ICollection).IsAssignableFrom(type))
             {
-                // Handle collections like List<T>
                 ICollection collection = (ICollection)obj;
                 if (!type.IsGenericType)
                 {
@@ -129,7 +113,7 @@ namespace Advanced_PB_Limiter.Utils
 
                 foreach (object? item in collection)
                 {
-                    OfObject(item, out long _size);
+                    OfObject(item, out long _size, scriptAssembly, visited);
                     size += _size;
                 }
             }
@@ -140,7 +124,7 @@ namespace Advanced_PB_Limiter.Utils
                 {
                     while (enumerator.MoveNext())
                     {
-                        OfObject(enumerator.Current, out long _size);
+                        OfObject(enumerator.Current, out long _size, scriptAssembly, visited);
                         size += _size;
                     }
                 }
@@ -152,14 +136,17 @@ namespace Advanced_PB_Limiter.Utils
             }
             else if (typeof(IDictionary).IsAssignableFrom(type))
             {
-                // Handle dictionaries like Dictionary<TKey, TValue>
                 IDictionary dictionary = (IDictionary)obj;
                 foreach (DictionaryEntry entry in dictionary)
                 {
-                    OfObject(entry.Key, out long keySize);
-                    OfObject(entry.Value, out long valueSize);
+                    OfObject(entry.Key, out long keySize, scriptAssembly, visited);
+                    OfObject(entry.Value, out long valueSize, scriptAssembly, visited);
                     size += keySize + valueSize;
                 }
+            }
+            else if (type.Assembly == scriptAssembly && visited.Add(obj))
+            {
+                MeasureFields(type, obj, ref size, scriptAssembly, visited);
             }
         }
     }

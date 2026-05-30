@@ -127,11 +127,11 @@ namespace Advanced_PB_Limiter.Manager
                             }, "Advanced PB Limiter");
                             data.ProgBlock.Enabled = false;
                         }
-                        return;
+                        continue;
                     } // Track un-owned blocks? something to think about...
         
                     if (Config.IgnoreNPCs)
-                        if (MySession.Static.Players.IdentityIsNpc(data.ProgBlock.OwnerId)) return;
+                        if (MySession.Static.Players.IdentityIsNpc(data.ProgBlock.OwnerId)) continue;
 
                     if (data.RunTime < 0)
                         data.RunTime = 0;
@@ -288,27 +288,27 @@ namespace Advanced_PB_Limiter.Manager
             }
         }
 
-        public static bool IsPBInstanceReferenceValid(long pbEntityID)
+        public static bool IsPbInstanceReferenceValid(long pbEntityId)
         {
-            if (!ProgrammablePrograms.TryGetValue(pbEntityID, out ProgramInfo? programmableProgram)) return false;
-            if (programmableProgram == null) return false;
+            if (!ProgrammablePrograms.TryGetValue(pbEntityId, out ProgramInfo? programmableProgram)) return false;
+            if (programmableProgram.ProgramReference == null) return false;
             if (!programmableProgram.ProgramReference.TryGetTarget(out IMyGridProgram? program)) return false;
             return program != null;
         }
 
-        public static bool IsMemoryCheckInProgress(long entityID)
+        public static bool IsMemoryCheckInProgress(long entityId)
         {
-            if (!ProgrammablePrograms.TryGetValue(entityID, out ProgramInfo? programmableProgram)) return false;
+            if (!ProgrammablePrograms.TryGetValue(entityId, out ProgramInfo? programmableProgram)) return false;
 
             return Volatile.Read(ref programmableProgram.IsChecking) == 1;
         }
 
-        public static void AddPBInstanceReference(long entityID, ProgramInfo programInfo)
+        public static void AddPbInstanceReference(long entityId, ProgramInfo programInfo)
         {
-            ProgrammablePrograms.AddOrUpdate(entityID, programInfo, (l, info) => info);
+            ProgrammablePrograms.AddOrUpdate(entityId, programInfo, (l, info) => info);
         }
 
-        public static void RemovePBInstanceReference(long entityId)
+        public static void RemovePbInstanceReference(long entityId)
         {
             ProgrammablePrograms.TryRemove(entityId, out _);
         }
@@ -328,32 +328,35 @@ namespace Advanced_PB_Limiter.Manager
 
                     try
                     {
+                        if (programInfo.Value.ProgramReference == null) continue;
+                        
                         if (!programInfo.Value.ProgramReference.TryGetTarget(out IMyGridProgram? program))
                         {
-                            RemovePBInstanceReference(programInfo.Key);
+                            RemovePbInstanceReference(programInfo.Key);
                             continue;
                         }
 
                         if (program == null)
                         {
-                            RemovePBInstanceReference(programInfo.Key);
+                            RemovePbInstanceReference(programInfo.Key);
                             continue;
                         }
                     
                         GetSize.OfAssembly(program, out long size, out long time);
                         if (Config.ShowTimingsBurp)
-                            Log.Info($"[{Advanced_PB_Limiter.Instance?.GetThreadName()} THREAD] Programmable Block=>[{programInfo.Value.PB.CustomName}] Size=>[{size} bytes] ScanTime=>[{TimeSpan.FromTicks(time).TotalMilliseconds}ms]");
+                            Log.Info($"[{Advanced_PB_Limiter.Instance?.GetThreadName()} THREAD] Programmable Block=>[{programInfo.Value.Pb?.CustomName}] Size=>[{size} bytes] ScanTime=>[{TimeSpan.FromTicks(time).TotalMilliseconds}ms]");
                     
                         programInfo.Value.LastUpdate = DateTime.Now;
 
-                        PlayersTracked.TryGetValue(programInfo.Value.OwnerID, out TrackedPlayer? trackedPlayer);
+                        PlayersTracked.TryGetValue(programInfo.Value.OwnerId, out TrackedPlayer? trackedPlayer);
                         TrackedPBBlock? block = null;
                     
                         if (trackedPlayer == null)
                         {
                             foreach (TrackedPlayer player in PlayersTracked.Values)
                             {
-                                block = player.GetTrackedPB(programInfo.Value.PB.EntityId);
+                                if (programInfo.Value.Pb == null) continue;
+                                block = player.GetTrackedPB(programInfo.Value.Pb.EntityId);
                                 if (block != null)
                                     break;
                             }

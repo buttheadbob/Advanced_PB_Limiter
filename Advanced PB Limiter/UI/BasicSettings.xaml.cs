@@ -1,8 +1,6 @@
-﻿using System.Threading.Tasks;
-using System.Timers;
+﻿using System.Timers;
 using System.Windows;
 using System.Windows.Controls;
-using Advanced_PB_Limiter.Manager;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
 
@@ -46,12 +44,6 @@ namespace Advanced_PB_Limiter.UI
         private void SaveLocallyButton_OnClick(object sender, RoutedEventArgs e)
         {
             Save();
-        }
-
-        private void SaveAndPush_OnClick(object sender, RoutedEventArgs e)
-        {
-            Save();
-            NexusNetworkManager.UpdateNexusWithSettingsData();
         }
 
         private void PunishmentComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)

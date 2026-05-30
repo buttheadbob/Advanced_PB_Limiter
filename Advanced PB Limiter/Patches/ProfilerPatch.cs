@@ -27,6 +27,8 @@ using VRage;
 using VRage.Library.Net;
 using VRage.Sync;
 using static Advanced_PB_Limiter.Utils.HelperUtils;
+// ReSharper disable UnusedMember.Global
+#pragma warning disable CS0169 // Field is never used
 
 // ReSharper disable IdentifierTypo
 #pragma warning disable CS0649 // Field is never assigned to, and will always have its default value
@@ -38,48 +40,55 @@ namespace Advanced_PB_Limiter.Patches
         /// <summary>
         /// Gracefully stolen (and heavily modified by me) from the original PB Limiter, Credits to SirHamsterAlot, and Equinox
         /// </summary>
-        private static readonly ConcurrentDictionary<long,MyProgrammableBlock?> _disabledProgrammableBlocks = new();
+        private static readonly ConcurrentDictionary<long,MyProgrammableBlock?> DisabledProgrammableBlocks = new();
         
         private static readonly Logger Log = LogManager.GetLogger("Advanced PB Limiter => Runtime Processor");
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
 
-        private static bool ServerSaved = false;
-        private static readonly Timer checkforSaveTimer = new(16);
-        private static long lastCheckTime = 0;
-        private static readonly Dictionary<long, ProfileData> _profileData = new();
+        private static bool _serverSaved = false;
+        private static readonly Timer CheckforSaveTimer = new(16);
+        private static long _lastCheckTime = 0;
+        private static readonly Dictionary<long, ProfileData> ProfileData = new();
         
         // Dict<EntityID, <Dict<UpdateType,Count>>
-        private static readonly Dictionary<long, Dictionary<byte, int>> deferStatus  = new();
+        private static readonly Dictionary<long, Dictionary<byte, int>> DeferStatus  = new();
         
         [ReflectedMethodInfo(typeof(MyProgrammableBlock), "RunSandboxedProgramActionCore")]
-        private static readonly MethodInfo? _programmableRun;
+        private static readonly MethodInfo? ProgrammableRun;
         
         [ReflectedMethodInfo(typeof(MyProgrammableBlock), "ExecuteCode")]
-        private static readonly MethodInfo? _executeCode;
+        private static readonly MethodInfo? ExecuteCode;
 
         [ReflectedMethodInfo(typeof(MyProgrammableBlock), "Compile")]
-        private static readonly MethodInfo? _programmableRecompile;
+        private static readonly MethodInfo? ProgrammableRecompile;
 
         [ReflectedMethodInfo(typeof(MyProgrammableBlock), "UpdateStorage")]
-        private static readonly MethodInfo? _programmableSaveMethod;
+        private static readonly MethodInfo? ProgrammableSaveMethod;
         
         [ReflectedGetter(Name = "m_currentAssembly")]
-        private static readonly Func<MyProgrammableBlock, Assembly> get_Assembly;
+        private static readonly Func<MyProgrammableBlock, Assembly>? GetAssembly;
         
         [ReflectedGetter(Name = "m_instance")]
-        private static readonly Func<MyProgrammableBlock, IMyGridProgram> get_AssemblyInstance;
+        private static readonly Func<MyProgrammableBlock, IMyGridProgram>? GetAssemblyInstance;
         
         [ReflectedGetter(Name = "m_runtime")]
-        private static readonly Func<MyProgrammableBlock, IMyGridProgramRuntimeInfo> get_Runtime;
+        private static readonly Func<MyProgrammableBlock, IMyGridProgramRuntimeInfo>? GetRuntime;
         
-        private static int Gen0CollectionCount = 0;
-        private static int Gen1CollectionCount = 0;
-        private static int Gen2CollectionCount = 0;
+        /*
+         *  This is a test section to path the player script Main() directly
+         */
+        
+        [ReflectedMethod(Name = "Main")]
+        private static readonly Action<IMyGridProgram, string, UpdateType>? CallMain;
+        
+        private static int _gen0CollectionCount = 0;
+        private static int _gen1CollectionCount = 0;
+        private static int _gen2CollectionCount = 0;
         
         public static async void Init()
         {
-            checkforSaveTimer.Elapsed += CheckforSaveTimerOnElapsed;
-            checkforSaveTimer.Start();
+            CheckforSaveTimer.Elapsed += CheckforSaveTimerOnElapsed;
+            CheckforSaveTimer.Start();
             
             if (Config.AllowSelfTurnOnExploit)
                 return;
@@ -99,15 +108,15 @@ namespace Advanced_PB_Limiter.Patches
             _ = Task.Run( async () =>
             {
                 await Task.Delay(10000).ConfigureAwait(false);
-                ShutdownPB();
+                ShutdownPb();
             });
         }
 
-        private static void ShutdownPB()
+        private static void ShutdownPb()
         {
             MySandboxGame.Static.Invoke(() =>
             {
-                foreach (KeyValuePair<long, MyProgrammableBlock?> kvp in _disabledProgrammableBlocks)
+                foreach (KeyValuePair<long, MyProgrammableBlock?> kvp in DisabledProgrammableBlocks)
                 {
                     if (kvp.Value == null) continue;
                     
@@ -115,7 +124,7 @@ namespace Advanced_PB_Limiter.Patches
                         Log.Warn("Shutting down: " + kvp.Value.CustomName);
                     
                     kvp.Value.Enabled = false;
-                    _disabledProgrammableBlocks.TryRemove(kvp.Key, out _);
+                    DisabledProgrammableBlocks.TryRemove(kvp.Key, out _);
                 }
             },"PB Limiter");
         }
@@ -124,29 +133,29 @@ namespace Advanced_PB_Limiter.Patches
         {
             if (MySession.Static.ServerSaving)
             {
-                lastCheckTime = Stopwatch.GetTimestamp();
-                ServerSaved = true;
+                _lastCheckTime = Stopwatch.GetTimestamp();
+                _serverSaved = true;
                 return;
             }
 
-            if (lastCheckTime.TicksTillNow_TimeSpan().TotalSeconds > 10)
-                ServerSaved = false;
+            if (_lastCheckTime.TicksTillNow_TimeSpan().TotalSeconds > 10)
+                _serverSaved = false;
         }
 
         public static void Patch(PatchContext ctx)
         {
             ReflectedManager.Process(typeof(ProfilerPatch_Torch));
             
-            ctx.GetPattern(_programmableRun).Prefixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(PrefixProfilePb)));
-            ctx.GetPattern(_programmableRun).Suffixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(SuffixProfilePb)));
+            ctx.GetPattern(ProgrammableRun).Prefixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(PrefixProfilePb)));
+            ctx.GetPattern(ProgrammableRun).Suffixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(SuffixProfilePb)));
             
             // ExecuteCode is called way before RunSandboxedProgramActionCore so we will use this place to determine defer actions. 
-            ctx.GetPattern(_executeCode).Prefixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(PrefixExecuteCode)));
+            ctx.GetPattern(ExecuteCode).Prefixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(PrefixExecuteCode)));
             
-            ctx.GetPattern(_programmableRecompile).Prefixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(PrefixRecompilePb)));
-            ctx.GetPattern(_programmableRecompile).Suffixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(SuffixRecompilePb)));
+            ctx.GetPattern(ProgrammableRecompile).Prefixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(PrefixRecompilePb)));
+            ctx.GetPattern(ProgrammableRecompile).Suffixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(SuffixRecompilePb)));
             
-            ctx.GetPattern(_programmableSaveMethod).Prefixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(PrefixSaveMethod)));
+            ctx.GetPattern(ProgrammableSaveMethod).Prefixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(PrefixSaveMethod)));
 
             if (Config.DebugReporting)
                 Log.Info("Finished Patching!");
@@ -158,20 +167,20 @@ namespace Advanced_PB_Limiter.Patches
             if (!Config.Enabled) return true;
             if (__instance == null) return true;
             response = string.Empty;
-            Gen0CollectionCount = GC.CollectionCount(0);
-            Gen1CollectionCount = GC.CollectionCount(1);
-            Gen2CollectionCount = GC.CollectionCount(2);
+            _gen0CollectionCount = GC.CollectionCount(0);
+            _gen1CollectionCount = GC.CollectionCount(1);
+            _gen2CollectionCount = GC.CollectionCount(2);
             
             long time = Stopwatch.GetTimestamp();
             if ((Config.DeferRunOnSimspeedRate && Sync.ServerSimulationRatio < Config.DeferRunBelowSimRate) || Config.DeferRunAlways  || Config.DisableUpdate1)
             {
-                if (!deferStatus.TryGetValue(__instance.EntityId, out Dictionary<byte, int>? blockDeferStatus) || blockDeferStatus == null)
+                if (!DeferStatus.TryGetValue(__instance.EntityId, out Dictionary<byte, int>? blockDeferStatus) || blockDeferStatus == null)
                 {
                     blockDeferStatus = new Dictionary<byte, int>
                     {
                         {1,0},{10,0},{100,0}
                     };
-                    deferStatus.Add(__instance.EntityId, blockDeferStatus);
+                    DeferStatus.Add(__instance.EntityId, blockDeferStatus);
                     
                     // This would only not exist on first run, which is the instantiation run and should go without intervention.
                     return true;
@@ -237,10 +246,10 @@ namespace Advanced_PB_Limiter.Patches
             if (__instance == null)
                 return true; // Something funky is going on so we won't track it this pass but don't block it either.
             
-            if (!_profileData.ContainsKey(__instance.EntityId))
-                _profileData.Add(__instance.EntityId, new ProfileData());
+            if (!ProfileData.ContainsKey(__instance.EntityId))
+                ProfileData.Add(__instance.EntityId, new ProfileData());
             
-            _profileData[__instance.EntityId].TimingStart = 0;
+            ProfileData[__instance.EntityId].TimingStart = 0;
 
             if (!__instance.Enabled)
             {
@@ -251,11 +260,11 @@ namespace Advanced_PB_Limiter.Patches
                         if (Config.DebugReporting)
                             Log.Warn("Skipping recompile for pb: " + __instance.CustomName);
 
-                        _profileData[__instance.EntityId].Skipped = true;
+                        ProfileData[__instance.EntityId].Skipped = true;
                         return false;
                     }
                     
-                    if (_disabledProgrammableBlocks.TryAdd(__instance.EntityId, __instance))
+                    if (DisabledProgrammableBlocks.TryAdd(__instance.EntityId, __instance))
                     {
                         if (Config.DebugReporting)
                             Log.Warn($"Programmable Block {__instance.CustomName} was not enabled during restart and will be disabled again shortly.");
@@ -268,15 +277,11 @@ namespace Advanced_PB_Limiter.Patches
                 if (Config.DebugReporting)
                     Log.Warn($"Skipping programmable block[{__instance.CustomName}] run for memory check.");
                 
-                _profileData[__instance.EntityId].Skipped = true;
+                ProfileData[__instance.EntityId].Skipped = true;
                 return false;
             }
-            
-            Gen0CollectionCount = GC.CollectionCount(0);
-            Gen1CollectionCount = GC.CollectionCount(1);
-            Gen2CollectionCount = GC.CollectionCount(2);
 
-            _profileData[__instance.EntityId].TimingStart = Stopwatch.GetTimestamp();
+            ProfileData[__instance.EntityId].TimingStart = Stopwatch.GetTimestamp();
             return true;
         }
         
@@ -286,36 +291,42 @@ namespace Advanced_PB_Limiter.Patches
             if (__instance == null) return; // Something funky is going on, so we won't track it this pass but don't block it either.
             
             double runtime = !Config.UseGameReportedRuntime 
-                ? Stopwatch.GetTimestamp().TimeElapsed(_profileData[__instance.EntityId].TimingStart).TotalMilliseconds  
-                : get_Runtime(__instance).LastRunTimeMs;
+                ? Stopwatch.GetTimestamp().TimeElapsed(ProfileData[__instance.EntityId].TimingStart).TotalMilliseconds  
+                : GetRuntime!(__instance).LastRunTimeMs;
+            
+            if (Config is { UseGameReportedRuntime: false, DebugReporting: true })
+            {
+                double gameRuntime = GetRuntime!(__instance).LastRunTimeMs;
+                Log.Debug($"PB[{__instance.CustomName}] Stopwatch: {runtime:0.0000}ms  GameReported: {gameRuntime:0.0000}ms  Delta: {runtime - gameRuntime:0.0000}ms");
+            }
             
             long debugStamp = Stopwatch.GetTimestamp();
             
-            if (_profileData[__instance.EntityId].Skipped)
+            if (ProfileData[__instance.EntityId].Skipped)
             {
                 __result = MyProgrammableBlock.ScriptTerminationReason.None;
-                _profileData[__instance.EntityId].Skipped = false;
+                ProfileData[__instance.EntityId].Skipped = false;
                 return;
             }
             
-            // GC JIT stuff
-            if (Gen0CollectionCount != GC.CollectionCount(0))
+            // GC stuff
+            if (_gen0CollectionCount != GC.CollectionCount(0))
             {
                 if (Config.DebugReporting) Log.Warn("GC Gen 1 Occured.  Not reporting runtime.");
                 return;
             }
-            if (Gen1CollectionCount != GC.CollectionCount(1))
+            if (_gen1CollectionCount != GC.CollectionCount(1))
             {
                 if (Config.DebugReporting) Log.Warn("GC Gen 2 Occured.  Not reporting runtime.");
                 return;
             }
-            if (Gen2CollectionCount != GC.CollectionCount(2))
+            if (_gen2CollectionCount != GC.CollectionCount(2))
             {
                 if (Config.DebugReporting) Log.Warn("GC Gen 3 Occured.  Not reporting runtime.");
                 return;
             }
             
-            if (!_profileData.ContainsKey(__instance.EntityId) || _profileData[__instance.EntityId] == null)
+            if (!ProfileData.ContainsKey(__instance.EntityId) || ProfileData[__instance.EntityId] == null)
                 if (Config.DebugReporting)
                 {
                     Log.Warn("Profile data for PB is missing!");
@@ -328,7 +339,7 @@ namespace Advanced_PB_Limiter.Patches
             if (!Enum.TryParse(__result.ToString(), true, out MyProgrammableBlock.ScriptTerminationReason scriptTerminationReason))
                 __result = MyProgrammableBlock.ScriptTerminationReason.None;
             
-            if (_profileData[__instance.EntityId].TimingStart == 0)
+            if (ProfileData[__instance.EntityId].TimingStart == 0)
                 return;
             
             // the pb will still run up to the point of executing the script even when disabled by script termination fault, this will stop some of that.
@@ -336,7 +347,7 @@ namespace Advanced_PB_Limiter.Patches
             if (__result != MyProgrammableBlock.ScriptTerminationReason.None)
             {
                 MySandboxGame.Static.Invoke(() => { __instance.Enabled = false;}, "Advanced PB Limiter");
-                TrackingManager.RemovePBInstanceReference(__instance.EntityId);
+                TrackingManager.RemovePbInstanceReference(__instance.EntityId);
                 if (Config.DebugReporting)
                 {
                     Advanced_PB_Limiter.Log.Info($"{__instance.CustomName} : {runtime / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio)} :: {runtime / (Sync.ServerSimulationRatio > 1 ? 1 : Sync.ServerSimulationRatio)}");
@@ -349,11 +360,11 @@ namespace Advanced_PB_Limiter.Patches
             if (Config.UseSimTime)
                 runtime /= Sync.ServerSimulationRatio >= 1 ? 1 : Sync.ServerSimulationRatio;
             
-            if (get_AssemblyInstance(__instance) != null)
-                if (!TrackingManager.IsPBInstanceReferenceValid(__instance.EntityId))
-                    TrackingManager.AddPBInstanceReference(__instance.EntityId, new ProgramInfo{ ProgramReference = new WeakReference<IMyGridProgram>(get_AssemblyInstance(__instance)), LastUpdate = DateTime.Now, OwnerID = __instance.OwnerId, PB = __instance} );
+            if (GetAssemblyInstance!(__instance) != null)
+                if (!TrackingManager.IsPbInstanceReferenceValid(__instance.EntityId))
+                    TrackingManager.AddPbInstanceReference(__instance.EntityId, new ProgramInfo{ ProgramReference = new WeakReference<IMyGridProgram>(GetAssemblyInstance(__instance)), LastUpdate = DateTime.Now, OwnerId = __instance.OwnerId, Pb = __instance} );
             
-            if (!ServerSaved)
+            if (!_serverSaved)
                 TrackingManager.UpdateTrackingData(__instance, runtime); 
             
             if (Config.ShowTimingsBurp)
@@ -374,7 +385,7 @@ namespace Advanced_PB_Limiter.Patches
                 __localDisable = true;
             }
 
-            TrackingManager.RemovePBInstanceReference(__instance.EntityId);
+            TrackingManager.RemovePbInstanceReference(__instance.EntityId);
             
             TrackingManager.PBRecompiled(__instance);
         }

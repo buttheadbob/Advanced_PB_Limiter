@@ -7,7 +7,7 @@ namespace Advanced_PB_Limiter.Utils
     public class PrivilegedPlayer
     {
         [ProtoMember(10)] public ulong SteamId { get; set; }
-        [ProtoMember(20)] public string Name { get; set; }
+        [ProtoMember(20)] public string Name { get; set; } = string.Empty;
         [ProtoMember(30)] public double RuntimeAllowance { get; set; }
         [ProtoMember(40)] public double RuntimeAverageAllowance { get; set; }
         [ProtoMember(50)] public double StartupAllowance { get; set; }
@@ -18,9 +18,6 @@ namespace Advanced_PB_Limiter.Utils
         [ProtoMember(100)] public int GracefulShutDownRequestDelay { get; set; } = 10;
         [ProtoMember(110)] public int OffencesBeforePunishment { get; set; } = 6;
         [ProtoMember(120)] public int DamageAmount { get; set; } = 100;
-        [ProtoMember(130)] public TierData TierPlan { get; set; }
-
-        public PrivilegedPlayer() { }
-        
+        [ProtoMember(130)] public TierData? TierPlan { get; set; }
     }
 }

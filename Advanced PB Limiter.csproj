@@ -48,8 +48,7 @@
       <Private>False</Private>
     </Reference>
     <Reference Include="NLog">
-      <HintPath>..\..\..\Torch\NLog.dll</HintPath>
-      <Private>False</Private>
+      <HintPath>E:\Torch\NLog.dll</HintPath>
     </Reference>
     <Reference Include="PresentationCore">
       <Private>True</Private>
@@ -58,8 +57,7 @@
       <Private>True</Private>
     </Reference>
     <Reference Include="ProtoBuf.Net.Core">
-      <HintPath>..\..\..\Torch\DedicatedServer64\ProtoBuf.Net.Core.dll</HintPath>
-      <Private>False</Private>
+      <HintPath>GameBinaries\ProtoBuf.Net.Core.dll</HintPath>
     </Reference>
     <Reference Include="Sandbox.Common, Version=1.0.0.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
@@ -162,7 +160,6 @@
   <ItemGroup>
     <Compile Include="Advanced PB Limiter\Commands\PlayerCommands.cs" />
     <Compile Include="Advanced PB Limiter\Commands\StaffCommands.cs" />
-    <Compile Include="Advanced PB Limiter\Manager\NexusNetworkManager.cs" />
     <Compile Include="Advanced PB Limiter\Manager\PunishmentManager.cs" />
     <Compile Include="Advanced PB Limiter\Manager\ReportManager.cs" />
     <Compile Include="Advanced PB Limiter\Manager\TrackingManager.cs" />
@@ -182,15 +179,11 @@
     </Compile>
     <Compile Include="Advanced PB Limiter\Advanced_PB_Limiter.cs" />
     <Compile Include="Advanced PB Limiter\Settings\Advanced_PB_LimiterConfig.cs" />
-    <Compile Include="Advanced PB Limiter\Settings\NexusSettings.cs" />
     <Compile Include="Advanced PB Limiter\UI\Advanced_PB_LimiterControl.xaml.cs">
       <DependentUpon>Advanced_PB_LimiterControl.xaml</DependentUpon>
     </Compile>
     <Compile Include="Advanced PB Limiter\UI\BasicSettings.xaml.cs">
       <DependentUpon>BasicSettings.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Advanced PB Limiter\UI\NexusSettings.xaml.cs">
-      <DependentUpon>NexusSettings.xaml</DependentUpon>
     </Compile>
     <Compile Include="Advanced PB Limiter\UI\PrivilegedUsers.xaml.cs">
       <DependentUpon>PrivilegedUsers.xaml</DependentUpon>
@@ -207,9 +200,6 @@
     <Compile Include="Advanced PB Limiter\Utils\GetSizeOfObject.cs" />
     <Compile Include="Advanced PB Limiter\Utils\HelperUtils.cs" />
     <Compile Include="Advanced PB Limiter\Utils\MtObservableSortedSerializableDictionary.cs" />
-    <Compile Include="Advanced PB Limiter\Utils\MyEnums.cs" />
-    <Compile Include="Advanced PB Limiter\Utils\NexusAPI.cs" />
-    <Compile Include="Advanced PB Limiter\Utils\NexusApiV3.cs" />
     <Compile Include="Advanced PB Limiter\Utils\PrivilegedPlayer.cs" />
     <Compile Include="Advanced PB Limiter\Utils\ProfileData.cs" />
     <Compile Include="Advanced PB Limiter\Utils\ProgramInfo.cs" />
@@ -244,7 +234,6 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="Advanced PB Limiter\UI\BasicSettings.xaml" />
-    <Page Include="Advanced PB Limiter\UI\NexusSettings.xaml" />
     <Page Include="Advanced PB Limiter\UI\PrivilegedUsers.xaml" />
     <Page Include="Advanced PB Limiter\UI\Reports.xaml" />
     <Page Include="Advanced PB Limiter\UI\TierDataSettings.xaml" />
