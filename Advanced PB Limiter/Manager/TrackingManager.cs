@@ -156,12 +156,7 @@ namespace Advanced_PB_Limiter.Manager
         
         private static void RemovePlayer(long Id)
         {
-            for (int index = PlayersTracked.Count - 1; index >= 0; index--)
-            {
-                if (PlayersTracked[index].PlayerId != Id) continue;
-                PlayersTracked.Remove(Id);
-                break;
-            }
+            PlayersTracked.TryRemove(Id, out _);
         }
         
         public static void PBRecompiled(MyProgrammableBlock? pb)

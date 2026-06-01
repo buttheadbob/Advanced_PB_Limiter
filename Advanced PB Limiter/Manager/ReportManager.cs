@@ -157,18 +157,19 @@ namespace Advanced_PB_Limiter.Manager
             List<TrackedPlayer> list = TrackingManager.GetTrackedPlayerData();
             for (int index = 0; index < list.Count; index++)
             {
+                List<TrackedPBBlock> playerBlocks = list[index].GetAllPBBlocks;
                 List<PBReport> pbReports = new();
-                for (int ii = 0; ii < list[index].GetAllPBBlocks.Count; ii++)
+                for (int ii = 0; ii < playerBlocks.Count; ii++)
                 {
-                    if (list[index].GetAllPBBlocks[ii] is null || list[index].GetAllPBBlocks[ii].ProgrammableBlock == null) continue;
+                    if (playerBlocks[ii] is null || playerBlocks[ii].ProgrammableBlock == null) continue;
                     
                     PBReport pbReport = new(list[index].SteamId,
-                        list[index].GetAllPBBlocks[ii].ProgrammableBlock!.SlimBlock.CubeGrid.DisplayName,
-                        list[index].GetAllPBBlocks[ii].ProgrammableBlock!.CustomName.ToString(),
-                        list[index].GetAllPBBlocks[ii].LastRunTimeMS,
-                        list[index].GetAllPBBlocks[ii].RunTimeMSAvg,
-                        list[index].GetAllPBBlocks[ii].Offences.Count,
-                        list[index].GetAllPBBlocks[ii].Recompiles);
+                        playerBlocks[ii].ProgrammableBlock!.SlimBlock.CubeGrid.DisplayName,
+                        playerBlocks[ii].ProgrammableBlock!.CustomName.ToString(),
+                        playerBlocks[ii].LastRunTimeMS,
+                        playerBlocks[ii].RunTimeMSAvg,
+                        playerBlocks[ii].Offences.Count,
+                        playerBlocks[ii].Recompiles);
                     
                     pbReports.Add(pbReport);
                 }

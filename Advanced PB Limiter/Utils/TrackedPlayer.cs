@@ -57,7 +57,10 @@ namespace Advanced_PB_Limiter.Utils
             }
 
             if (trackedPBBlock.IsUnderGracePeriod(MySession.Static.Players.TryGetSteamId(data.ProgBlock.OwnerId)))
+            {
+                trackedPBBlock.LastUpdateTick = Stopwatch.GetTimestamp();
                 return;
+            }
             
             trackedPBBlock.AddRuntimeData(data.RunTime, SteamId);
             PunishmentManager.CheckForPunishment(this, trackedPBBlock.ProgrammableBlock!.EntityId, data.RunTime);
