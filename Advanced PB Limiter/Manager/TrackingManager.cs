@@ -15,6 +15,7 @@ using NLog.Fluent;
 using Sandbox;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.Entities.Cube;
+using Sandbox.Game.Multiplayer;
 using Sandbox.Game.World;
 using Sandbox.ModAPI;
 using Sandbox.ModAPI.Ingame;
@@ -177,6 +178,8 @@ namespace Advanced_PB_Limiter.Manager
             if (!Config.CheckAllUserBlocksCombined) return;
             
             if (_checkCombinedLimitsRunning) return;
+            
+            if (Config.EnforceOnlyBelowSimThreshold && Sync.ServerSimulationRatio >= Config.EnforceOnlyBelowSimRate) return;
 
             try
             {
