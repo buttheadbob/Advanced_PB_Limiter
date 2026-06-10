@@ -2,7 +2,6 @@
 {
     public class ProfileData
     {
-        public long TimingStart;
         public bool Skipped;
     }
 }

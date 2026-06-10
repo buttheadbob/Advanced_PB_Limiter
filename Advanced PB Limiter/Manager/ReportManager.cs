@@ -262,7 +262,8 @@ namespace Advanced_PB_Limiter.Manager
                 sb.AppendLine($"Block Name: {pbBlock.ProgrammableBlock.DisplayName}");
                 foreach (double runtime in pbBlock.GetRunTimesMS)
                 {
-                    sb.AppendLine($" - {runtime:0.0000}ms");
+                    string outlierFlag = pbBlock.IsOutlier(runtime) ? " (outlier)" : "";
+                    sb.AppendLine($" - {runtime:0.0000}ms{outlierFlag}");
                 }               
                 sb.AppendLine("-----------------------------");
             }

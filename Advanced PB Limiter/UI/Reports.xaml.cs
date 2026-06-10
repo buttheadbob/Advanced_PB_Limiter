@@ -15,7 +15,6 @@ using System.Windows.Data;
 using Advanced_PB_Limiter.Manager;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
-using System.Windows.Forms;
 using System.Windows.Media;
 using Advanced_PB_Limiter.Utils.Reports;
 using NLog;
@@ -163,10 +162,10 @@ namespace Advanced_PB_Limiter.UI
                 return;
             }
             
-            SaveFileDialog saveFileDialog = new();
+            Microsoft.Win32.SaveFileDialog saveFileDialog = new();
             saveFileDialog.Filter = fileTypes;
             
-            if (saveFileDialog.ShowDialog() != DialogResult.OK) return;
+            if (saveFileDialog.ShowDialog() != true) return;
             RefreshReportData();
             
             Stopwatch sw = new();
@@ -191,10 +190,10 @@ namespace Advanced_PB_Limiter.UI
                 sw.Start();
                 string report = await GenerateTextReportForSave(); // Create the report first, so we don't have to wait for the save dialog to show causing the results to be different.
                 sw.Stop();
-                SaveFileDialog saveFileDialog = new();
+                Microsoft.Win32.SaveFileDialog saveFileDialog = new();
                 saveFileDialog.Filter = fileTypes;
 
-                if (saveFileDialog.ShowDialog() != DialogResult.OK) return;
+                if (saveFileDialog.ShowDialog() != true) return;
                 await WriteTextAsync(saveFileDialog.FileName, report);
                 MessageBox.Show("Report saved to: " + saveFileDialog.FileName, $"Report Generation Took {sw.Elapsed.TotalMilliseconds}ms", MessageBoxButton.OK, MessageBoxImage.Information);
             }

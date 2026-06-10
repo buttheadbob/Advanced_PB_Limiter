@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -11,6 +12,7 @@ namespace Advanced_PB_Limiter.Utils
 {
     public sealed class TrackedPBBlock
     {
+        private const int MAX_SAMPLES = 50;
         private static Logger Log = LogManager.GetCurrentClassLogger();
         private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
         public MyProgrammableBlock? ProgrammableBlock { get; }
@@ -23,6 +25,9 @@ namespace Advanced_PB_Limiter.Utils
         private double RunTimesSum { get; set; } = 0;
         public double PeekRunTimeMS { get; private set; } = 0;
         public long memoryUsage { get; private set; }
+        private double _filteredSum;
+        private int _filteredCount;
+        private double _upperFence;
         
         private long _lastOffenceTick;
         public long LastOffenceTick
@@ -64,13 +69,45 @@ namespace Advanced_PB_Limiter.Utils
             if (lastRunTimeMS > PeekRunTimeMS)
                 PeekRunTimeMS = lastRunTimeMS;
             LastRunTimeMS = lastRunTimeMS;
-            if (RunTimesMS.Count >= Config.MaxRunsToTrack)
+            if (RunTimesMS.Count >= MAX_SAMPLES)
                 if (RunTimesMS.TryDequeue(out double oldRunTimeMS))
                     RunTimesSum -= oldRunTimeMS;
             
             RunTimesMS.Enqueue(lastRunTimeMS);
             RunTimesSum += lastRunTimeMS;
+            
+            if (RunTimesMS.Count >= MAX_SAMPLES)
+                RecomputeFilteredStats();
+            
             LastUpdateTick = Stopwatch.GetTimestamp();
+        }
+
+        private void RecomputeFilteredStats()
+        {
+            double[] samples = GetRunTimesMS;
+            Array.Sort(samples);
+            
+            double q1 = samples[MAX_SAMPLES / 4];
+            double q3 = samples[MAX_SAMPLES * 3 / 4];
+            double iqr = q3 - q1;
+            _upperFence = q3 + 1.5 * iqr;
+            
+            _filteredSum = 0;
+            _filteredCount = 0;
+            for (int i = 0; i < samples.Length; i++)
+            {
+                if (samples[i] <= _upperFence)
+                {
+                    _filteredSum += samples[i];
+                    _filteredCount++;
+                }
+            }
+        }
+
+        public bool IsOutlier(double value)
+        {
+            if (RunTimesMS.Count < MAX_SAMPLES) return false;
+            return value > _upperFence;
         }
         
         public double[] GetRunTimesMS
@@ -93,11 +130,10 @@ namespace Advanced_PB_Limiter.Utils
         {
             get
             {
-                // If the queue doesnt have enough samples to calculate the average, return 0
-                if (RunTimesMS.Count < Config.MaxRunsToTrack)
+                if (RunTimesMS.Count < MAX_SAMPLES)
                     return 0;
                 
-                return RunTimesSum / RunTimesMS.Count;
+                return _filteredCount > 0 ? _filteredSum / _filteredCount : 0;
             }
         }
         
@@ -136,6 +172,9 @@ namespace Advanced_PB_Limiter.Utils
             PBStartTime = Stopwatch.GetTimestamp();
             _lastUpdateTick = Stopwatch.GetTimestamp();
             PeekRunTimeMS = 0;
+            _filteredSum = 0;
+            _filteredCount = 0;
+            _upperFence = 0;
         }
     }
 }

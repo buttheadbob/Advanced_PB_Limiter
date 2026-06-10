@@ -21,9 +21,6 @@ namespace Advanced_PB_Limiter.Settings
         private int _RemovePlayersWithNoPBFrequencyInMinutes = 60;
         public int RemovePlayersWithNoPBFrequencyInMinutes { get => _RemovePlayersWithNoPBFrequencyInMinutes; set => SetValue(ref _RemovePlayersWithNoPBFrequencyInMinutes, value); }
         
-        private int _MaxRunsToTrack = 50;
-        public int MaxRunsToTrack { get => _MaxRunsToTrack; set => SetValue(ref _MaxRunsToTrack, value); }
-        
         private bool _ClearHistoryOnRecompile = true;
         public bool ClearHistoryOnRecompile { get => _ClearHistoryOnRecompile; set => SetValue(ref _ClearHistoryOnRecompile, value); }
         
@@ -138,8 +135,5 @@ namespace Advanced_PB_Limiter.Settings
         
         private double _enforceOnlyBelowSimRate = 0.7;
         public double EnforceOnlyBelowSimRate {get => _enforceOnlyBelowSimRate; set => SetValue(ref _enforceOnlyBelowSimRate, value); }
-
-        private bool _useGameReportedRuntime = true;
-        public bool UseGameReportedRuntime { get => _useGameReportedRuntime; set => SetValue(ref _useGameReportedRuntime, value); }
     }
 }

@@ -126,34 +126,37 @@ namespace Advanced_PB_Limiter.Manager
                 return;
             
             // Check for runtime offense
-            if (allowedRunTime != 0 && lastRunTimeMS > allowedRunTime)
+            if (!trackedPbBlock.IsOutlier(lastRunTimeMS))
             {
-                trackedPbBlock.Offences.Enqueue(Stopwatch.GetTimestamp());
-                trackedPbBlock.LastOffenceTick = Stopwatch.GetTimestamp();
-                Interlocked.Increment(ref player.Offences);
-                Log.Info($"PB Block: {trackedPbBlock.ProgrammableBlock?.EntityId} for [{trackedPbBlock.GridName} >> {trackedPbBlock.ProgrammableBlock?.CustomName}] has exceeded the run-time limit.  Last Run-Time: {lastRunTimeMS:0.0000}ms  Allowed-Run-Time: {allowedRunTime:0.0000}ms  Offenses: {trackedPbBlock.Offences.Count}");
-                
-                if (trackedPbBlock.Offences.Count <= allowedOffenses)
+                if (allowedRunTime != 0 && lastRunTimeMS > allowedRunTime)
                 {
-                    if (Config.WarnUserOnOffense)
-                        Chat.Send($"You have received offense [{trackedPbBlock.Offences.Count} of {allowedOffenses}] for exceeding your run-time limit [{allowedRunTime:0.0000}ms] for [{trackedPbBlock.GridName} >> {trackedPbBlock.ProgrammableBlock?.CustomName}].  Please reduce the run time of your Programmable Block or it will be punished.", player.SteamId, Color.Red);
-
-                    if (trackedPbBlock.Offences.Count == allowedOffenses)
-                    {
-                        MySandboxGame.Static.Invoke(() =>
-                        {
-                            trackedPbBlock.ProgrammableBlock?.Run($"GracefulShutDown::-1", UpdateType.Script);
-                        }, "Advanced_PB_Limiter");
-                    }
-                    return;
-                }
+                    trackedPbBlock.Offences.Enqueue(Stopwatch.GetTimestamp());
+                    trackedPbBlock.LastOffenceTick = Stopwatch.GetTimestamp();
+                    Interlocked.Increment(ref player.Offences);
+                    Log.Info($"PB Block: {trackedPbBlock.ProgrammableBlock?.EntityId} for [{trackedPbBlock.GridName} >> {trackedPbBlock.ProgrammableBlock?.CustomName}] has exceeded the run-time limit.  Last Run-Time: {lastRunTimeMS:0.0000}ms  Allowed-Run-Time: {allowedRunTime:0.0000}ms  Offenses: {trackedPbBlock.Offences.Count}");
                 
-                StringBuilder sb = new();
-                sb.AppendLine();
-                sb.AppendLine($"Your Limit: [{allowedRunTime:0.0000}ms]");
-                sb.AppendLine($"Your Usage: [{lastRunTimeMS:0.0000}ms]");
-                PunishPB(player, trackedPbBlock, PunishReason.SingleRuntimeOverLimit, null, sb.ToString());
-                return; // Block is punished, no need to punish again with average run-time violations.
+                    if (trackedPbBlock.Offences.Count <= allowedOffenses)
+                    {
+                        if (Config.WarnUserOnOffense)
+                            Chat.Send($"You have received offense [{trackedPbBlock.Offences.Count} of {allowedOffenses}] for exceeding your run-time limit [{allowedRunTime:0.0000}ms] for [{trackedPbBlock.GridName} >> {trackedPbBlock.ProgrammableBlock?.CustomName}].  Please reduce the run time of your Programmable Block or it will be punished.", player.SteamId, Color.Red);
+
+                        if (trackedPbBlock.Offences.Count == allowedOffenses)
+                        {
+                            MySandboxGame.Static.Invoke(() =>
+                            {
+                                trackedPbBlock.ProgrammableBlock?.Run($"GracefulShutDown::-1", UpdateType.Script);
+                            }, "Advanced_PB_Limiter");
+                        }
+                        return;
+                    }
+                
+                    StringBuilder sb = new();
+                    sb.AppendLine();
+                    sb.AppendLine($"Your Limit: [{allowedRunTime:0.0000}ms]");
+                    sb.AppendLine($"Your Usage: [{lastRunTimeMS:0.0000}ms]");
+                    PunishPB(player, trackedPbBlock, PunishReason.SingleRuntimeOverLimit, null, sb.ToString());
+                    return; // Block is punished, no need to punish again with average run-time violations.
+                }
             }
             
             // check for block average runtime offense

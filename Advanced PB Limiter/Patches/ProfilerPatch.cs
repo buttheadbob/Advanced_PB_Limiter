@@ -3,9 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.IdentityModel.Metadata;
 using System.Reflection;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Timers;
 using Advanced_PB_Limiter.Manager;
@@ -13,7 +11,6 @@ using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.Utils;
 using ExtensionMethods;
 using NLog;
-using NLog.Fluent;
 using Sandbox;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.Multiplayer;
@@ -22,11 +19,7 @@ using Sandbox.ModAPI;
 using Sandbox.ModAPI.Ingame;
 using Torch.Managers.PatchManager;
 using Torch.Utils;
-using Torch.Utils.Reflected;
-using VRage;
-using VRage.Library.Net;
-using VRage.Sync;
-using static Advanced_PB_Limiter.Utils.HelperUtils;
+
 // ReSharper disable UnusedMember.Global
 #pragma warning disable CS0169 // Field is never used
 
@@ -249,8 +242,6 @@ namespace Advanced_PB_Limiter.Patches
             if (!ProfileData.ContainsKey(__instance.EntityId))
                 ProfileData.Add(__instance.EntityId, new ProfileData());
             
-            ProfileData[__instance.EntityId].TimingStart = 0;
-
             if (!__instance.Enabled)
             {
                 if (!Config.AllowSelfTurnOnExploit)
@@ -281,7 +272,6 @@ namespace Advanced_PB_Limiter.Patches
                 return false;
             }
 
-            ProfileData[__instance.EntityId].TimingStart = Stopwatch.GetTimestamp();
             return true;
         }
         
@@ -290,15 +280,7 @@ namespace Advanced_PB_Limiter.Patches
             if (!Config.Enabled) return;
             if (__instance == null) return; // Something funky is going on, so we won't track it this pass but don't block it either.
             
-            double runtime = !Config.UseGameReportedRuntime 
-                ? Stopwatch.GetTimestamp().TimeElapsed(ProfileData[__instance.EntityId].TimingStart).TotalMilliseconds  
-                : GetRuntime!(__instance).LastRunTimeMs;
-            
-            if (Config is { UseGameReportedRuntime: false, DebugReporting: true })
-            {
-                double gameRuntime = GetRuntime!(__instance).LastRunTimeMs;
-                Log.Debug($"PB[{__instance.CustomName}] Stopwatch: {runtime:0.0000}ms  GameReported: {gameRuntime:0.0000}ms  Delta: {runtime - gameRuntime:0.0000}ms");
-            }
+            double runtime = GetRuntime!(__instance).LastRunTimeMs;
             
             long debugStamp = Stopwatch.GetTimestamp();
             
@@ -338,9 +320,6 @@ namespace Advanced_PB_Limiter.Patches
             
             if (!Enum.TryParse(__result.ToString(), true, out MyProgrammableBlock.ScriptTerminationReason scriptTerminationReason))
                 __result = MyProgrammableBlock.ScriptTerminationReason.None;
-            
-            if (ProfileData[__instance.EntityId].TimingStart == 0)
-                return;
             
             // the pb will still run up to the point of executing the script even when disabled by script termination fault, this will stop some of that.
             // also stops the limiter from checking the block.
