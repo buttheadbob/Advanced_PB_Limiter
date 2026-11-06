@@ -1,0 +1,58 @@
+<fieldset class="pbl-servers">
+    <legend>Servers</legend>
+    <div class="pbl-buttons">
+        <button type="button" class="quasar-button" @onclick="SelectAll">Select all</button>
+        <button type="button" class="quasar-button" @onclick="SelectNone">Select none</button>
+    </div>
+    @foreach (var server in Servers)
+    {
+        bool online = Connected.Any(c => c.ServerId == server.ServerId);
+        <label @key="server.ServerId" class="pbl-server">
+            <input type="checkbox" checked="@Selected.Contains(server.ServerId)" disabled="@(OnlineOnly && !online)"
+                   @onchange="e => Toggle(server.ServerId, e)" />
+            @server.DisplayName
+            @if (!online)
+            {
+                <span class="pbl-tag">Offline</span>
+            }
+        </label>
+    }
+</fieldset>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<KnownServer> Servers { get; set; } = Array.Empty<KnownServer>();
+    [Parameter, EditorRequired] public IReadOnlyList<QuasarCompanionServer> Connected { get; set; } = Array.Empty<QuasarCompanionServer>();
+
+    /// <summary>The parent's set, changed in place.</summary>
+    [Parameter, EditorRequired] public HashSet<string> Selected { get; set; } = new();
+
+    /// <summary>A report can only come from a running server, so the others cannot be ticked.</summary>
+    [Parameter] public bool OnlineOnly { get; set; }
+
+    [Parameter] public EventCallback Changed { get; set; }
+
+    private Task Toggle(string serverId, ChangeEventArgs e)
+    {
+        if (e.Value is true)
+            Selected.Add(serverId);
+        else
+            Selected.Remove(serverId);
+        return Changed.InvokeAsync();
+    }
+
+    private Task SelectAll()
+    {
+        foreach (var server in Servers)
+        {
+            if (!OnlineOnly || Connected.Any(c => c.ServerId == server.ServerId))
+                Selected.Add(server.ServerId);
+        }
+        return Changed.InvokeAsync();
+    }
+
+    private Task SelectNone()
+    {
+        Selected.Clear();
+        return Changed.InvokeAsync();
+    }
+}

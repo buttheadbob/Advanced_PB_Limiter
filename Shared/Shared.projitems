@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <MSBuildAllProjects>$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <SharedGUID>A41D9E6B-2C75-4F08-B3D1-58E7C94A0F36</SharedGUID>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration">
+    <Import_RootNamespace>Advanced_PB_Limiter</Import_RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)LimiterCore.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)QuasarContracts.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Commands\LimiterCommands.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Manager\PunishmentManager.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Manager\ReportManager.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Manager\TrackingManager.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Patches\PbAccess.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Patches\PbProfiler.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Patches\ReplicationAccess.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Utils\ChatUtils.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Utils\Enums.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Utils\GetSizeOfObject.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Utils\HelperUtils.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Utils\IsExternalInit.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Utils\LimiterLog.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Utils\PrivilegedPlayer.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Utils\Reports.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Utils\TrackedPBBlock.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Utils\TrackedPlayer.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Utils\TrackingDataUpdateRequest.cs" />
+  </ItemGroup>
+</Project>

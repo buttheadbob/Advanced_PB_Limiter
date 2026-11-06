@@ -1,0 +1,176 @@
+@page "/advanced-pb-limiter/generate-report"
+@attribute [Authorize(Policy = QuasarPolicyNames.CanView)]
+@implements IDisposable
+@inject LimiterReports Reports
+@inject ProfileStore Store
+@inject ReportDownloads Downloads
+@inject ILogger<GenerateReportPage> Log
+
+<PageTitle>PB Limiter report</PageTitle>
+
+<PageTabs Active="PageTabs.Tab.Report" Description="Build one text report covering the servers you choose, with totals across all of them and the detail of each." />
+
+<section class="quasar-panel pbl-section">
+    <h2>Generate a report</h2>
+    @if (Store.KnownServers.Count == 0)
+    {
+        <p>No servers yet. A server is listed here once it has connected to Quasar.</p>
+    }
+    else
+    {
+        <ServerPicker Servers="Store.KnownServers" Connected="_connected" Selected="_selected" OnlineOnly="true" Changed="ReportOutdated" />
+        <div class="pbl-buttons">
+            <button type="button" class="quasar-button quasar-button-primary" disabled="@(_busy || !SelectedConnected.Any())" @onclick="GenerateAsync">
+                @(_busy ? "Generating..." : "Generate report")
+            </button>
+        </div>
+    }
+</section>
+
+@if (_results != null)
+{
+    <section class="quasar-panel pbl-section">
+        <h2>Report</h2>
+        <ul class="pbl-results">
+            @foreach (var result in _results)
+            {
+                <li>
+                    @result.ServerName:
+                    @if (result.Snapshot != null)
+                    {
+                        <span>@result.Snapshot.Players.Count players, @result.Snapshot.Players.Sum(p => p.BlockCount) blocks, @result.Snapshot.Players.Sum(p => p.Offences) offences</span>
+                    }
+                    else
+                    {
+                        <span class="pbl-warning">not included, @result.Problem</span>
+                    }
+                </li>
+            }
+        </ul>
+        @if (_downloadId != null)
+        {
+            <a class="quasar-button quasar-button-primary" download="@_fileName" href="@(AdvancedPBLimiterQuasarPlugin.Route.TrimStart('/'))/report/@_downloadId">Download report</a>
+            <p class="pbl-hint">The download stays available for 15 minutes.</p>
+        }
+        else
+        {
+            <p>None of the selected servers answered, so there is nothing to download.</p>
+        }
+    </section>
+}
+
+@code {
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(5);
+
+    private readonly CancellationTokenSource _closing = new();
+    private readonly HashSet<string> _selected = new();
+
+    private IReadOnlyList<QuasarCompanionServer> _connected = Array.Empty<QuasarCompanionServer>();
+    private List<ServerReport>? _results;
+    private Guid? _downloadId;
+    private string _fileName = "";
+    private bool _busy;
+
+    private IEnumerable<QuasarCompanionServer> SelectedConnected => _connected.Where(s => _selected.Contains(s.ServerId));
+
+    protected override void OnInitialized()
+    {
+        RefreshServers();
+        foreach (var server in _connected)
+            _selected.Add(server.ServerId);
+        Store.Changed += OnStoreChanged;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // After the first interactive render, so a prerender never starts a timer.
+        if (firstRender)
+            _ = RefreshLoopAsync();
+    }
+
+    private async Task RefreshLoopAsync()
+    {
+        CancellationToken closing = _closing.Token;
+        try
+        {
+            using var timer = new PeriodicTimer(RefreshInterval);
+            while (await timer.WaitForNextTickAsync(closing))
+            {
+                RefreshServers();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) when (closing.IsCancellationRequested)
+        {
+            // The page closed.
+        }
+    }
+
+    private void RefreshServers()
+    {
+        _connected = Reports.GetServers();
+        Store.ServersSeen(_connected);
+    }
+
+    private void OnStoreChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void ReportOutdated()
+    {
+        _results = null;
+        _downloadId = null;
+    }
+
+    private async Task GenerateAsync()
+    {
+        _busy = true;
+        ReportOutdated();
+
+        // Each server answers on its own game thread, so a slow one need not hold up the others.
+        ServerReport[] reports = await Task.WhenAll(SelectedConnected.ToList().Select(ReadServerAsync));
+        if (_closing.IsCancellationRequested) return;
+
+        // A ticked server that went offline stays in the list, so the report says it is missing rather than leaving it out silently.
+        IEnumerable<ServerReport> offline = Store.KnownServers
+            .Where(s => _selected.Contains(s.ServerId) && _connected.All(c => c.ServerId != s.ServerId))
+            .Select(s => new ServerReport(s.DisplayName, null, "the server is offline"));
+
+        _results = reports.Concat(offline).OrderBy(r => r.ServerName, StringComparer.CurrentCultureIgnoreCase).ToList();
+        if (_results.Any(r => r.Snapshot != null))
+        {
+            DateTime now = DateTime.UtcNow;
+            _fileName = $"pb-limiter-report-{now:yyyyMMdd-HHmmss}.txt";
+            _downloadId = Downloads.Add(CombinedReport.Build(_results, now), _fileName);
+        }
+        _busy = false;
+    }
+
+    private async Task<ServerReport> ReadServerAsync(QuasarCompanionServer server)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_closing.Token);
+        timeout.CancelAfter(RequestTimeout);
+        try
+        {
+            ReportSnapshot snapshot = await Reports.GetSnapshotAsync(server.ServerId, timeout.Token);
+            if (!snapshot.Installed) return new ServerReport(server.DisplayName, null, "Advanced PB Limiter is not loaded");
+            if (!snapshot.Online) return new ServerReport(server.DisplayName, null, "the world is still loading");
+            return new ServerReport(server.DisplayName, snapshot, null);
+        }
+        catch (OperationCanceledException)
+        {
+            return new ServerReport(server.DisplayName, null, "it did not answer in time");
+        }
+        catch (Exception e)
+        {
+            Log.LogWarning(e, "Could not read the PB Limiter report of {Server}", server.DisplayName);
+            return new ServerReport(server.DisplayName, null, e.Message);
+        }
+    }
+
+    public void Dispose()
+    {
+        Store.Changed -= OnStoreChanged;
+        _closing.Cancel();
+        _closing.Dispose();
+    }
+}

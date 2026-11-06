@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<PluginData xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="GitHubPlugin">
+    <!-- MagnetarHub descriptor, copy it to the Plugins folder of the magnetar-hub repository when publishing.
+         Magnetar compiles the SourceDirectories below itself, from the pinned commit. The Torch build is not part of it. -->
+
+    <!-- The ID of your plugin, never change this -->
+    <Id>b8dd12fd-36b2-4bea-8f60-a5f7b649a6b9</Id>
+
+    <RepoId>buttheadbob/Advanced_PB_Limiter</RepoId>
+
+    <FriendlyName>Advanced PB Limiter</FriendlyName>
+
+    <Author>SentorX</Author>
+
+    <Tooltip>Limits the run time and memory use of programmable blocks to protect sim speed</Tooltip>
+
+    <Description>
+Tracks the real run time of every programmable block and punishes the ones over the limits, to protect sim speed.
+
+Limits apply per block and to all of a player's blocks combined. Privileged players can have their own limits. Blocks
+over the limits are warned, then turned off, damaged or destroyed, and scripts can be told to shut down gracefully
+first. Under load, runs can be deferred instead.
+
+Configure it in Quasar under Server plugins.
+
+Player commands: !PBLimiter Limits, !PBLimiter MyStats, !PBLimiter Runtimes, !PBLimiter About.
+Admin commands: !PBLimiter GetReport, !PBLimiter Enable, !PBLimiter Disable, !PBLimiter requestpbshutdown and more,
+see !PBLimiter help.
+
+Also available as a Torch plugin, both builds share the same code.
+    </Description>
+
+    <SourceDirectories>
+        <Directory>ServerPlugin</Directory>
+        <Directory>Shared</Directory>
+        <Directory>Versioning</Directory>
+    </SourceDirectories>
+
+    <!-- Set this to the commit being published -->
+    <Commit>0000000000000000000000000000000000000000</Commit>
+</PluginData>

@@ -1,0 +1,384 @@
+@page "/advanced-pb-limiter/profiles"
+@attribute [Authorize(Policy = QuasarPolicyNames.CanEditConfigs)]
+@implements IDisposable
+@inject LimiterReports Reports
+@inject ProfileStore Store
+@inject ProfileQueue Queue
+@inject AuthenticationStateProvider Authentication
+@inject IAuthorizationService Authorization
+@inject ILogger<ProfilesPage> Log
+
+<PageTitle>PB Limiter profiles</PageTitle>
+
+<PageTabs Active="PageTabs.Tab.Profiles" Description="Set up one server on its Plugins page, save it here as a profile, then apply it to your other servers. Applying replaces every limiter setting and the privileged players on the server." />
+
+@if (_error != null)
+{
+    <div class="quasar-notice quasar-notice-error" role="alert">@_error</div>
+}
+@if (_notice != null)
+{
+    <div class="quasar-notice" role="status">@_notice</div>
+}
+
+<section class="quasar-panel pbl-section">
+    <h2>Save a profile</h2>
+    @if (_connected.Count == 0)
+    {
+        <p>No servers are connected to Quasar right now. A profile is saved from a running server.</p>
+    }
+    else
+    {
+        <div class="pbl-form">
+            <label class="quasar-field">
+                Copy settings from
+                <select @bind="_sourceServerId">
+                    @foreach (var server in _connected)
+                    {
+                        <option value="@server.ServerId" @key="server.ServerId">@server.DisplayName</option>
+                    }
+                </select>
+            </label>
+            <label class="quasar-field pbl-filter">
+                Profile name
+                <input @bind="_newName" @bind:event="oninput" maxlength="@MaxNameLength" placeholder="For example Survival servers" />
+            </label>
+            <button type="button" class="quasar-button quasar-button-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_newName))" @onclick="SaveProfileAsync">
+                @(NameExists ? "Replace profile" : "Save profile")
+            </button>
+        </div>
+    }
+</section>
+
+<section class="quasar-panel pbl-section">
+    <h2>Profiles</h2>
+    @if (Store.Profiles.Count == 0)
+    {
+        <p>No profiles yet.</p>
+    }
+    else
+    {
+        <div class="quasar-table-scroll">
+            <table class="pbl-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Profile</th>
+                        <th scope="col">Saved from</th>
+                        <th scope="col">Saved</th>
+                        <th scope="col" class="pbl-number">Settings</th>
+                        <th scope="col" class="pbl-number">Privileged players</th>
+                        <th scope="col">Delete</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var profile in Store.Profiles)
+                    {
+                        <tr @key="profile.Name">
+                            <td>@profile.Name</td>
+                            <td>@profile.SavedFrom</td>
+                            <td>@FormatTime(profile.SavedUtc)</td>
+                            <td class="pbl-number">@profile.Settings</td>
+                            <td class="pbl-number">@profile.PrivilegedPlayers</td>
+                            <td>
+                                @if (_deleting == profile.Name)
+                                {
+                                    <span class="pbl-confirm">Delete @profile.Name?</span>
+                                    <button type="button" class="quasar-button quasar-button-primary" @onclick="() => DeleteProfileAsync(profile)">Confirm</button>
+                                    <button type="button" class="quasar-button" @onclick="() => _deleting = null">Cancel</button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="quasar-button" @onclick="() => _deleting = profile.Name">Delete</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+<section class="quasar-panel pbl-section">
+    <h2>Apply a profile</h2>
+    @if (Store.Profiles.Count == 0)
+    {
+        <p>Save a profile first.</p>
+    }
+    else if (Store.KnownServers.Count == 0)
+    {
+        <p>No servers yet. A server is listed here once it has connected to Quasar.</p>
+    }
+    else
+    {
+        <label class="quasar-field pbl-profile-select">
+            Profile
+            <select @bind="_applyProfile">
+                <option value="">Choose a profile</option>
+                @foreach (var profile in Store.Profiles)
+                {
+                    <option value="@profile.Name" @key="profile.Name">@profile.Name</option>
+                }
+            </select>
+        </label>
+
+        <ServerPicker Servers="Store.KnownServers" Connected="_connected" Selected="_applyServers" Changed="() => _confirmingApply = false" />
+
+        <div class="pbl-buttons">
+            @if (_confirmingApply)
+            {
+                <span class="pbl-confirm">Replace every limiter setting and the privileged players on @_applyServers.Count server(s) with @_applyProfile?</span>
+                <button type="button" class="quasar-button quasar-button-primary" @onclick="ApplyAsync">Confirm</button>
+                <button type="button" class="quasar-button" @onclick="() => _confirmingApply = false">Cancel</button>
+            }
+            else
+            {
+                <button type="button" class="quasar-button quasar-button-primary" disabled="@(string.IsNullOrEmpty(_applyProfile) || _applyServers.Count == 0)" @onclick="() => _confirmingApply = true">Apply</button>
+            }
+        </div>
+        <p class="pbl-hint">A server that is offline or still loading gets the profile when it is ready, as the profile was at the moment you pressed Apply.</p>
+    }
+</section>
+
+@if (Store.Pending.Count > 0)
+{
+    <section class="quasar-panel pbl-section">
+        <h2>Waiting to apply</h2>
+        <div class="quasar-table-scroll">
+            <table class="pbl-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Server</th>
+                        <th scope="col">Profile</th>
+                        <th scope="col">Queued</th>
+                        <th scope="col">By</th>
+                        <th scope="col">State</th>
+                        <th scope="col">Cancel</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var pending in Store.Pending)
+                    {
+                        <tr @key="pending.Id">
+                            <td>@pending.ServerName</td>
+                            <td>@pending.ProfileName</td>
+                            <td>@FormatTime(pending.QueuedUtc)</td>
+                            <td>@pending.QueuedBy</td>
+                            <td class="pbl-wrap">@(pending.LastError ?? "Sending")</td>
+                            <td><button type="button" class="quasar-button" @onclick="() => CancelPendingAsync(pending)">Cancel</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+
+@if (Store.Applied.Count > 0)
+{
+    <section class="quasar-panel pbl-section">
+        <h2>Recently applied</h2>
+        <div class="quasar-table-scroll">
+            <table class="pbl-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Server</th>
+                        <th scope="col">Profile</th>
+                        <th scope="col">Applied</th>
+                        <th scope="col">By</th>
+                        <th scope="col" class="pbl-number">Settings</th>
+                        <th scope="col" class="pbl-number">Privileged players</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var applied in Store.Applied)
+                    {
+                        <tr>
+                            <td>@applied.ServerName</td>
+                            <td>@applied.ProfileName</td>
+                            <td>@FormatTime(applied.AppliedUtc)</td>
+                            <td>@applied.QueuedBy</td>
+                            <td class="pbl-number">@applied.Settings</td>
+                            <td class="pbl-number">@applied.PrivilegedPlayers</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+
+@code {
+    private const int MaxNameLength = 64;
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(5);
+
+    private readonly CancellationTokenSource _closing = new();
+    private readonly HashSet<string> _applyServers = new();
+
+    private IReadOnlyList<QuasarCompanionServer> _connected = Array.Empty<QuasarCompanionServer>();
+    private string? _sourceServerId;
+    private string _newName = "";
+    private string _applyProfile = "";
+    private string? _deleting;
+    private string? _error;
+    private string? _notice;
+    private bool _confirmingApply;
+    private bool _busy;
+
+    private bool NameExists => Store.Profiles.Any(p => string.Equals(p.Name, _newName.Trim(), StringComparison.CurrentCultureIgnoreCase));
+
+    protected override void OnInitialized()
+    {
+        RefreshServers();
+        Store.Changed += OnStoreChanged;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // After the first interactive render, so a prerender never starts a timer.
+        if (firstRender)
+            _ = RefreshLoopAsync();
+    }
+
+    private async Task RefreshLoopAsync()
+    {
+        CancellationToken closing = _closing.Token;
+        try
+        {
+            using var timer = new PeriodicTimer(RefreshInterval);
+            while (await timer.WaitForNextTickAsync(closing))
+            {
+                RefreshServers();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) when (closing.IsCancellationRequested)
+        {
+            // The page closed.
+        }
+    }
+
+    private void RefreshServers()
+    {
+        _connected = Reports.GetServers();
+        Store.ServersSeen(_connected);
+        if (_connected.All(s => s.ServerId != _sourceServerId))
+            _sourceServerId = _connected.FirstOrDefault()?.ServerId;
+    }
+
+    private void OnStoreChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task<bool> CanEditAsync()
+    {
+        AuthenticationState state = await Authentication.GetAuthenticationStateAsync();
+        if ((await Authorization.AuthorizeAsync(state.User, QuasarPolicyNames.CanEditConfigs)).Succeeded)
+            return true;
+
+        // The page checks this as well, but it stays open if the right is taken away.
+        _error = "You do not have permission to edit configurations.";
+        _notice = null;
+        return false;
+    }
+
+    private async Task<string> CurrentUserAsync()
+    {
+        return (await Authentication.GetAuthenticationStateAsync()).User.Identity?.Name ?? "unknown";
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        string name = _newName.Trim();
+        string? serverId = _sourceServerId;
+        if (name.Length == 0 || serverId == null || !await CanEditAsync()) return;
+
+        _busy = true;
+        _error = null;
+        _notice = null;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_closing.Token);
+        timeout.CancelAfter(RequestTimeout);
+        try
+        {
+            ProfileData data = await Reports.ReadProfileAsync(serverId, timeout.Token);
+            string serverName = _connected.FirstOrDefault(s => s.ServerId == serverId)?.DisplayName ?? serverId;
+            Store.SaveProfile(new SavedProfile
+            {
+                Name = name,
+                SavedFrom = serverName,
+                SavedUtc = DateTime.UtcNow,
+                SettingsJson = data.SettingsJson,
+                Settings = data.Settings,
+                PrivilegedPlayers = data.PrivilegedPlayers
+            });
+            Log.LogInformation("{User} saved PB Limiter profile {Profile} from {Server}", await CurrentUserAsync(), name, serverName);
+            _notice = $"Saved {name} from {serverName}: {data.Settings} settings, {data.PrivilegedPlayers} privileged player(s).";
+            _newName = "";
+        }
+        catch (OperationCanceledException) when (_closing.IsCancellationRequested)
+        {
+            // The page closed.
+        }
+        catch (OperationCanceledException)
+        {
+            _error = "The server did not answer in time.";
+        }
+        catch (Exception e)
+        {
+            Log.LogWarning(e, "Could not save PB Limiter profile {Profile} from {Server}", name, serverId);
+            _error = $"Could not read the settings: {e.Message} A server started before this plugin was enabled needs a restart.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteProfileAsync(SavedProfile profile)
+    {
+        _deleting = null;
+        if (!await CanEditAsync()) return;
+
+        Store.DeleteProfile(profile.Name);
+        if (_applyProfile == profile.Name)
+            _applyProfile = "";
+        Log.LogInformation("{User} deleted PB Limiter profile {Profile}", await CurrentUserAsync(), profile.Name);
+        _notice = $"Deleted {profile.Name}. Anything already waiting to apply still goes ahead.";
+        _error = null;
+    }
+
+    private async Task ApplyAsync()
+    {
+        _confirmingApply = false;
+        if (!await CanEditAsync()) return;
+
+        SavedProfile? profile = Store.Profiles.FirstOrDefault(p => p.Name == _applyProfile);
+        List<KnownServer> servers = Store.KnownServers.Where(s => _applyServers.Contains(s.ServerId)).ToList();
+        if (profile == null || servers.Count == 0) return;
+
+        string user = await CurrentUserAsync();
+        Store.Queue(profile, servers, user);
+        Queue.Wake();
+        Log.LogInformation("{User} queued PB Limiter profile {Profile} for {Count} server(s)", user, profile.Name, servers.Count);
+        _notice = $"Applying {profile.Name} to {servers.Count} server(s). Progress is shown below.";
+        _error = null;
+        _applyServers.Clear();
+    }
+
+    private async Task CancelPendingAsync(PendingApply pending)
+    {
+        if (!await CanEditAsync()) return;
+
+        Store.CancelPending(pending.Id);
+        Log.LogInformation("{User} cancelled PB Limiter profile {Profile} for {Server}", await CurrentUserAsync(), pending.ProfileName, pending.ServerName);
+        _error = null;
+    }
+
+    private static string FormatTime(DateTime utc) => utc.ToString("yyyy-MM-dd HH:mm") + " UTC";
+
+    public void Dispose()
+    {
+        Store.Changed -= OnStoreChanged;
+        _closing.Cancel();
+        _closing.Dispose();
+    }
+}

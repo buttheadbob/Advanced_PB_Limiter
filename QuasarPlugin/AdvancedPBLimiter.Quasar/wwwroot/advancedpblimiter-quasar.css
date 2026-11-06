@@ -1,0 +1,150 @@
+/* Advanced PB Limiter Quasar plugin. Uses Quasar's palette tokens only, so it follows the current light/dark branding.
+   Everything is prefixed pbl- to stay out of Quasar's way. */
+
+.pbl-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 1rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.pbl-filter {
+    flex: 1 1 220px;
+}
+
+.pbl-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.pbl-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+}
+
+.pbl-warning {
+    font-weight: 700;
+}
+
+.pbl-message {
+    padding: 1rem;
+}
+
+.pbl-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.pbl-table-panel {
+    padding: 0.5rem;
+}
+
+.pbl-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.pbl-table th,
+.pbl-table td {
+    padding: 0.4rem 0.6rem;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.pbl-table tbody tr {
+    border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.pbl-table .pbl-number {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.pbl-confirm {
+    margin-right: 0.5rem;
+    font-weight: 700;
+}
+
+.pbl-sort {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.pbl-section {
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.pbl-section h2 {
+    margin: 0 0 0.75rem;
+    font-size: 1.1rem;
+}
+
+.pbl-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 1rem;
+}
+
+.pbl-profile-select {
+    max-width: 24rem;
+    margin-bottom: 0.75rem;
+}
+
+.pbl-servers {
+    padding: 0;
+    margin: 0 0 0.75rem;
+    border: 0;
+}
+
+.pbl-servers legend {
+    padding: 0;
+    margin-bottom: 0.4rem;
+    font-weight: 700;
+}
+
+.pbl-servers .pbl-buttons {
+    margin-bottom: 0.5rem;
+}
+
+.pbl-server {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.2rem 0;
+}
+
+.pbl-hint {
+    margin: 0.5rem 0 0;
+    opacity: 0.8;
+}
+
+.pbl-results {
+    padding-left: 1.25rem;
+    margin: 0 0 0.75rem;
+}
+
+.pbl-table .pbl-wrap {
+    white-space: normal;
+}
+
+.pbl-tag {
+    margin-left: 0.4rem;
+    padding: 0 0.35rem;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    font-size: 0.75em;
+    opacity: 0.8;
+}

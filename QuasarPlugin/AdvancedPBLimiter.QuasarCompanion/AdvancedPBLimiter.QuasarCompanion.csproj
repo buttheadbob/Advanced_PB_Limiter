@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Magnetar side of the Quasar plugin. Quasar builds it when the Quasar plugin is installed, passing
+       MagnetarProtocolAssembly and DS64, and copies it to every managed server. It answers the Quasar plugin's
+       requests from the Advanced PB Limiter Magnetar plugin (ServerPlugin\QuasarBridge.cs). -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>AdvancedPBLimiter.QuasarCompanion</AssemblyName>
+    <RootNamespace>AdvancedPBLimiter.QuasarCompanion</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <IsPackable>false</IsPackable>
+    <!-- Version attributes come from ..\..\Versioning\AssemblyVersion.cs (written by Versioning\version.ps1) -->
+    <GenerateAssemblyVersionAttribute>false</GenerateAssemblyVersionAttribute>
+    <GenerateAssemblyFileVersionAttribute>false</GenerateAssemblyFileVersionAttribute>
+    <GenerateAssemblyInformationalVersionAttribute>false</GenerateAssemblyInformationalVersionAttribute>
+    <!-- Local builds: the Dedicated Server from Directory.Build.props, or the GameBinaries junction -->
+    <DS64 Condition="'$(DS64)' == ''">$(Dedicated64)</DS64>
+    <DS64 Condition="'$(DS64)' == ''">..\..\GameBinaries</DS64>
+    <MagnetarProtocolProject Condition="'$(MagnetarProtocolProject)' == ''">..\..\..\quasar\Magnetar.Protocol\Magnetar.Protocol.csproj</MagnetarProtocolProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\Versioning\AssemblyVersion.cs" Link="Properties\AssemblyVersion.cs" />
+    <Compile Include="..\..\Shared\QuasarContracts.cs" Link="Contracts\QuasarContracts.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Sandbox.Game" HintPath="$(DS64)\Sandbox.Game.dll" Private="False" />
+    <Reference Include="VRage" HintPath="$(DS64)\VRage.dll" Private="False" />
+    <Reference Include="VRage.Library" HintPath="$(DS64)\VRage.Library.dll" Private="False" />
+    <Reference Include="Newtonsoft.Json" HintPath="$(DS64)\Newtonsoft.Json.dll" Private="False" />
+  </ItemGroup>
+
+  <!-- Built by Quasar: the protocol assembly of the running Quasar, deployed to servers by Quasar itself -->
+  <ItemGroup Condition="'$(MagnetarProtocolAssembly)' != '' and Exists('$(MagnetarProtocolAssembly)')">
+    <Reference Include="Magnetar.Protocol" HintPath="$(MagnetarProtocolAssembly)" Private="False" />
+  </ItemGroup>
+
+  <!-- Local builds: a quasar checkout next to this repository -->
+  <ItemGroup Condition="('$(MagnetarProtocolAssembly)' == '' or !Exists('$(MagnetarProtocolAssembly)')) and Exists('$(MagnetarProtocolProject)')">
+    <ProjectReference Include="$(MagnetarProtocolProject)" Private="False" />
+  </ItemGroup>
+
+  <!-- Local testing: put the companion where Quasar looks for a plugin's companions (see AdvancedPBLimiter.Quasar.csproj).
+       Quasar copies it to servers when it prepares them. -->
+  <Target Name="DeployToQuasar" AfterTargets="Build" Condition="'$(Quasar)' != '' and '$(DeployToQuasar)' != 'false'">
+    <PropertyGroup>
+      <_QuasarCompanionDir>$([System.IO.Path]::Combine('$(Quasar)', 'Plugins', 'AdvancedPBLimiter', '.quasar', 'companions', 'advancedpblimiter.quasar'))</_QuasarCompanionDir>
+    </PropertyGroup>
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(_QuasarCompanionDir)" Retries="10" RetryDelayMilliseconds="500" />
+    <Message Importance="high" Text="Deployed the Quasar companion to $(_QuasarCompanionDir)" />
+  </Target>
+</Project>

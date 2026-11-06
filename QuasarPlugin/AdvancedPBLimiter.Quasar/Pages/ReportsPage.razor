@@ -1,0 +1,514 @@
+@page "/advanced-pb-limiter"
+@attribute [Authorize(Policy = QuasarPolicyNames.CanView)]
+@implements IDisposable
+@inject LimiterReports Reports
+@inject AuthenticationStateProvider Authentication
+@inject IAuthorizationService Authorization
+@inject ILogger<ReportsPage> Log
+
+<PageTitle>PB Limiter</PageTitle>
+
+<PageTabs Active="PageTabs.Tab.Live" Description="Live run times of every tracked programmable block. Limits are set on the server's Plugins page." />
+
+<section class="quasar-panel pbl-toolbar">
+    <label class="quasar-field">
+        Server
+        <select value="@_serverId" @onchange="ServerChanged" disabled="@(_servers.Count == 0)">
+            @foreach (var server in _servers)
+            {
+                <option value="@server.ServerId" @key="server.ServerId">@server.DisplayName</option>
+            }
+        </select>
+    </label>
+    <label class="quasar-field">
+        Refresh
+        <select value="@_refreshSeconds" @onchange="RefreshChanged">
+            @foreach (var seconds in RefreshChoices)
+            {
+                <option value="@seconds">Every @seconds seconds</option>
+            }
+        </select>
+    </label>
+    <label class="quasar-field pbl-filter">
+        Filter
+        <input @bind="_filter" @bind:event="oninput" placeholder="Player, grid or block" />
+    </label>
+    <div class="pbl-buttons">
+        <button type="button" class="quasar-button" @onclick="TogglePaused">@(_paused ? "Resume" : "Pause")</button>
+        <button type="button" class="quasar-button" @onclick="Wake">Refresh now</button>
+    </div>
+</section>
+
+@if (_error != null)
+{
+    <div class="quasar-notice quasar-notice-error" role="alert">@_error</div>
+}
+@if (_notice != null)
+{
+    <div class="quasar-notice" role="status">@_notice</div>
+}
+
+@if (_servers.Count == 0)
+{
+    <section class="quasar-panel pbl-message"><p>No servers are connected to Quasar right now. Servers show up here once they are running.</p></section>
+}
+else if (_snapshot == null)
+{
+    <section class="quasar-panel pbl-message"><p>Waiting for the server.</p></section>
+}
+else if (!_snapshot.Installed)
+{
+    <section class="quasar-panel pbl-message"><p>Advanced PB Limiter is not loaded on this server. Add it on the server's Plugins page.</p></section>
+}
+else if (!_snapshot.Online)
+{
+    <section class="quasar-panel pbl-message"><p>The world is still loading.</p></section>
+}
+else
+{
+    <section class="quasar-panel pbl-summary">
+        <span>Version @_snapshot.Version</span>
+        <span>@_snapshot.Players.Count players</span>
+        <span>@_snapshot.Players.Sum(p => p.BlockCount) blocks tracked</span>
+        <span>@_snapshot.Players.Sum(p => p.Offences) offences</span>
+        @if (!_snapshot.Enabled)
+        {
+            <span class="pbl-warning">The limiter is disabled on this server</span>
+        }
+        @if (_snapshot.Truncated)
+        {
+            <span class="pbl-warning">Showing the first @_snapshot.Blocks.Count blocks</span>
+        }
+    </section>
+
+    <div class="pbl-tabs" role="tablist">
+        <button type="button" role="tab" aria-selected="@(_tab == Tab.Blocks)" class="quasar-button @(_tab == Tab.Blocks ? "quasar-button-primary" : "")" @onclick="() => _tab = Tab.Blocks">Programmable blocks</button>
+        <button type="button" role="tab" aria-selected="@(_tab == Tab.Players)" class="quasar-button @(_tab == Tab.Players ? "quasar-button-primary" : "")" @onclick="() => _tab = Tab.Players">Players</button>
+    </div>
+
+    <section class="quasar-panel pbl-table-panel">
+        @if (_tab == Tab.Blocks)
+        {
+            var rows = SortedBlocks();
+            @if (rows.Count == 0)
+            {
+                <p class="pbl-message">No programmable blocks to show. A block is tracked from its first run.</p>
+            }
+            else
+            {
+                <div class="quasar-table-scroll">
+                    <table class="pbl-table">
+                        <thead>
+                            <tr>
+                                @Header("Block", nameof(BlockRow.BlockName))
+                                @Header("Grid", nameof(BlockRow.GridName))
+                                @Header("Owner", nameof(BlockRow.OwnerName))
+                                @Header("Last ms", nameof(BlockRow.LastRunTimeMS))
+                                @Header("Average ms", nameof(BlockRow.RunTimeMSAvg))
+                                @Header("Peak ms", nameof(BlockRow.PeekRunTimeMS))
+                                @Header("Offences", nameof(BlockRow.Offences))
+                                @Header("Recompiles", nameof(BlockRow.Recompiles))
+                                @Header("Memory", nameof(BlockRow.MemoryBytes))
+                                <th scope="col">State</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in rows)
+                            {
+                                var key = $"block:{row.EntityId}";
+                                <tr @key="row.EntityId">
+                                    <td>@row.BlockName</td>
+                                    <td>@row.GridName</td>
+                                    <td>@row.OwnerName</td>
+                                    <td class="pbl-number">@row.LastRunTimeMS.ToString("0.0000")</td>
+                                    <td class="pbl-number">@row.RunTimeMSAvg.ToString("0.0000")</td>
+                                    <td class="pbl-number">@row.PeekRunTimeMS.ToString("0.0000")</td>
+                                    <td class="pbl-number">@row.Offences</td>
+                                    <td class="pbl-number">@row.Recompiles</td>
+                                    <td class="pbl-number">@FormatBytes(row.MemoryBytes)</td>
+                                    <td>
+                                        @if (!row.Enabled)
+                                        {
+                                            <span>Off</span>
+                                        }
+                                        else if (_canControl)
+                                        {
+                                            @TurnOffButton(key, row.BlockName, () => TurnOffBlockAsync(row))
+                                        }
+                                        else
+                                        {
+                                            <span>On</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+        else
+        {
+            var rows = SortedPlayers();
+            @if (rows.Count == 0)
+            {
+                <p class="pbl-message">No players to show. A player is tracked from the first run of one of their blocks.</p>
+            }
+            else
+            {
+                <div class="quasar-table-scroll">
+                    <table class="pbl-table">
+                        <thead>
+                            <tr>
+                                @Header("Player", nameof(PlayerRow.Name))
+                                @Header("Steam ID", nameof(PlayerRow.SteamId))
+                                @Header("Blocks", nameof(PlayerRow.BlockCount))
+                                @Header("Combined ms", nameof(PlayerRow.CombinedLastRunTimeMS))
+                                @Header("Combined average ms", nameof(PlayerRow.CombinedRunTimeMSAvg))
+                                @Header("Offences", nameof(PlayerRow.Offences))
+                                @Header("Recompiles", nameof(PlayerRow.Recompiles))
+                                @Header("Memory", nameof(PlayerRow.MemoryBytes))
+                                @if (_canControl)
+                                {
+                                    <th scope="col">All blocks</th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in rows)
+                            {
+                                var key = $"player:{row.IdentityId}";
+                                <tr @key="row.IdentityId">
+                                    <td>
+                                        @row.Name
+                                        @if (row.IsNpc)
+                                        {
+                                            <span class="pbl-tag">NPC</span>
+                                        }
+                                        @if (row.IsPrivileged)
+                                        {
+                                            <span class="pbl-tag">Privileged</span>
+                                        }
+                                    </td>
+                                    <td class="pbl-number">@(row.IsNpc ? "" : row.SteamId.ToString())</td>
+                                    <td class="pbl-number">@row.BlockCount</td>
+                                    <td class="pbl-number">@row.CombinedLastRunTimeMS.ToString("0.0000")</td>
+                                    <td class="pbl-number">@row.CombinedRunTimeMSAvg.ToString("0.0000")</td>
+                                    <td class="pbl-number">@row.Offences</td>
+                                    <td class="pbl-number">@row.Recompiles</td>
+                                    <td class="pbl-number">@FormatBytes(row.MemoryBytes)</td>
+                                    @if (_canControl)
+                                    {
+                                        <td>@TurnOffButton(key, $"all of {row.Name}'s blocks", () => TurnOffPlayerAsync(row))</td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    </section>
+}
+
+@code {
+    private enum Tab { Blocks, Players }
+
+    private static readonly int[] RefreshChoices = { 2, 5, 10, 30 };
+
+    // Their headers line up with their right aligned cells.
+    private static readonly HashSet<string> NumericColumns = new()
+    {
+        nameof(BlockRow.LastRunTimeMS), nameof(BlockRow.RunTimeMSAvg), nameof(BlockRow.PeekRunTimeMS), nameof(BlockRow.Offences),
+        nameof(BlockRow.Recompiles), nameof(BlockRow.MemoryBytes), nameof(PlayerRow.SteamId), nameof(PlayerRow.BlockCount),
+        nameof(PlayerRow.CombinedLastRunTimeMS), nameof(PlayerRow.CombinedRunTimeMSAvg)
+    };
+
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
+
+    private readonly CancellationTokenSource _closing = new();
+    private readonly SemaphoreSlim _wake = new(0, 1);
+
+    private IReadOnlyList<QuasarCompanionServer> _servers = Array.Empty<QuasarCompanionServer>();
+    private string? _serverId;
+    private ReportSnapshot? _snapshot;
+    private string? _error;
+    private string? _notice;
+    private string _filter = "";
+    private int _refreshSeconds = 5;
+    private bool _paused;
+    private bool _canControl;
+    private Tab _tab = Tab.Blocks;
+    private string _sortColumn = nameof(BlockRow.LastRunTimeMS);
+    private bool _sortDescending = true;
+    private string? _confirming;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _servers = Reports.GetServers();
+        _serverId = _servers.FirstOrDefault()?.ServerId;
+        _canControl = await CanControlAsync();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // After the first interactive render, so a prerender never starts polling.
+        if (firstRender)
+            _ = PollAsync();
+    }
+
+    private async Task PollAsync()
+    {
+        CancellationToken closing = _closing.Token;
+        try
+        {
+            while (!closing.IsCancellationRequested)
+            {
+                if (!_paused)
+                    await RefreshAsync(closing);
+
+                await _wake.WaitAsync(TimeSpan.FromSeconds(_refreshSeconds), closing);
+            }
+        }
+        catch (OperationCanceledException) when (closing.IsCancellationRequested)
+        {
+            // The page closed.
+        }
+    }
+
+    private async Task RefreshAsync(CancellationToken closing)
+    {
+        _servers = Reports.GetServers();
+        if (_servers.All(s => s.ServerId != _serverId))
+        {
+            _serverId = _servers.FirstOrDefault()?.ServerId;
+            _snapshot = null;
+            _notice = null;
+        }
+
+        string? serverId = _serverId;
+        if (serverId == null)
+        {
+            _error = null;
+            _snapshot = null;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(closing);
+        timeout.CancelAfter(RequestTimeout);
+        try
+        {
+            ReportSnapshot snapshot = await Reports.GetSnapshotAsync(serverId, timeout.Token);
+            if (serverId != _serverId) return; // The server was changed while this was on its way.
+            _snapshot = snapshot;
+            _error = null;
+        }
+        catch (OperationCanceledException) when (closing.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            _error = "The server did not answer in time.";
+        }
+        catch (Exception e)
+        {
+            // Usually a server started before this plugin was enabled, which has no companion until it restarts.
+            Log.LogWarning(e, "Could not read the PB Limiter report of {Server}", serverId);
+            _error = "Could not read the report: " + e.Message + " A server started before this plugin was enabled needs a restart.";
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void Wake()
+    {
+        try
+        {
+            _wake.Release();
+        }
+        catch (SemaphoreFullException)
+        {
+            // Already scheduled.
+        }
+    }
+
+    private void ServerChanged(ChangeEventArgs e)
+    {
+        _serverId = e.Value?.ToString();
+        _snapshot = null;
+        _confirming = null;
+        _notice = null;
+        _error = null;
+        Wake();
+    }
+
+    private void RefreshChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int seconds) && RefreshChoices.Contains(seconds))
+        {
+            _refreshSeconds = seconds;
+            Wake();
+        }
+    }
+
+    private void TogglePaused()
+    {
+        _paused = !_paused;
+        Wake();
+    }
+
+    private async Task<bool> CanControlAsync()
+    {
+        AuthenticationState state = await Authentication.GetAuthenticationStateAsync();
+        return (await Authorization.AuthorizeAsync(state.User, QuasarPolicyNames.CanControlServers)).Succeeded;
+    }
+
+    private async Task<string> CurrentUserAsync()
+    {
+        return (await Authentication.GetAuthenticationStateAsync()).User.Identity?.Name ?? "unknown";
+    }
+
+    private Task TurnOffBlockAsync(BlockRow row)
+    {
+        return RunTurnOffAsync($"{row.BlockName} on {row.GridName}",
+            (serverId, token) => Reports.TurnOffBlockAsync(serverId, row.EntityId, token));
+    }
+
+    private Task TurnOffPlayerAsync(PlayerRow row)
+    {
+        return RunTurnOffAsync($"all of {row.Name}'s blocks",
+            (serverId, token) => Reports.TurnOffPlayerAsync(serverId, row.IdentityId, token));
+    }
+
+    private async Task RunTurnOffAsync(string what, Func<string, CancellationToken, Task<TurnOffResult>> turnOff)
+    {
+        _confirming = null;
+        _notice = null;
+
+        // The button is hidden without this right, but a hidden button is not access control.
+        if (!await CanControlAsync())
+        {
+            _error = "You do not have permission to control servers.";
+            return;
+        }
+
+        string? serverId = _serverId;
+        if (serverId == null) return;
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_closing.Token);
+        timeout.CancelAfter(RequestTimeout);
+        try
+        {
+            TurnOffResult result = await turnOff(serverId, timeout.Token);
+            Log.LogInformation("{User} turned off {What} on {Server}, {Count} blocks", await CurrentUserAsync(), what, serverId, result.TurnedOff);
+            if (serverId != _serverId) return; // The server was changed while this was on its way.
+            _notice = result.TurnedOff == 0
+                ? $"Nothing to turn off for {what}: already off, or no longer tracked."
+                : $"Turned off {what}: {result.TurnedOff} block(s).";
+            _error = null;
+            Wake();
+        }
+        catch (OperationCanceledException) when (_closing.IsCancellationRequested)
+        {
+            // The page closed.
+        }
+        catch (Exception e)
+        {
+            Log.LogWarning(e, "Could not turn off {What} on {Server}", what, serverId);
+            if (serverId == _serverId)
+                _error = $"Could not turn off {what}: {e.Message}";
+        }
+    }
+
+    private RenderFragment TurnOffButton(string key, string what, Func<Task> confirmed) => __builder =>
+    {
+        if (_confirming == key)
+        {
+            // Rows move as they re-sort, so this says what it is about to do rather than relying on where it sits.
+            <span class="pbl-confirm">Turn off @what?</span>
+            <button type="button" class="quasar-button quasar-button-primary" @onclick="confirmed">Confirm</button>
+            <button type="button" class="quasar-button" @onclick="() => _confirming = null">Cancel</button>
+        }
+        else
+        {
+            <button type="button" class="quasar-button" @onclick="() => _confirming = key">Turn off</button>
+        }
+    };
+
+    private RenderFragment Header(string title, string column) => __builder =>
+    {
+        <th scope="col" class="@(NumericColumns.Contains(column) ? "pbl-number" : "")" aria-sort="@(_sortColumn == column ? (_sortDescending ? "descending" : "ascending") : "none")">
+            <button type="button" class="pbl-sort" @onclick="() => SortBy(column)">
+                @title @(_sortColumn == column ? (_sortDescending ? "▼" : "▲") : "")
+            </button>
+        </th>
+    };
+
+    private void SortBy(string column)
+    {
+        if (_sortColumn == column)
+        {
+            _sortDescending = !_sortDescending;
+            return;
+        }
+
+        _sortColumn = column;
+        _sortDescending = true;
+    }
+
+    private bool Matches(params string[] values)
+    {
+        return string.IsNullOrWhiteSpace(_filter) || values.Any(v => v.Contains(_filter.Trim(), StringComparison.CurrentCultureIgnoreCase));
+    }
+
+    private List<BlockRow> SortedBlocks()
+    {
+        IEnumerable<BlockRow> rows = _snapshot!.Blocks.Where(b => Matches(b.BlockName, b.GridName, b.OwnerName));
+        return Sorted(rows, _sortColumn switch
+        {
+            nameof(BlockRow.BlockName) => b => b.BlockName,
+            nameof(BlockRow.GridName) => b => b.GridName,
+            nameof(BlockRow.OwnerName) => b => b.OwnerName,
+            nameof(BlockRow.RunTimeMSAvg) => b => b.RunTimeMSAvg,
+            nameof(BlockRow.PeekRunTimeMS) => b => b.PeekRunTimeMS,
+            nameof(BlockRow.Offences) => b => b.Offences,
+            nameof(BlockRow.Recompiles) => b => b.Recompiles,
+            nameof(BlockRow.MemoryBytes) => b => b.MemoryBytes,
+            _ => b => b.LastRunTimeMS
+        });
+    }
+
+    private List<PlayerRow> SortedPlayers()
+    {
+        IEnumerable<PlayerRow> rows = _snapshot!.Players.Where(p => Matches(p.Name, p.SteamId.ToString()));
+        return Sorted(rows, _sortColumn switch
+        {
+            nameof(PlayerRow.Name) => p => p.Name,
+            nameof(PlayerRow.SteamId) => p => p.SteamId,
+            nameof(PlayerRow.BlockCount) => p => p.BlockCount,
+            nameof(PlayerRow.CombinedRunTimeMSAvg) => p => p.CombinedRunTimeMSAvg,
+            nameof(PlayerRow.Offences) => p => p.Offences,
+            nameof(PlayerRow.Recompiles) => p => p.Recompiles,
+            nameof(PlayerRow.MemoryBytes) => p => p.MemoryBytes,
+            _ => p => p.CombinedLastRunTimeMS
+        });
+    }
+
+    private List<T> Sorted<T>(IEnumerable<T> rows, Func<T, IComparable> key)
+    {
+        return (_sortDescending ? rows.OrderByDescending(key) : rows.OrderBy(key)).ToList();
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        return bytes <= 0 ? "" : (bytes / 1024d).ToString("N2") + " KB";
+    }
+
+    public void Dispose()
+    {
+        _closing.Cancel();
+        _closing.Dispose();
+    }
+}

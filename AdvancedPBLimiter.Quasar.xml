@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<PluginData xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="GitHubPlugin">
+    <!-- QuasarHub descriptor, copy it to the Plugins folder of the quasar-hub repository when publishing.
+         The Magnetar plugin has its own descriptor (AdvancedPBLimiter.xml) for MagnetarHub. -->
+
+    <!-- The ID of your plugin, never change this -->
+    <Id>c3a7e1d2-5b84-4f6e-9d21-7e4b8a60f1c5</Id>
+
+    <RepoId>buttheadbob/Advanced_PB_Limiter</RepoId>
+
+    <FriendlyName>Advanced PB Limiter</FriendlyName>
+
+    <Author>SentorX</Author>
+
+    <Tooltip>Live report of every programmable block the Advanced PB Limiter tracks on your servers</Tooltip>
+
+    <Description>
+A live report for the Advanced PB Limiter Magnetar plugin, the same one its Torch build has on the Reports tab.
+
+Pick a server to see every tracked programmable block and player with run times, peaks, offences, recompiles and memory.
+Sort and filter the tables, choose how often they refresh, and turn off a block or all of a player's blocks. Viewing
+needs the view permission, turning blocks off needs permission to control servers.
+
+The limits themselves are set on the server's Plugins page, this plugin adds no settings.
+
+Needs the Advanced PB Limiter Magnetar plugin on the servers. Includes a small companion Magnetar plugin
+(advancedpblimiter.quasar) that Quasar adds to managed servers; restart servers that were running when this plugin was
+enabled. Each cluster node shows as its own server.
+    </Description>
+
+    <PluginKind>QuasarUiPlugin</PluginKind>
+
+    <ProjectPath>QuasarPlugin/AdvancedPBLimiter.Quasar/AdvancedPBLimiter.Quasar.csproj</ProjectPath>
+
+    <PackageManifest>quasar-plugin.json</PackageManifest>
+
+    <QuasarVersion>&gt;=1.4.0</QuasarVersion>
+
+    <CompanionPluginIds>
+        <CompanionPluginId>advancedpblimiter.quasar</CompanionPluginId>
+    </CompanionPluginIds>
+
+    <!-- Set this to the commit being published -->
+    <Commit>0000000000000000000000000000000000000000</Commit>
+</PluginData>

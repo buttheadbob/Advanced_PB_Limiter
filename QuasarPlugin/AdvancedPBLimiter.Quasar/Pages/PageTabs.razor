@@ -1,0 +1,24 @@
+<header class="quasar-page-heading">
+    <div class="quasar-page-intro">
+        <div class="quasar-eyebrow">Plugins</div>
+        <h1>Advanced PB Limiter</h1>
+        <div class="quasar-page-description">@Description</div>
+    </div>
+</header>
+
+<nav class="pbl-tabs" aria-label="Advanced PB Limiter">
+    <a class="quasar-button @ActiveClass(Tab.Live)" href="@AdvancedPBLimiterQuasarPlugin.Route.TrimStart('/')">Live view</a>
+    <AuthorizeView Policy="@QuasarPolicyNames.CanEditConfigs">
+        <a class="quasar-button @ActiveClass(Tab.Profiles)" href="@(AdvancedPBLimiterQuasarPlugin.Route.TrimStart('/'))/profiles">Profiles</a>
+    </AuthorizeView>
+    <a class="quasar-button @ActiveClass(Tab.Report)" href="@(AdvancedPBLimiterQuasarPlugin.Route.TrimStart('/'))/generate-report">Generate report</a>
+</nav>
+
+@code {
+    public enum Tab { Live, Profiles, Report }
+
+    [Parameter, EditorRequired] public Tab Active { get; set; }
+    [Parameter, EditorRequired] public string Description { get; set; } = "";
+
+    private string ActiveClass(Tab tab) => tab == Active ? "quasar-button-primary" : "";
+}

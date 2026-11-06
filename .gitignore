@@ -1,9 +1,39 @@
+# Junctions made by "Setup (run before opening solution).bat". No trailing slash: git does not see a junction as a folder.
+GameBinaries
+TorchBinaries
 
-GameBinaries/
-TorchBinaries/
+# Build output
 Build/
 bin/
 obj/
+
+# The companion build output of a Quasar install
+.quasar/
+
+# Source control
 .svn/
 .git/
+
+# IDE state, personal to each machine
 .vs/
+.idea/
+*.user
+*.suo
+
+# AI assistant rules and state
+AI_RULES.md
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+GEMINI.md
+.claude/
+.cursor/
+.cursorrules
+.windsurfrules
+.aider*
+.codex/
+.mcp.json
+graphify-out/
+
+# Local path overrides for the Magnetar build, copy of Directory.Build.props.template
+Directory.Build.props
