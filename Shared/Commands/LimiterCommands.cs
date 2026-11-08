@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using System.Threading.Tasks;
 using Advanced_PB_Limiter.Manager;
 using Advanced_PB_Limiter.Utils;
 using Sandbox;
+using Sandbox.Game.World;
 using Sandbox.ModAPI.Ingame;
 
 namespace Advanced_PB_Limiter.Commands
@@ -161,6 +163,8 @@ namespace Advanced_PB_Limiter.Commands
 
             // Anything the command does not set stays as it was.
             PrivilegedPlayer player = existing ?? new PrivilegedPlayer { SteamId = steamId };
+            if (string.IsNullOrWhiteSpace(player.Name))
+                player.Name = PlayerName(steamId);
             player.RuntimeAllowance = maxRunTimeMS;
             player.RuntimeAverageAllowance = maxRunTimeMSAvg;
             player.NoCombinedLimits = !combinedLimits;
@@ -173,6 +177,14 @@ namespace Advanced_PB_Limiter.Commands
             Config.SetPrivilegedPlayer(player);
             LimiterCore.Host.SaveConfig();
             return exists ? "Privileged user updated." : "Privileged user created.";
+        }
+
+        /// <summary>The name the player last had on this server, or the Steam ID for a player who has never joined it.</summary>
+        private static string PlayerName(ulong steamId)
+        {
+            long identityId = MySession.Static?.Players.TryGetIdentityId(steamId) ?? 0;
+            MyIdentity? identity = identityId == 0 ? null : MySession.Static!.Players.TryGetIdentity(identityId);
+            return string.IsNullOrWhiteSpace(identity?.DisplayName) ? steamId.ToString(CultureInfo.InvariantCulture) : identity!.DisplayName;
         }
 
         public static IEnumerable<string> DetailedStaffHelp()
