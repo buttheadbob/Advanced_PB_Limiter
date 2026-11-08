@@ -20,11 +20,15 @@ namespace Advanced_PB_Limiter.Patches
         private static FieldInfo _needsInstantiation = null!;
         private static MethodInfo _onProgramTermination = null!;
 
+        // Only used when Save() is skipped on a block that is turned off.
+        private static FieldInfo _storageData = null!;
+
         public static void Init()
         {
             GetProgram = CompileGetter<IMyGridProgram?>("m_instance");
             GetRuntime = CompileGetter<IMyGridProgramRuntimeInfo>("m_runtime");
             _needsInstantiation = GetField("m_needsInstantiation");
+            _storageData = GetField("m_storageData");
             _onProgramTermination = typeof(MyProgrammableBlock).GetMethod("OnProgramTermination", InstanceFlags)
                 ?? throw new InvalidOperationException("Could not find MyProgrammableBlock.OnProgramTermination, the game has probably changed");
         }
@@ -33,6 +37,17 @@ namespace Advanced_PB_Limiter.Patches
         public static void ClearNeedsInstantiation(MyProgrammableBlock block)
         {
             _needsInstantiation.SetValue(block, false);
+        }
+
+        /// <summary>
+        /// The first step of MyProgrammableBlock.UpdateStorage, without the Save() call: copies the script's Storage to the block.
+        /// Recompile passes that copy to the new script, so without it a recompile goes back to an older Storage. Runs no script code.
+        /// </summary>
+        public static void CopyStorage(MyProgrammableBlock block)
+        {
+            IMyGridProgram? program = GetProgram(block);
+            if (program is not null)
+                _storageData.SetValue(block, program.Storage);
         }
 
         public static void TerminateProgram(MyProgrammableBlock block)

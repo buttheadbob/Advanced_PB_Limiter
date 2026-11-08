@@ -297,7 +297,10 @@ namespace Advanced_PB_Limiter.Patches
             if (keepDisabled) __instance.Enabled = false;
         }
 
-        /// <summary>Before MyProgrammableBlock.UpdateStorage. Returns false to skip it.</summary>
+        /// <summary>
+        /// Before MyProgrammableBlock.UpdateStorage. Returns false to skip it, in which case the Storage copy it would make
+        /// is made here, so only the script's Save() is left out.
+        /// </summary>
         public static bool BeforeSave(MyProgrammableBlock? __instance)
         {
             if (__instance is null)
@@ -318,11 +321,15 @@ namespace Advanced_PB_Limiter.Patches
                     if (player is not null)
                         Log.Warn($"{player.DisplayName} ({__instance.OwnerId}) tried to save a programmable block [{__instance.CustomName}] while it was turned off.  This is has been disabled.");
                 }
+                PbAccess.CopyStorage(__instance);
                 return false;
             }
 
             if (isNpc && !Config.AllowNPCToAutoTurnOn)
+            {
+                PbAccess.CopyStorage(__instance);
                 return false;
+            }
 
             return true;
         }

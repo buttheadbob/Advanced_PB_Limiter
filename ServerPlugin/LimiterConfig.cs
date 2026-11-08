@@ -190,7 +190,7 @@ public class LimiterConfig : PluginConfig, IPbLimiterConfig
     [BoolOption("Attaches Update1 to Update10, so it only runs when Update10 would. No script really needs to run 60 times per second, and none should need changing", Parent = "defer")]
     public bool DisableUpdate1 { get; set => SetField(ref field, value); }
 
-    [BoolOption("Auto enable: players use Save() or the constructor to turn on their block automatically, which runs whether the block is enabled or not. Off prevents that", Parent = "restart")]
+    [BoolOption("Auto enable: players use Save() or the constructor to turn on their block automatically, which runs whether the block is enabled or not. Off prevents that: Save() does not run while a block is turned off", Parent = "restart")]
     public bool AllowSelfTurnOnExploit { get; set => SetField(ref field, value); }
 
     [BoolOption("Auto enable for NPCs: allows the Save() of an NPC's block to run. Useful for custom operations on the server", Parent = "restart")]
