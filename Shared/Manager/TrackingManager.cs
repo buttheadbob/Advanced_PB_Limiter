@@ -236,7 +236,7 @@ namespace Advanced_PB_Limiter.Manager
                 // clear old combined warnings
                 for (int index = player.CombinedOffences.Count - 1; index >= 0; index--)
                 {
-                    if (player.CombinedOffences[index].TicksTillNow_TimeSpan().TotalMinutes >= Config.OffenseDurationBeforeDeletion)
+                    if (player.CombinedOffences[index].TicksTillNow_TimeSpan().TotalMinutes >= PunishmentManager.OffenceLifetimeMinutes)
                         player.CombinedOffences.RemoveAt(index);
                 }
 

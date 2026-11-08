@@ -59,6 +59,7 @@ namespace Advanced_PB_Limiter.Commands
             sb.AppendLine("------------------------------------");
             sb.AppendLine("Limits - Shows your limits applied to programmable blocks for this server.");
             sb.AppendLine("MyStats - Generates a report about your programmable blocks for this server.");
+            sb.AppendLine("Runtimes - Shows the last saved runtimes for each of your programmable blocks.");
             sb.AppendLine("");
             sb.AppendLine("About - Displays information about the Advanced PB Limiter.");
             Context.Respond(sb.ToString());

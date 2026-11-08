@@ -6,6 +6,7 @@ using System.Text;
 using Advanced_PB_Limiter.QuasarContracts;
 using Advanced_PB_Limiter.Utils;
 using Advanced_PB_Limiter.Utils.Reports;
+using ExtensionMethods;
 // ReSharper disable CommentTypo
 
 namespace Advanced_PB_Limiter.Manager
@@ -104,7 +105,7 @@ namespace Advanced_PB_Limiter.Manager
             {
                 pbReports.Add(new PBReport(player.SteamId,
                     block.ProgrammableBlock.CubeGrid?.DisplayName ?? block.GridName,
-                    block.ProgrammableBlock.CustomName.ToString(),
+                    block.ProgrammableBlock.ReadName(),
                     block.LastRunTimeMS,
                     block.RunTimeMSAvg,
                     block.Offences.Count,
@@ -304,7 +305,7 @@ namespace Advanced_PB_Limiter.Manager
             foreach (TrackedPBBlock pbBlock in player.GetAllPBBlocks)
             {
                 sb.AppendLine($"Grid Name: {pbBlock.ProgrammableBlock.CubeGrid?.DisplayName ?? pbBlock.GridName}");
-                sb.AppendLine($"Block Name: {pbBlock.ProgrammableBlock.DisplayNameText}");
+                sb.AppendLine($"Block Name: {pbBlock.ProgrammableBlock.ReadName()}");
                 foreach (double runtime in pbBlock.GetRunTimesMS)
                 {
                     string outlierFlag = pbBlock.IsOutlier(runtime) ? " (outlier)" : "";

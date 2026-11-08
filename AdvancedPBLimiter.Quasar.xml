@@ -12,16 +12,19 @@
 
     <Author>SentorX</Author>
 
-    <Tooltip>Live report of every programmable block the Advanced PB Limiter tracks on your servers</Tooltip>
+    <Tooltip>Live view, settings profiles and reports for the Advanced PB Limiter on your servers</Tooltip>
 
     <Description>
-A live report for the Advanced PB Limiter Magnetar plugin, the same one its Torch build has on the Reports tab.
+Live view, profiles and reports for the Advanced PB Limiter Magnetar plugin.
 
-Pick a server to see every tracked programmable block and player with run times, peaks, offences, recompiles and memory.
-Sort and filter the tables, choose how often they refresh, and turn off a block or all of a player's blocks. Viewing
-needs the view permission, turning blocks off needs permission to control servers.
+Live view: every tracked programmable block and player on a server, with run times, offences and memory. Turn off a
+block or all of a player's blocks. Needs permission to control servers.
 
-The limits themselves are set on the server's Plugins page, this plugin adds no settings.
+Profiles: save a server's settings and privileged players under a name and apply them to other servers. Applying
+replaces both. A server that is offline or still loading gets the profile when it is ready. Needs permission to edit
+configurations. Limits are still set on the server's Plugins page.
+
+Generate report: one text file for the servers you choose.
 
 Needs the Advanced PB Limiter Magnetar plugin on the servers. Includes a small companion Magnetar plugin
 (advancedpblimiter.quasar) that Quasar adds to managed servers; restart servers that were running when this plugin was

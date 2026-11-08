@@ -187,7 +187,7 @@
                 
                 <TextBlock Grid.Row="16" Grid.Column="0" Text="Destroy Protected PB" Margin="3" VerticalAlignment="Center" />
                 <CheckBox Grid.Row="16" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding KillProtectedBlock}"/>
-                <TextBlock Grid.Row="16" Grid.Column="2" Text="Programmable Blocks in a SafeZone or other modded protected area with damage disabled wont receive any damage.  Enable this will cause the block to be have all its building materials removed and reset to an unwelded block." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="16" Grid.Column="2" Text="Programmable Blocks in a SafeZone or other modded protected area with damage disabled wont receive any damage.  Enable this will cause the Damage punishment to have all its building materials removed and reset it to an unwelded block.  The Destroy punishment and instant kills always do this to a protected block." Margin="3" TextWrapping="Wrap"/>
                 
                 <TextBlock Grid.Row="18" Grid.Column="0" Text="Startup Allowance for pb startup" Margin="3" VerticalAlignment="Center"/>
                 <TextBox Grid.Row="18" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40"  Text="{Binding StartupAllowance}" TextAlignment="Center"/>
@@ -269,7 +269,7 @@
                 
                 <TextBlock Grid.Row="10" Grid.Column="0" Text="Allowed single block offenses" Margin="3" VerticalAlignment="Center"/>
                 <TextBox Grid.Row="10" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding MaxOffencesBeforePunishment}"/>
-                <TextBlock Grid.Row="10" Grid.Column="2" Text="Amount of offences by the player (not the pb) before punishment is applied." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="10" Grid.Column="2" Text="Amount of offences by one pb before punishment is applied." Margin="3" TextWrapping="Wrap"/>
                 
                 <TextBlock Grid.Row="11" Grid.Column="0" Text="Allowed combined block offenses" Margin="3" VerticalAlignment="Center"/>
                 <TextBox Grid.Row="11" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding MaxCombinedOffencesBeforePunishment}"/>
@@ -285,7 +285,7 @@
                 
                 <TextBlock Grid.Row="14" Grid.Column="0" Text="Remove offense after time" Margin="3" VerticalAlignment="Center"/>
                 <TextBox Grid.Row="14" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding OffenseDurationBeforeDeletion}"/>
-                <TextBlock Grid.Row="14" Grid.Column="2" Text="How many minutes before an offense is removed.  Each offense is tracked, so only after an offense is at least this old will it be removed." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="14" Grid.Column="2" Text="How many minutes before an offense is removed, at least 1.  Each offense is tracked, so only after an offense is at least this old will it be removed." Margin="3" TextWrapping="Wrap"/>
                 
                 <TextBlock Grid.Row="15" Grid.Column="0" Text="Clear data on pb recompile" Margin="3" VerticalAlignment="Center"/>
                 <CheckBox Grid.Row="15" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" IsChecked="{Binding ClearHistoryOnRecompile}"/>
@@ -301,7 +301,7 @@
                 
                 <TextBlock Grid.Row="18" Grid.Column="0" Name="PunishmentLabel" Text="Punishment type" Margin="3" VerticalAlignment="Center"/>
                 <ComboBox Grid.Row="18" Grid.Column="1" Name="PunishmentComboBox" VerticalAlignment="Center" Margin="3" Width="40" Foreground="Black" SelectionChanged="PunishmentComboBox_OnSelectionChanged"/>
-                <TextBlock Grid.Row="18" Grid.Column="2" Text="Turn off will disable the block.  Damage will applied the set amount of damage points to the block (may not occur in SafeZones.  Destroy will damage the pb to below functional level." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="18" Grid.Column="2" Text="Turn off will disable the block.  Damage will applied the set amount of damage points to the block (may not occur in SafeZones.  Destroy will damage the pb to below functional level, and a further punishment while it is still tracked removes it." Margin="3" TextWrapping="Wrap"/>
                 
                 <TextBlock Grid.Row="19" Grid.Column="0" Text="Damage points" Margin="3"/>
                 <TextBox Grid.Row="19" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding PunishDamageAmount}" />

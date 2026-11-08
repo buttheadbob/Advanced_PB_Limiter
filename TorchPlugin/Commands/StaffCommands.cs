@@ -12,7 +12,7 @@ namespace Advanced_PB_Limiter.Commands
         [Permission(MyPromoteLevel.Admin)]
         public void RequestPbShutdown(int seconds = 1)
         {
-            LimiterCommands.RequestPbShutdown(seconds);
+            Context.Respond(LimiterCommands.RequestPbShutdown(seconds));
         }
 
         [Command("debug", "Only for debugging, not regular use for servers.")]
@@ -44,14 +44,14 @@ namespace Advanced_PB_Limiter.Commands
             Context.Respond(LimiterCommands.SetEnabled(true));
         }
 
-        [Command("AllowStaffCommands", "Allows staff commands to be used. Only the server owner can use this command.")]
+        [Command("AllowStaffCommands", "Allows staff to use CreatePrivilegedUser. Only the server owner can use this command.")]
         [Permission(MyPromoteLevel.Owner)]
         public void AllowStaffCommands()
         {
             Context.Respond(LimiterCommands.SetStaffCommandsAllowed(true));
         }
 
-        [Command("DenyStaffCommands", "Disables staff commands from being used. Only the server owner can use this command.")]
+        [Command("DenyStaffCommands", "Stops staff using CreatePrivilegedUser. Only the server owner can use this command.")]
         [Permission(MyPromoteLevel.Owner)]
         public void DenyStaffCommands()
         {

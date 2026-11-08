@@ -14,6 +14,7 @@
   This will send a run argument to the programming block.
   The argument is `GracefulShutDown::seconds` with seconds being the amount of time the script has to shutdown before any punishment is incurred.
   The punishment will always be applied after the time is up, regardless!
+  A negative value is a warning, with no time limit: `-1` the block has reached its allowed offences for run time, `-2` the same for average run time, and `-3` the player's blocks are over a combined limit.
   Scripters can add a simple check with the following example:
 ```
 if (updateSource == UpdateType.Script)

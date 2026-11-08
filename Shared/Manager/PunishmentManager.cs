@@ -32,6 +32,9 @@ namespace Advanced_PB_Limiter.Manager
         private static readonly LimiterLog Log = new("Punishment Manager");
         private static IPbLimiterConfig Config => LimiterCore.Config;
 
+        /// <summary>At least one minute: with 0 every offence is forgotten as it happens, which turns off offence punishment altogether.</summary>
+        internal static int OffenceLifetimeMinutes => Math.Max(1, Config.OffenseDurationBeforeDeletion);
+
         public enum PunishReason
         {
             SingleRuntimeOverLimit,
@@ -70,7 +73,7 @@ namespace Advanced_PB_Limiter.Manager
             double allowedRunTimeAvg = privilegedPlayer?.RuntimeAverageAllowance ?? Config.MaxRunTimeMSAvg;
             int allowedOffenses = privilegedPlayer?.OffencesBeforePunishment ?? Config.MaxOffencesBeforePunishment;
 
-            trackedPbBlock.ForgetOffencesOlderThan(Config.OffenseDurationBeforeDeletion);
+            trackedPbBlock.ForgetOffencesOlderThan(OffenceLifetimeMinutes);
 
             // Check if enough time since last offense has passed.
             if (trackedPbBlock.IsInGraceAfterOffence)

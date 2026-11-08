@@ -134,6 +134,9 @@ namespace Advanced_PB_Limiter.Utils
             return Stopwatch.GetTimestamp() - PBStartTime < allowanceSeconds * Stopwatch.Frequency;
         }
 
+        /// <summary>False once the block cannot run: turned off, damaged, unpowered or gone. It stays tracked for a while after that.</summary>
+        public bool IsRunning => !ProgrammableBlock.Closed && !ProgrammableBlock.MarkedForClose && ProgrammableBlock.IsWorking;
+
         /// <summary>The last offence or punishment was too recent for another one.</summary>
         public bool IsInGraceAfterOffence => LastOffenceTick != 0 && LastOffenceTick.TicksTillNow_TimeSpan().TotalSeconds <= Config.GraceAfterOffence;
 
