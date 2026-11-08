@@ -16,7 +16,7 @@ namespace Advanced_PB_Limiter.Commands
         private static IPbLimiterConfig Config => LimiterCore.Config;
 
         public const string PlayersOnlyMessage = "This command can only be used by players in game.";
-        public const string StaffCommandsDisabledMessage = "Staff commands are disabled in the config.  Please enable them to use this command.";
+        public const string StaffCommandsDisabledMessage = "CreatePrivilegedUser is disabled for staff in the config.  Please enable AllowStaffCommands to use this command.";
         private const int TimingsDurationMs = 5000;
 
         public static IEnumerable<string> About()
@@ -96,9 +96,13 @@ namespace Advanced_PB_Limiter.Commands
             });
         }
 
-        public static void RequestPbShutdown(int seconds)
+        public static string RequestPbShutdown(int seconds)
         {
-            MySandboxGame.Static.Invoke(() => // Not sure if this actually needs to be forced on the game thread.
+            // Scripts read negative values as warnings, see README.
+            if (seconds < 0)
+                return "The seconds until restart cannot be negative.";
+
+            MySandboxGame.Static.Invoke(() => // Running a script has to happen on the game thread.
             {
                 foreach (TrackedPlayer? tplayer in TrackingManager.PlayersTracked.Values)
                 {
@@ -109,6 +113,7 @@ namespace Advanced_PB_Limiter.Commands
                     }
                 }
             }, "Advanced_PB_Limiter");
+            return $"Sent the shutdown request to all tracked programmable blocks, with {seconds} second(s) until restart.";
         }
 
         public static string SetDebug(bool debug)
@@ -135,13 +140,22 @@ namespace Advanced_PB_Limiter.Commands
         {
             Config.AllowStaffCommands = allowed;
             LimiterCore.Host.SaveConfig();
-            return "Staff commands are now " + (allowed ? "enabled." : "disabled.");
+            return "CreatePrivilegedUser is now " + (allowed ? "enabled" : "disabled") + " for staff.";
         }
 
         public static string CreatePrivilegedUser(ulong steamId, double maxRunTimeMS, double maxRunTimeMSAvg, bool combinedLimits, double maxAllBlocksCombinedRunTimeMS, double maxAllBlocksCombinedRunTimeMSAvg, int offencesBeforePunishment, Enums.Punishment punishment, int gracefulShutDownRequestDelay)
         {
             if (!Config.AllowStaffCommands)
                 return StaffCommandsDisabledMessage;
+
+            // Identities with no Steam ID, NPCs among them, all share 0, so an entry for it would apply to every one of them.
+            if (steamId == 0)
+                return "The Steam ID cannot be 0.";
+
+            // A negative allowance would make every run an offence.
+            if (maxRunTimeMS < 0 || maxRunTimeMSAvg < 0 || maxAllBlocksCombinedRunTimeMS < 0 || maxAllBlocksCombinedRunTimeMSAvg < 0
+                || offencesBeforePunishment < 0 || gracefulShutDownRequestDelay < 0)
+                return "Limits, offences and the shutdown delay cannot be negative.";
 
             bool exists = Config.TryGetPrivilegedPlayer(steamId, out PrivilegedPlayer? existing);
 
@@ -167,8 +181,11 @@ namespace Advanced_PB_Limiter.Commands
             yield return "!PBLimiter GetReport - Generates a full report of this server.";
             yield return "!PBLimiter Disable - Disables the Advanced PB Limiter.";
             yield return "!PBLimiter Enable - Enables the Advanced PB Limiter.";
-            yield return "!PBLimiter AllowStaffCommands - Allows staff commands to be used. Only the server owner can use this command.";
-            yield return "!PBLimiter DenyStaffCommands - Disables staff commands from being used. Only the server owner can use this command.";
+            yield return "!PBLimiter requestpbshutdown <seconds> - Sends the shutdown request to all scripts that monitor for it.";
+            yield return "!PBLimiter debug <true|false> - Turns debug logging on or off.";
+            yield return "!PBLimiter CreatePrivilegedUser - Creates a privileged user or overwrites an existing one.";
+            yield return "!PBLimiter AllowStaffCommands - Allows staff to use CreatePrivilegedUser. Only the server owner can use this command.";
+            yield return "!PBLimiter DenyStaffCommands - Stops staff using CreatePrivilegedUser. Only the server owner can use this command.";
         }
 
         public static IEnumerable<string> StaffHelp()
@@ -177,6 +194,9 @@ namespace Advanced_PB_Limiter.Commands
             yield return "!PBLimiter GetReport";
             yield return "!PBLimiter Disable";
             yield return "!PBLimiter Enable";
+            yield return "!PBLimiter requestpbshutdown";
+            yield return "!PBLimiter debug";
+            yield return "!PBLimiter CreatePrivilegedUser";
             yield return "!PBLimiter AllowStaffCommands";
             yield return "!PBLimiter DenyStaffCommands";
         }

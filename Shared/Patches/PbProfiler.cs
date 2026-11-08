@@ -60,6 +60,8 @@ namespace Advanced_PB_Limiter.Patches
 
         public static void Init()
         {
+            MySession.OnSaved += OnWorldSaved;
+
             if (Config.AllowSelfTurnOnExploit || Config.RequireRecompileOnRestart) return;
 
             if (Config.DebugReporting)
@@ -71,24 +73,28 @@ namespace Advanced_PB_Limiter.Patches
 
         public static void Stop()
         {
+            MySession.OnSaved -= OnWorldSaved;
             _collectDisabledBlocks = true; // Ready for the next session to load.
             _disabledBlockShutdownPending = false;
             _serverSaved = false;
             DisabledProgrammableBlocks.Clear();
         }
 
+        // MySession.ServerSaving cannot be polled from a tick: the game sets and clears it inside one Save call.
+        private static void OnWorldSaved(bool success, string path)
+        {
+            _lastSaveTick = Stopwatch.GetTimestamp();
+            _serverSaved = true;
+
+            if (Config.DebugReporting)
+                Log.Info($"World saved, ignoring run times for {IGNORE_RUNS_AFTER_SAVE_SECONDS} seconds.");
+        }
+
         /// <summary>Once per tick, on the game thread.</summary>
         public static void Update()
         {
-            if (MySession.Static?.ServerSaving == true)
-            {
-                _lastSaveTick = Stopwatch.GetTimestamp();
-                _serverSaved = true;
-            }
-            else if (_serverSaved && _lastSaveTick.TicksTillNow_TimeSpan().TotalSeconds > IGNORE_RUNS_AFTER_SAVE_SECONDS)
-            {
+            if (_serverSaved && _lastSaveTick.TicksTillNow_TimeSpan().TotalSeconds > IGNORE_RUNS_AFTER_SAVE_SECONDS)
                 _serverSaved = false;
-            }
 
             if (_disabledBlockShutdownPending && Stopwatch.GetTimestamp() >= _disabledBlockShutdownTick)
             {
@@ -100,6 +106,12 @@ namespace Advanced_PB_Limiter.Patches
 
         private static void ShutdownPb()
         {
+            if (!Config.Enabled)
+            {
+                DisabledProgrammableBlocks.Clear();
+                return;
+            }
+
             if (Config.DebugReporting)
                 Log.Info("Shutting down all pb's that should not be running....");
 
@@ -295,6 +307,7 @@ namespace Advanced_PB_Limiter.Patches
             }
 
             if (__instance.Enabled) return true;
+            if (!Config.Enabled) return true;
 
             bool isNpc = MySession.Static.Players.IdentityIsNpc(__instance.OwnerId);
             if (!isNpc && !Config.AllowSelfTurnOnExploit)

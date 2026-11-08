@@ -16,6 +16,7 @@ using Advanced_PB_Limiter.Manager;
 using Advanced_PB_Limiter.Utils;
 using System.Windows.Media;
 using Advanced_PB_Limiter.Utils.Reports;
+using ExtensionMethods;
 using NLog;
 using Sandbox;
 using Sandbox.Game.Entities.Blocks;
@@ -84,7 +85,7 @@ namespace Advanced_PB_Limiter.UI
                         player.SteamId,
                         player.PlayerName ?? "Unknown",
                         block.GridName,
-                        ReadBlockName(block.ProgrammableBlock),
+                        block.ProgrammableBlock.ReadName(),
                         lastRunTimeMs,
                         runTimeMsAvg,
                         block.PeekRunTimeMS,
@@ -103,22 +104,6 @@ namespace Advanced_PB_Limiter.UI
             datagrid_PlayerReports = new ObservableCollection<CustomPlayerReport>(PlayerReports.Values);
             PerPlayerDataGrid.ItemsSource = datagrid_PlayerReports;
             PerPBDataGrid.ItemsSource = datagrid_BlockReports;
-        }
-
-        /// <summary>
-        /// This runs on the UI thread and the game edits a block's name in place on its own thread, so a script
-        /// renaming its block can make this read throw. Rare, and the next refresh shows the name again.
-        /// </summary>
-        private static string ReadBlockName(MyProgrammableBlock block)
-        {
-            try
-            {
-                return block.CustomName.ToString();
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-                return block.EntityId.ToString();
-            }
         }
 
         private void EnableLiveViewButton_OnClick(object sender, RoutedEventArgs e)
@@ -352,7 +337,7 @@ namespace Advanced_PB_Limiter.UI
             if (sender is not System.Windows.Controls.Button clickedbutton) return;
             if (clickedbutton.Tag is not MyProgrammableBlock pb) return;
             MySandboxGame.Static.Invoke(() => { pb.Enabled = false;},"Advanced PB Limiter");
-            Log.Info($"Request to turn off the programmable block [{ReadBlockName(pb)}] from the plugin UI.");
+            Log.Info($"Request to turn off the programmable block [{pb.ReadName()}] from the plugin UI.");
         }
 
         private void TurnOff_AllPB(object sender, RoutedEventArgs e)

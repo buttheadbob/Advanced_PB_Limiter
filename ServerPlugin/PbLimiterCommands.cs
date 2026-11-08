@@ -56,7 +56,7 @@ public sealed class PbLimiterCommands : CommandModule
 
     [Command("requestpbshutdown", "Send the shutdown request to all pb scripts that monitor for it.  add the amount of seconds until restart if desired.  Eg: !PBLimiter requestpbshutdown 10")]
     [Permission(MyPromoteLevel.Admin)]
-    public void RequestPbShutdown(int seconds = 1) => LimiterCommands.RequestPbShutdown(seconds);
+    public string RequestPbShutdown(int seconds = 1) => LimiterCommands.RequestPbShutdown(seconds);
 
     [Command("debug", "Only for debugging, not regular use for servers.")]
     [Permission(MyPromoteLevel.Admin)]
@@ -78,11 +78,11 @@ public sealed class PbLimiterCommands : CommandModule
     [Permission(MyPromoteLevel.Admin)]
     public string Enable() => LimiterCommands.SetEnabled(true);
 
-    [Command("AllowStaffCommands", "Allows staff commands to be used. Only the server owner can use this command.")]
+    [Command("AllowStaffCommands", "Allows staff to use CreatePrivilegedUser. Only the server owner can use this command.")]
     [Permission(MyPromoteLevel.Owner)]
     public string AllowStaffCommands() => LimiterCommands.SetStaffCommandsAllowed(true);
 
-    [Command("DenyStaffCommands", "Disables staff commands from being used. Only the server owner can use this command.")]
+    [Command("DenyStaffCommands", "Stops staff using CreatePrivilegedUser. Only the server owner can use this command.")]
     [Permission(MyPromoteLevel.Owner)]
     public string DenyStaffCommands() => LimiterCommands.SetStaffCommandsAllowed(false);
 

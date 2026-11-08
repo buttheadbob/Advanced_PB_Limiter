@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Globalization;
+using Sandbox.Game.Entities.Blocks;
 
 namespace Advanced_PB_Limiter.Utils
 {
@@ -40,6 +41,22 @@ namespace ExtensionMethods
         public static TimeSpan TimeElapsed(this long endTicks, long startTicks)
         {
             return TimeSpan.FromSeconds((double)(endTicks - startTicks) / Stopwatch.Frequency);
+        }
+
+        /// <summary>
+        /// A block's name, from any thread. The game edits it in place on its own thread, so a script renaming its block
+        /// can make the read throw. Rare, and the next read has the name again.
+        /// </summary>
+        public static string ReadName(this MyProgrammableBlock block)
+        {
+            try
+            {
+                return block.CustomName.ToString();
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return block.EntityId.ToString(CultureInfo.InvariantCulture);
+            }
         }
     }
 }

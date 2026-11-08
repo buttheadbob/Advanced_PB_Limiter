@@ -148,7 +148,7 @@ public class LimiterConfig : PluginConfig, IPbLimiterConfig
     [BoolOption("Blocks with no owner can still run... but should they? On turns them off", Parent = "enforcement")]
     public bool TurnOffUnownedBlocks { get; set => SetField(ref field, value); } = true;
 
-    [EnumOption("TurnOff disables the block. Damage applies the set damage points, which may not happen in safe zones. Destroy damages it below functional level", Parent = "punishment")]
+    [EnumOption("TurnOff disables the block. Damage applies the set damage points, which may not happen in safe zones. Destroy damages it below functional level, and a further punishment while it is still tracked removes it", Parent = "punishment")]
     public Enums.Punishment Punishment { get; set => SetField(ref field, value); } = Enums.Punishment.TurnOff;
 
     [IntOption(0, 1000, "Amount of offences before punishment is applied", Parent = "punishment")]
@@ -157,7 +157,7 @@ public class LimiterConfig : PluginConfig, IPbLimiterConfig
     [IntOption(0, 3600, "Seconds after an offence before another can be incurred. This prevents Update1 and Update10 from reaching the offence limit within 1 second of the first offence", Parent = "punishment")]
     public int GraceAfterOffence { get; set => SetField(ref field, value); } = 15;
 
-    [IntOption(0, 10080, "Minutes before an offence is removed", Parent = "punishment")]
+    [IntOption(1, 10080, "Minutes before an offence is removed", Parent = "punishment")]
     public int OffenseDurationBeforeDeletion { get; set => SetField(ref field, value); } = 1;
 
     [IntOption(0, 3600, "Seconds to wait for the script to shut down before the punishment is applied, which always happens after the delay. 0 for no delay", Parent = "punishment")]
@@ -166,7 +166,7 @@ public class LimiterConfig : PluginConfig, IPbLimiterConfig
     [IntOption(0, 100000, "Points of damage to apply when the punishment is Damage", Parent = "punishment")]
     public int PunishDamageAmount { get; set => SetField(ref field, value); } = 100;
 
-    [BoolOption("Blocks in a safe zone with damage disabled take no damage. On removes all of such a block's building materials and resets it to unwelded, for the Damage punishment", Parent = "punishment")]
+    [BoolOption("Blocks in a safe zone with damage disabled take no damage. On makes the Damage punishment remove all of such a block's building materials and reset it to unwelded. The Destroy punishment and instant kills always do this", Parent = "punishment")]
     public bool KillProtectedBlock { get; set => SetField(ref field, value); }
 
     [BoolOption("Send a warning to the owner when their block incurs an offence", Parent = "punishment")]

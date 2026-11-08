@@ -49,16 +49,31 @@ public class Plugin : IPlugin, IPbLimiterHost
         Log.Info("Loading");
         Instance = this;
 
-        _configPath =Path.Combine(MyFileSystem.UserDataPath, Name + ".cfg");
+        _configPath = Path.Combine(MyFileSystem.UserDataPath, Name, Name + ".cfg");
+
+        // The first Magnetar build kept the config in the user data root. A missing file loads as defaults with no error,
+        // so without this an update would silently drop the server's limits and privileged players.
+        string legacyPath = Path.Combine(MyFileSystem.UserDataPath, Name + ".cfg");
+        bool fromLegacy = !File.Exists(_configPath) && File.Exists(legacyPath);
+        bool loaded = false;
         try
         {
-            _config = ConfigStorage.LoadXml<LimiterConfig>(_configPath);
+            _config = ConfigStorage.LoadXml<LimiterConfig>(fromLegacy ? legacyPath : _configPath);
+            loaded = true;
         }
         catch (Exception e)
         {
             Log.Error("Could not read the config, using defaults", e);
             _config = new LimiterConfig();
         }
+
+        // Only a config that was read is saved in the new place, so a broken old file is never replaced by defaults.
+        if (fromLegacy && loaded)
+        {
+            SaveConfig();
+            Log.Info($"Moved the config from {legacyPath} to {_configPath}. The old file is no longer read and can be deleted.");
+        }
+
         RebuildPrivilegedLookup();
         // Edits made in Quasar arrive through the config's setters: persist them.
         _config.PropertyChanged += OnConfigChanged;
