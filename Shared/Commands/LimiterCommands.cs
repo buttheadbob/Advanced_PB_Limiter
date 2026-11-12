@@ -170,6 +170,11 @@ namespace Advanced_PB_Limiter.Commands
             player.Punishment = punishment;
             player.GracefulShutDownRequestDelay = gracefulShutDownRequestDelay;
 
+            // The command takes no damage amount. A new row gets 0, the server's PunishDamageAmount, instead of
+            // PrivilegedPlayer's own 100, which would replace the server's setting for this player.
+            if (existing is null)
+                player.DamageAmount = 0;
+
             Config.SetPrivilegedPlayer(player);
             LimiterCore.Host.SaveConfig();
             return exists ? "Privileged user updated." : "Privileged user created.";
