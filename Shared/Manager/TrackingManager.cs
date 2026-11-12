@@ -263,10 +263,11 @@ namespace Advanced_PB_Limiter.Manager
         {
             player.CombinedOffences.Add(Stopwatch.GetTimestamp());
 
-            // Only running blocks make up the combined total, so only they are warned or punished. A block that is already
-            // off, damaged or unpowered stays tracked for a while, and punishing it again would only take more of it.
+            // Only the blocks that make up the combined total are warned or punished. A block that is already off, damaged or
+            // unpowered stays tracked for a while, and punishing it again would only take more of it. A block in its startup
+            // time has its own runs ignored, so it is not punished for the player's other blocks either.
             List<TrackedPBBlock> blocks = player.GetAllPBBlocks;
-            blocks.RemoveAll(block => !block.IsRunning);
+            blocks.RemoveAll(block => !block.IsRunning || block.IsUnderGracePeriod(player.Privileged));
             if (blocks.Count == 0) return;
 
             if (player.CombinedOffences.Count <= Config.MaxCombinedOffencesBeforePunishment)
