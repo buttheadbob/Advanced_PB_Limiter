@@ -112,8 +112,11 @@ public class LimiterConfig : PluginConfig, IPbLimiterConfig
     [DoubleOption(0, 1000, "Max time in ms a script is allowed to average before being issued any punishment, 0 for no limit", Parent = "single")]
     public double MaxRunTimeMSAvg { get; set => SetField(ref field, value); } = 0.4;
 
-    [DoubleOption(0, 100000, "Any block that reaches this run time in ms is damaged beyond function immediately, regardless of offences and with no graceful shutdown request. 0 to disable", Parent = "single")]
+    [DoubleOption(0, 100000, "Any block that reaches this run time in ms is punished immediately with the instant kill punishment, regardless of offences and with no graceful shutdown request. 0 to disable", Parent = "single")]
     public double InstantKillThreshold { get; set => SetField(ref field, value); } = 10.0;
+
+    [EnumOption("Instant kill punishment: what happens to a block over the instant kill run time. TurnOff by default. Damage and Destroy are still available, and Destroy damages it below functional level as before", Parent = "single")]
+    public Enums.Punishment InstantKillPunishment { get; set => SetField(ref field, value); } = Enums.Punishment.TurnOff;
 
     [IntOption(0, 3600, "Seconds to ignore a block's run time when it first starts", Parent = "single")]
     public int StartupAllowance { get; set => SetField(ref field, value); } = 60;
@@ -166,7 +169,7 @@ public class LimiterConfig : PluginConfig, IPbLimiterConfig
     [IntOption(0, 100000, "Points of damage to apply when the punishment is Damage", Parent = "punishment")]
     public int PunishDamageAmount { get; set => SetField(ref field, value); } = 100;
 
-    [BoolOption("Blocks in a safe zone with damage disabled take no damage. On makes the Damage punishment remove all of such a block's building materials and reset it to unwelded. The Destroy punishment and instant kills always do this", Parent = "punishment")]
+    [BoolOption("Blocks in a safe zone with damage disabled take no damage. On makes the Damage punishment remove all of such a block's building materials and reset it to unwelded. The Destroy punishment always does this, also when the instant kill or memory punishment is Destroy", Parent = "punishment")]
     public bool KillProtectedBlock { get; set => SetField(ref field, value); }
 
     [BoolOption("Send a warning to the owner when their block incurs an offence", Parent = "punishment")]
@@ -202,8 +205,11 @@ public class LimiterConfig : PluginConfig, IPbLimiterConfig
     [BoolOption("Enable the limiting and monitoring of memory use", Parent = "memory")]
     public bool EnableMemoryMonitoring { get; set => SetField(ref field, value); } = true;
 
-    [LongOption(0, 1073741824, "Max memory per block in bytes. Over this it is damaged beyond function immediately, like the run time limit that does the same. 0 to ignore", Parent = "memory")]
+    [LongOption(0, 1073741824, "Max memory per block in bytes. Over this it is punished immediately with the memory punishment, like the instant kill run time. 0 to ignore", Parent = "memory")]
     public long PBMemoryThreshold { get; set => SetField(ref field, value); } = 10240000;
+
+    [EnumOption("Memory punishment: what happens to a block over the memory limit. TurnOff by default. Damage and Destroy are still available, and Destroy damages it below functional level as before", Parent = "memory")]
+    public Enums.Punishment MemoryPunishment { get; set => SetField(ref field, value); } = Enums.Punishment.TurnOff;
 
     [BoolOption("When a player recompiles their script, reset all its tracking data", Parent = "housekeeping")]
     public bool ClearHistoryOnRecompile { get; set => SetField(ref field, value); } = true;

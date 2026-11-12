@@ -147,11 +147,15 @@
                 
                 <TextBlock Grid.Row="5" Grid.Column="0" Text="InstaKill Limit" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
                 <TextBox Grid.Row="5" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding InstantKillThreshold}" TextAlignment="Center"/>
-                <TextBlock Grid.Row="5" Grid.Column="2" Text="Any pb that reaches this limit will be damaged beyond function immediately, regardless if no offences have previously occured.  No Graceful shutdown request will be sent.  Set to 0 to disable." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="5" Grid.Column="2" Text="Any pb that reaches this limit will be punished immediately with the InstaKill punishment, regardless if no offences have previously occured.  No Graceful shutdown request will be sent.  Set to 0 to disable." Margin="3" TextWrapping="Wrap"/>
 
-                <TextBlock Grid.Row="6" Grid.Column="0" Text="Use SimTime" Margin="3" VerticalAlignment="Center"  />
-                <CheckBox Grid.Row="6" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding UseSimTime}" />
-                <TextBlock Grid.Row="6" Grid.Column="2" Text="Use SimTime will adjust the runtime for Sim Speed.  When sim speed tanks then the script running can also take longer to run at no fault of the player." Margin="3" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="6" Grid.Column="0" Text="InstaKill Punishment" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+                <ComboBox Grid.Row="6" Grid.Column="1" VerticalAlignment="Center" Margin="3" Foreground="Black" ItemsSource="{Binding Source={StaticResource EnumDataProvider}}" SelectedItem="{Binding InstantKillPunishment}"/>
+                <TextBlock Grid.Row="6" Grid.Column="2" Text="What happens to a pb over the InstaKill limit.  TurnOff by default.  Damage and Destroy are still available, and Destroy damages it beyond function as before." Margin="3" TextWrapping="Wrap"/>
+
+                <TextBlock Grid.Row="7" Grid.Column="0" Text="Use SimTime" Margin="3" VerticalAlignment="Center"  />
+                <CheckBox Grid.Row="7" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding UseSimTime}" />
+                <TextBlock Grid.Row="7" Grid.Column="2" Text="Use SimTime will adjust the runtime for Sim Speed.  When sim speed tanks then the script running can also take longer to run at no fault of the player." Margin="3" TextWrapping="Wrap" />
                 
                 <TextBlock Grid.Row="8" Grid.Column="0" Text="No Recompile On Restart" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
                 <CheckBox Grid.Row="8" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding RequireRecompileOnRestart}" HorizontalAlignment="Center"/>
@@ -183,11 +187,15 @@
                 
                 <TextBlock Grid.Row="15" Grid.Column="0" Text="Max Memory per PB (in bytes)" Margin="3" VerticalAlignment="Center"/>
                 <TextBox Grid.Row="15" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="75"  Text="{Binding PBMemoryThreshold}" TextAlignment="Center"/>
-                <TextBlock Grid.Row="15" Grid.Column="2" Text="Limit PB use of system memory (Prevents some script attacks against the server and shitty scripts from making the system unstable.  Set to 0 to ignore." Margin="3" TextWrapping="Wrap" />
-                
-                <TextBlock Grid.Row="16" Grid.Column="0" Text="Destroy Protected PB" Margin="3" VerticalAlignment="Center" />
-                <CheckBox Grid.Row="16" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding KillProtectedBlock}"/>
-                <TextBlock Grid.Row="16" Grid.Column="2" Text="Programmable Blocks in a SafeZone or other modded protected area with damage disabled wont receive any damage.  Enable this will cause the Damage punishment to have all its building materials removed and reset it to an unwelded block.  The Destroy punishment and instant kills always do this to a protected block." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="15" Grid.Column="2" Text="Limit PB use of system memory (Prevents some script attacks against the server and shitty scripts from making the system unstable.  A pb over it gets the Memory punishment immediately.  Set to 0 to ignore." Margin="3" TextWrapping="Wrap" />
+
+                <TextBlock Grid.Row="16" Grid.Column="0" Text="Memory Punishment" Margin="3" VerticalAlignment="Center"/>
+                <ComboBox Grid.Row="16" Grid.Column="1" VerticalAlignment="Center" Margin="3" Foreground="Black" ItemsSource="{Binding Source={StaticResource EnumDataProvider}}" SelectedItem="{Binding MemoryPunishment}"/>
+                <TextBlock Grid.Row="16" Grid.Column="2" Text="What happens to a pb over the memory limit.  TurnOff by default.  Damage and Destroy are still available, and Destroy damages it beyond function as before." Margin="3" TextWrapping="Wrap"/>
+
+                <TextBlock Grid.Row="17" Grid.Column="0" Text="Destroy Protected PB" Margin="3" VerticalAlignment="Center" />
+                <CheckBox Grid.Row="17" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding KillProtectedBlock}"/>
+                <TextBlock Grid.Row="17" Grid.Column="2" Text="Programmable Blocks in a SafeZone or other modded protected area with damage disabled wont receive any damage.  Enable this will cause the Damage punishment to have all its building materials removed and reset it to an unwelded block.  The Destroy punishment always does this to a protected block, also when the InstaKill or Memory punishment is Destroy." Margin="3" TextWrapping="Wrap"/>
                 
                 <TextBlock Grid.Row="18" Grid.Column="0" Text="Startup Allowance for pb startup" Margin="3" VerticalAlignment="Center"/>
                 <TextBox Grid.Row="18" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40"  Text="{Binding StartupAllowance}" TextAlignment="Center"/>

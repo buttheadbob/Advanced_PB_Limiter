@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Windows.Controls;
+using System.Xml;
 using Advanced_PB_Limiter.Patches;
 using Torch;
 using Torch.API;
@@ -11,6 +12,7 @@ using Torch.API.Session;
 using Torch.Session;
 using Advanced_PB_Limiter.Settings;
 using Advanced_PB_Limiter.UI;
+using Advanced_PB_Limiter.Utils;
 using Torch.Managers;
 using Torch.Managers.PatchManager;
 
@@ -94,11 +96,59 @@ namespace Advanced_PB_Limiter
             try { _config = Persistent<Advanced_PB_LimiterConfig>.Load(configFile); }
             catch (Exception e) { Log.Warn(e); }
 
-            if (_config?.Data != null) return;
+            if (_config?.Data != null)
+            {
+                KeepOlderDefaults(configFile, _config);
+                return;
+            }
             Log.Info("Create Default Config, because none was found!");
 
             _config = new(configFile, new());
             _config.Save();
+        }
+
+        /// <summary>
+        /// Instant kills and the memory limit always used Destroy before they had a setting. A file saved before then has no
+        /// element for them, which XmlSerializer reads as the new TurnOff default, so it is set back to Destroy and saved.
+        /// Persistent.Load writes a missing file with the defaults first, so only a new config starts at TurnOff.
+        /// </summary>
+        private static void KeepOlderDefaults(string configFile, Persistent<Advanced_PB_LimiterConfig> config)
+        {
+            try
+            {
+                bool changed = false;
+                if (ConfigFileLacks(configFile, nameof(Advanced_PB_LimiterConfig.InstantKillPunishment)))
+                {
+                    config.Data.InstantKillPunishment = Enums.Punishment.Destroy;
+                    changed = true;
+                }
+
+                if (ConfigFileLacks(configFile, nameof(Advanced_PB_LimiterConfig.MemoryPunishment)))
+                {
+                    config.Data.MemoryPunishment = Enums.Punishment.Destroy;
+                    changed = true;
+                }
+
+                if (!changed) return;
+                config.Save();
+                Log.Info("This config was saved before the instant kill and memory punishments had a setting: they stay at Destroy, as before. New configs start at TurnOff.");
+            }
+            catch (Exception e)
+            {
+                Log.Error(e, "Could not check the config for the instant kill and memory punishments, they use the values read");
+            }
+        }
+
+        /// <summary>
+        /// True when the file has no element by this name under its root. Persistent writes every value, so a missing
+        /// element means the file was saved before the setting was added.
+        /// </summary>
+        private static bool ConfigFileLacks(string path, string element)
+        {
+            if (!File.Exists(path)) return false;
+            XmlDocument document = new();
+            document.Load(path);
+            return document.DocumentElement is not null && document.DocumentElement[element] is null;
         }
 
         public void Save()

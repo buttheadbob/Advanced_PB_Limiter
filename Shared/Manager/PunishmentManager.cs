@@ -55,7 +55,7 @@ namespace Advanced_PB_Limiter.Manager
             if (Config.InstantKillThreshold > 0 && lastRunTimeMS > Config.InstantKillThreshold)
             {
                 Log.Error($"INSTANT-KILL TRIGGERED: {player.PlayerName} on grid {trackedPbBlock.ProgrammableBlock.CubeGrid.DisplayName} with a run-time of {lastRunTimeMS:0.0000}ms");
-                PunishPB(player, trackedPbBlock, PunishReason.ExtremeUsage, Punishment.Destroy, $"[{lastRunTimeMS:0.0000}ms]");
+                PunishPB(player, trackedPbBlock, PunishReason.ExtremeUsage, Config.InstantKillPunishment, $"[{lastRunTimeMS:0.0000}ms]");
                 return;
             }
 
@@ -64,7 +64,7 @@ namespace Advanced_PB_Limiter.Manager
             {
                 string usage = HelperUtils.FormatBytesToKB(trackedPbBlock.memoryUsage);
                 Log.Error($"INSTANT-KILL TRIGGERED: {player.PlayerName} on grid {trackedPbBlock.ProgrammableBlock.CubeGrid.DisplayName} with a memory usage of {usage}");
-                PunishPB(player, trackedPbBlock, PunishReason.ExtremeUsage, Punishment.Destroy, $"[{usage}]");
+                PunishPB(player, trackedPbBlock, PunishReason.ExtremeUsage, Config.MemoryPunishment, $"[{usage}]");
                 return;
             }
 

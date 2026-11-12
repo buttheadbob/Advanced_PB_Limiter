@@ -34,6 +34,10 @@ namespace Advanced_PB_Limiter.Settings
         
         private double _InstantKillThreshold = 10.0; // threshold that there are no warnings or offence limits before instant kill
         public double InstantKillThreshold { get => _InstantKillThreshold; set => SetValue(ref _InstantKillThreshold, value); }
+
+        // A config saved before this setting existed keeps Destroy, see Advanced_PB_Limiter.KeepOlderDefaults.
+        private Enums.Punishment _instantKillPunishment = Enums.Punishment.TurnOff;
+        public Enums.Punishment InstantKillPunishment { get => _instantKillPunishment; set => SetValue(ref _instantKillPunishment, value); }
         
         private int _PunishDamageAmount = 100;
         public int PunishDamageAmount { get => _PunishDamageAmount; set => SetValue(ref _PunishDamageAmount, value); }
@@ -100,6 +104,10 @@ namespace Advanced_PB_Limiter.Settings
 
         private long _PBMemoryThreshold = 10240000; // 10MB
         public long PBMemoryThreshold { get => _PBMemoryThreshold; set => SetValue(ref _PBMemoryThreshold, value); }
+
+        // A config saved before this setting existed keeps Destroy, see Advanced_PB_Limiter.KeepOlderDefaults.
+        private Enums.Punishment _memoryPunishment = Enums.Punishment.TurnOff;
+        public Enums.Punishment MemoryPunishment { get => _memoryPunishment; set => SetValue(ref _memoryPunishment, value); }
 
         private bool _killProtectedBlock;
         public bool KillProtectedBlock { get => _killProtectedBlock; set => SetValue(ref _killProtectedBlock, value); }
