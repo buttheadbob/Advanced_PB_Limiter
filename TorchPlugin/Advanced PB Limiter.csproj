@@ -146,7 +146,6 @@
     </Compile>
     <Compile Include="Utils\CustomReports.cs" />
     <Compile Include="Utils\MtObservableSortedSerializableDictionary.cs" />
-    <Compile Include="Utils\ReflectionUtils.cs" />
     <Compile Include="..\Versioning\AssemblyVersion.cs">
       <Link>Properties\AssemblyVersion.cs</Link>
     </Compile>

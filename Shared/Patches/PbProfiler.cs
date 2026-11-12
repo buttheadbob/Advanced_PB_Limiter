@@ -20,7 +20,7 @@ namespace Advanced_PB_Limiter.Patches
     /// (Torch: PatchManager, Magnetar: Harmony) and calls these from thin prefixes and suffixes.
     /// These run for every script on every run. Nothing on the normal path may allocate, and that includes lambdas:
     /// one that captures a parameter allocates on every call, even when it is never reached.
-    /// Gracefully stolen (and heavily modified by me) from the original PB Limiter, Credits to SirHamsterAlot, and Equinox
+    /// The run timing and the garbage collection check started from HaE PBLimiter by sirhamsteralot (MIT), and have been heavily changed since.
     /// </summary>
     public static class PbProfiler
     {
