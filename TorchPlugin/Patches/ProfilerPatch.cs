@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using System;
+using System.Reflection;
 using Advanced_PB_Limiter.Utils;
 using NLog;
 using Sandbox.Game.Entities.Blocks;
@@ -38,18 +39,25 @@ namespace Advanced_PB_Limiter.Patches
         {
             ReflectedManager.Process(typeof(ProfilerPatch_Torch));
 
-            ctx.GetPattern(ProgrammableRun).Prefixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(PrefixProfilePb)));
-            ctx.GetPattern(ProgrammableRun).Suffixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(SuffixProfilePb)));
+            ctx.GetPattern(ProgrammableRun).Prefixes.Add(PatchMethod(nameof(PrefixProfilePb)));
+            ctx.GetPattern(ProgrammableRun).Suffixes.Add(PatchMethod(nameof(SuffixProfilePb)));
 
             // ExecuteCode is called way before RunSandboxedProgramActionCore so we will use this place to determine defer actions.
-            ctx.GetPattern(ExecuteCode).Prefixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(PrefixExecuteCode)));
+            ctx.GetPattern(ExecuteCode).Prefixes.Add(PatchMethod(nameof(PrefixExecuteCode)));
 
-            ctx.GetPattern(ProgrammableRecompile).Prefixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(PrefixRecompilePb)));
-            ctx.GetPattern(ProgrammableRecompile).Suffixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(SuffixRecompilePb)));
+            ctx.GetPattern(ProgrammableRecompile).Prefixes.Add(PatchMethod(nameof(PrefixRecompilePb)));
+            ctx.GetPattern(ProgrammableRecompile).Suffixes.Add(PatchMethod(nameof(SuffixRecompilePb)));
 
-            ctx.GetPattern(ProgrammableSaveMethod).Prefixes.Add(ReflectionUtils.StaticMethod(typeof(ProfilerPatch_Torch), nameof(PrefixSaveMethod)));
+            ctx.GetPattern(ProgrammableSaveMethod).Prefixes.Add(PatchMethod(nameof(PrefixSaveMethod)));
 
             Log.Info("Finished Patching!");
+        }
+
+        /// <summary>One of this class's own patch methods, by name. Throws if it is missing, so a renamed method fails at load.</summary>
+        private static MethodInfo PatchMethod(string name)
+        {
+            return typeof(ProfilerPatch_Torch).GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic)
+                ?? throw new MissingMethodException(typeof(ProfilerPatch_Torch).FullName, name);
         }
 
         private static bool PrefixExecuteCode(MyProgrammableBlock? __instance, ref UpdateType updateSource, ref string response)
