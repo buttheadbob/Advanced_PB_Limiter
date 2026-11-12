@@ -82,7 +82,9 @@ public struct PrivilegedPlayerEntry
         Punishment = Punishment,
         GracefulShutDownRequestDelay = GracefulShutDownRequestDelay != 0 ? GracefulShutDownRequestDelay : server.GracefulShutDownRequestDelay,
         OffencesBeforePunishment = OffencesBeforePunishment != 0 ? OffencesBeforePunishment : server.MaxOffencesBeforePunishment,
-        DamageAmount = DamageAmount != 0 ? DamageAmount : server.PunishDamageAmount
+        // 0 stays 0 and is resolved when the block is punished: CreatePrivilegedUser writes this player back to the row,
+        // and does not set the damage itself, so a resolved value here would replace the row's 0.
+        DamageAmount = DamageAmount
     };
 }
 

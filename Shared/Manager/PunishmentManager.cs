@@ -181,7 +181,9 @@ namespace Advanced_PB_Limiter.Manager
                         return;
 
                     case Punishment.Damage:
-                        PerformPunishment_Damage(block, player.Privileged?.DamageAmount ?? Config.PunishDamageAmount);
+                        // 0 uses the server's setting. Resolved here and not when the row is read, so the 0 stays in the
+                        // row when CreatePrivilegedUser writes the looked-up player back.
+                        PerformPunishment_Damage(block, player.Privileged is { DamageAmount: > 0 } privileged ? privileged.DamageAmount : Config.PunishDamageAmount);
                         return;
                 }
             }
