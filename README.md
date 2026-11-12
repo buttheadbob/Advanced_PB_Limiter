@@ -71,7 +71,9 @@ The Torch build needs Visual Studio and creates `Build\Advanced PB Limiter.zip`.
 Each `build.bat` run raises the last part of the version in `Versioning\AssemblyVersion.cs` and copies it into `TorchPlugin\manifest.xml` and `quasar-plugin.json`. `AdvancedPBLimiter.xml` is the MagnetarHub manifest and `AdvancedPBLimiter.Quasar.xml` the QuasarHub one: set their `Commit` when publishing.
 
 ### License
-[MIT](LICENSE). The profiling at the core of this plugin comes from [HaE PBLimiter](https://github.com/sirhamsteralot/HaE-PBLimiter), also MIT, and its notice is kept in the license file.
+Advanced PB Limiter is licensed under the [GNU Affero General Public License](LICENSE), version 3 or (at your option) any later version, from version 1.3.1. Earlier versions were released under the MIT License.
+
+It replaces [HaE PBLimiter](https://github.com/sirhamsteralot/HaE-PBLimiter) by sirhamsteralot, and the run timing at its core comes from that plugin. Those parts remain under the MIT License, with sirhamsteralot's notice. [NOTICE](NOTICE) lists them.
 
 ### TODO:
 - UI still needs work.
