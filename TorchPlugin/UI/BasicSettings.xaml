@@ -139,7 +139,7 @@
                 
                 <TextBlock Grid.Row="3" Grid.Column="0" Text="Auto Enable" Margin="3" VerticalAlignment="Center" />
                 <CheckBox Grid.Row="3" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding AllowSelfTurnOnExploit}"/>
-                <TextBlock Grid.Row="3" Grid.Column="2" Text="Players use the Save() function or ctor to turn on their pb automatically.  This runs regardless if the pb is enabled or not.  Uncheck this box to prevent that." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="3" Grid.Column="2" Text="Players use the Save() function or ctor to turn on their pb automatically.  This runs regardless if the pb is enabled or not.  Uncheck this box to prevent that: Save() does not run while a pb is turned off." Margin="3" TextWrapping="Wrap"/>
                 
                 <TextBlock Grid.Row="4" Grid.Column="0" Text="Auto Enable NPC" Margin="3" VerticalAlignment="Center" />
                 <CheckBox Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding AllowNPCToAutoTurnOn}"/>
