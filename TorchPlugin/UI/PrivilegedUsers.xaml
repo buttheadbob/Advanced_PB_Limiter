@@ -164,7 +164,7 @@
                 </ComboBox>
                 
                 <TextBlock Grid.Row="4" Grid.Column="0" Text="Damage Amount: " Margin="3"/>
-                <TextBox Grid.Row="4" Grid.Column="1" Name="DamageAmountBox" Margin="3" ToolTip="Only applies when Damage is selected as the punishment type." Background="Transparent" Foreground="Aqua"/>
+                <TextBox Grid.Row="4" Grid.Column="1" Name="DamageAmountBox" Margin="3" ToolTip="Only applies when Damage is selected as the punishment type. 0 uses the server's setting." Background="Transparent" Foreground="Aqua"/>
                 
                 <TextBlock Grid.Row="5" Grid.Column="0" Text="Offences Before Punishment: " Margin="3"/>
                 <TextBox Grid.Row="5" Grid.Column="1" Name="OffencesBeforePunishmentBox" Margin="3" Background="Transparent" Foreground="Aqua"/>
