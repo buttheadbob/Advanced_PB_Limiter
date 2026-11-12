@@ -309,7 +309,7 @@
                 
                 <TextBlock Grid.Row="18" Grid.Column="0" Name="PunishmentLabel" Text="Punishment type" Margin="3" VerticalAlignment="Center"/>
                 <ComboBox Grid.Row="18" Grid.Column="1" Name="PunishmentComboBox" VerticalAlignment="Center" Margin="3" Width="40" Foreground="Black" SelectionChanged="PunishmentComboBox_OnSelectionChanged"/>
-                <TextBlock Grid.Row="18" Grid.Column="2" Text="Turn off will disable the block.  Damage will applied the set amount of damage points to the block (may not occur in SafeZones.  Destroy will damage the pb to below functional level, and a further punishment while it is still tracked removes it." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="18" Grid.Column="2" Text="Turn off will disable the block.  Damage will applied the set amount of damage points to the block (may not occur in SafeZones.  Destroy will damage the pb to 100 integrity, below functional level, and a pb already at or below that is left as it is." Margin="3" TextWrapping="Wrap"/>
                 
                 <TextBlock Grid.Row="19" Grid.Column="0" Text="Damage points" Margin="3"/>
                 <TextBox Grid.Row="19" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding PunishDamageAmount}" />

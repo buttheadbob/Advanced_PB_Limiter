@@ -153,7 +153,7 @@ public class LimiterConfig : PluginConfig, IPbLimiterConfig
     [BoolOption("Blocks with no owner can still run... but should they? On turns them off", Parent = "enforcement")]
     public bool TurnOffUnownedBlocks { get; set => SetField(ref field, value); } = true;
 
-    [EnumOption("TurnOff disables the block. Damage applies the set damage points, which may not happen in safe zones. Destroy damages it below functional level, and a further punishment while it is still tracked removes it", Parent = "punishment")]
+    [EnumOption("TurnOff disables the block. Damage applies the set damage points, which may not happen in safe zones. Destroy damages it to 100 integrity, below functional level, and a block already at or below that is left as it is", Parent = "punishment")]
     public Enums.Punishment Punishment { get; set => SetField(ref field, value); } = Enums.Punishment.TurnOff;
 
     [IntOption(0, 1000, "Amount of offences before punishment is applied", Parent = "punishment")]

@@ -208,9 +208,16 @@ namespace Advanced_PB_Limiter.Manager
             PbAccess.TerminateProgram(block);
 
             if (IsProtectedFromDamage(block))
+            {
                 Dismount(block);
-            else
-                block.SlimBlock.DoDamage(Math.Max(0, block.SlimBlock.BuildIntegrity - 100), MyDamageType.Unknown, true, null, 0);
+                return;
+            }
+
+            // Down to 100 integrity, below functional level. Worked out from the integrity the block has left, less damage
+            // the game has not applied yet, so a block that has already taken damage stops at 100 as well instead of being
+            // removed. A block at or below 100 takes no more.
+            float left = block.SlimBlock.Integrity - block.SlimBlock.AccumulatedDamage;
+            block.SlimBlock.DoDamage(Math.Max(0, left - 100), MyDamageType.Unknown, true, null, 0);
         }
 
         private static void PerformPunishment_Damage(MyProgrammableBlock block, int damageAmount)
