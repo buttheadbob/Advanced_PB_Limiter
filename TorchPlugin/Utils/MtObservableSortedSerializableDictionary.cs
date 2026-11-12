@@ -4,11 +4,27 @@ using System.Xml;
 using System.Xml.Schema;
 using System.Xml.Serialization;
 using Torch.Collections;
+using Torch.Utils;
 
 namespace Advanced_PB_Limiter.Utils
 {
     public class MtObservableSortedSerializableDictionary<TK, TV> : MtObservableSortedDictionary<TK, TV>, IXmlSerializable
     {
+        /// <summary>
+        /// Adds the value, or replaces the one already under this key. Torch's indexer throws InvalidCastException when it
+        /// replaces a value, because the change event it raises holds values where its Values view expects key and value
+        /// pairs. A remove and an add raise events that view can read. Both happen under one write lock, so a reader never
+        /// finds the key missing in between.
+        /// </summary>
+        public void AddOrReplace(TK key, TV value)
+        {
+            using (Lock.WriteUsing())
+            {
+                Remove(key);
+                Add(key, value);
+            }
+        }
+
         public XmlSchema? GetSchema()
         {
             return null;

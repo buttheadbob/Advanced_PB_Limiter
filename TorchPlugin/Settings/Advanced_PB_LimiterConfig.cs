@@ -9,7 +9,7 @@ namespace Advanced_PB_Limiter.Settings
     {
         public bool TryGetPrivilegedPlayer(ulong steamId, out PrivilegedPlayer? player) => PrivilegedPlayers.TryGetValue(steamId, out player);
 
-        public void SetPrivilegedPlayer(PrivilegedPlayer player) => PrivilegedPlayers[player.SteamId] = player;
+        public void SetPrivilegedPlayer(PrivilegedPlayer player) => PrivilegedPlayers.AddOrReplace(player.SteamId, player);
 
         private bool _Enabled = true;
         public bool Enabled { get => _Enabled; set => SetValue(ref _Enabled, value); }
