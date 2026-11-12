@@ -130,7 +130,10 @@ namespace Advanced_PB_Limiter.Utils
 
         public bool IsUnderGracePeriod(PrivilegedPlayer? privilegedPlayer)
         {
-            double allowanceSeconds = privilegedPlayer?.StartupAllowance ?? Config.StartupAllowance;
+            // 0 uses the server's setting, as in the other per-player fields. Resolved here and not when the row is read,
+            // so the 0 stays in the row: CreatePrivilegedUser writes the looked-up player back, and a profile row then
+            // uses the setting of the server it is applied to.
+            double allowanceSeconds = privilegedPlayer is { StartupAllowance: > 0 } ? privilegedPlayer.StartupAllowance : Config.StartupAllowance;
             return Stopwatch.GetTimestamp() - PBStartTime < allowanceSeconds * Stopwatch.Frequency;
         }
 

@@ -184,7 +184,7 @@
                 <TextBlock Grid.Row="10" Grid.Column="0" Text="Max Combined Avg Runtime Allowed [MS]: " Margin="3"/>
                 <TextBox Grid.Row="10" Grid.Column="1" Name="MaxCombinedAVGRuntimeAllowedBox" Margin="3" Background="Transparent" Foreground="Aqua"/>
                 
-                <TextBlock Grid.Row="11" Grid.Column="0" Text="Startup Time: " Margin="3" ToolTip="The amount of time a pb is ignored before tracking and punishing."/>
+                <TextBlock Grid.Row="11" Grid.Column="0" Text="Startup Time: " Margin="3" ToolTip="The amount of time a pb is ignored before tracking and punishing. 0 uses the server's setting."/>
                 <TextBox Grid.Row="11" Grid.Column="1" Name="StartupBox" Margin="3" Background="Transparent" Foreground="Aqua"/>
                 
                 <Button Grid.Row="12" Grid.Column="0" Grid.ColumnSpan="2" Content="Load Privileged Player Data" Name="LoadPrivilegedPlayerDataButton" Margin="3" Background="Wheat" Click="LoadPrivilegedPlayerDataButton_OnClick"/>
