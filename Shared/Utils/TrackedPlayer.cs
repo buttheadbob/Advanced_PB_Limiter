@@ -69,14 +69,17 @@ namespace Advanced_PB_Limiter.Utils
 
         public List<TrackedPBBlock> GetAllPBBlocks => new(PBBlocks.Values);
 
-        /// <summary>Of the blocks still running. A dead block keeps its last run time until it leaves tracking, and uses nothing.</summary>
+        /// <summary>
+        /// Of the blocks still running and past their startup time. A dead block keeps its last run time until it leaves
+        /// tracking, and uses nothing. A block in its startup time has its runs ignored, so it is left out until that ends.
+        /// </summary>
         public void GetCombinedRuntimes(out double lastRunTimeMS, out double runTimeMSAvg)
         {
             lastRunTimeMS = 0;
             runTimeMSAvg = 0;
             foreach (KeyValuePair<long, TrackedPBBlock> kvp in PBBlocks)
             {
-                if (!kvp.Value.IsRunning) continue;
+                if (!kvp.Value.IsRunning || kvp.Value.IsUnderGracePeriod(Privileged)) continue;
 
                 lastRunTimeMS += kvp.Value.LastRunTimeMS;
                 runTimeMSAvg += kvp.Value.RunTimeMSAvg;
