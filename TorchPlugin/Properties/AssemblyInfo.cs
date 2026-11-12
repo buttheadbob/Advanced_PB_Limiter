@@ -7,7 +7,7 @@ using System.Windows;
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("Advanced_PB_Limiter")]
-[assembly: AssemblyCopyright("Copyright ©  2023")]
+[assembly: AssemblyCopyright("Copyright © 2023-2026 SentorX")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
