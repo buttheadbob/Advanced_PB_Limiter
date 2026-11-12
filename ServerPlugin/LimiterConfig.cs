@@ -24,7 +24,7 @@ public struct PrivilegedPlayerEntry
     [StructMember("Max average run time of one programmable block in ms, 0 for no limit")]
     public double RuntimeAverageAllowance { get; set; }
 
-    [StructMember("Seconds to ignore a block's run time when it first starts")]
+    [StructMember("Seconds to ignore a block's run time when it first starts, 0 uses the server's setting")]
     public double StartupAllowance { get; set; }
 
     [StructMember("Max run time of all this player's blocks combined in ms, 0 for no limit")]
