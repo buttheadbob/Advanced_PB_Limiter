@@ -23,7 +23,7 @@ namespace Advanced_PB_Limiter
         bool ClearHistoryOnRecompile { get; }
         int GracefulShutDownRequestDelay { get; }
         double InstantKillThreshold { get; }
-        Enums.Punishment InstantKillPunishment { get; }
+        Enums.InstantPunishment InstantKillPunishment { get; }
         int PunishDamageAmount { get; }
         int GraceAfterOffence { get; }
         int MaxOffencesBeforePunishment { get; }
@@ -45,7 +45,7 @@ namespace Advanced_PB_Limiter
         bool RequireRecompileOnRestart { get; }
         bool EnableMemoryMonitoring { get; }
         long PBMemoryThreshold { get; }
-        Enums.Punishment MemoryPunishment { get; }
+        Enums.InstantPunishment MemoryPunishment { get; }
         bool KillProtectedBlock { get; }
         int StartupAllowance { get; }
         bool DeferRunAlways { get; }

@@ -8,6 +8,7 @@
 - Limits per programming block and limits for all programming blocks owned by a user as a group.
 - Overlimit groups can be shutdown entirely or a random programming block shutdown.
 - Punishments include ( Damage, Destroy, and Turn Off ).
+- Instant kills, by run time or by memory, punish at once with Turn Off (the default) or Destroy. They have no Damage: a damaged block keeps running and would be punished again on every run. A config from 1.3.1 that set Damage for either is read as Turn Off, and the log says so.
 - Graceful Shutdowns
 
   ### Graceful Shutdowns
@@ -57,7 +58,7 @@ The plugin runs on both, and both builds share the same code in `Shared`.
 - `ServerPlugin` The Magnetar plugin, configured in Quasar under Server plugins. Its options and commands match Torch. It builds for .NET Framework 4.8 and .NET 10.
 - `QuasarPlugin` The optional Quasar plugin, for the servers Quasar manages. Its companion talks to the Magnetar plugin.
   - **Live view:** what the Reports tab shows, with Turn off for blocks and players.
-  - **Profiles:** set up one server on its Plugins page, save it as a named profile, and apply it to your other servers. Applying replaces every limiter setting and the privileged players. A server that is offline or still loading gets the profile when it is ready, and queued profiles survive a Quasar restart. Needs the `CanEditConfigs` right.
+  - **Profiles:** set up one server on its Plugins page, save it as a named profile, and apply it to your other servers. Applying replaces every limiter setting and the privileged players. A server that is offline or still loading gets the profile when it is ready, and queued profiles survive a Quasar restart. A profile is applied by hand: the server isn't linked to it afterwards, so a later change to the profile reaches a server only when it is applied again. Needs the `CanEditConfigs` right.
   - **Generate report:** one text file for the servers you choose, with totals across all of them and the detail of each.
 
 The Torch and Magnetar plugins keep separate config files, so settings do not carry over from one to the other.

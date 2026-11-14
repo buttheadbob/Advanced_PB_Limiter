@@ -16,6 +16,11 @@
                 <x:Type TypeName="utils:Enums+Punishment"/>
             </ObjectDataProvider.MethodParameters>
         </ObjectDataProvider>
+        <ObjectDataProvider MethodName="GetValues" ObjectType="{x:Type sys:Enum}" x:Key="InstantPunishmentProvider">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="utils:Enums+InstantPunishment"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
         <Style TargetType="{x:Type TabControl}">
             <Setter Property="BorderThickness" Value="3"/>
             <Setter Property="BorderBrush" Value="Black"/>
@@ -150,8 +155,8 @@
                 <TextBlock Grid.Row="5" Grid.Column="2" Text="Any pb that reaches this limit will be punished immediately with the InstaKill punishment, regardless if no offences have previously occured.  No Graceful shutdown request will be sent.  Set to 0 to disable." Margin="3" TextWrapping="Wrap"/>
 
                 <TextBlock Grid.Row="6" Grid.Column="0" Text="InstaKill Punishment" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
-                <ComboBox Grid.Row="6" Grid.Column="1" VerticalAlignment="Center" Margin="3" Foreground="Black" ItemsSource="{Binding Source={StaticResource EnumDataProvider}}" SelectedItem="{Binding InstantKillPunishment}"/>
-                <TextBlock Grid.Row="6" Grid.Column="2" Text="What happens to a pb over the InstaKill limit.  TurnOff by default.  Damage and Destroy are still available, and Destroy damages it beyond function as before." Margin="3" TextWrapping="Wrap"/>
+                <ComboBox Grid.Row="6" Grid.Column="1" VerticalAlignment="Center" Margin="3" Foreground="Black" ItemsSource="{Binding Source={StaticResource InstantPunishmentProvider}}" SelectedItem="{Binding InstantKillPunishment}"/>
+                <TextBlock Grid.Row="6" Grid.Column="2" Text="What happens to a pb over the InstaKill limit.  TurnOff by default, or Destroy, which damages it to 100 integrity.  An instant kill punishes at once, so there is no Damage: the script would keep running." Margin="3" TextWrapping="Wrap"/>
 
                 <TextBlock Grid.Row="7" Grid.Column="0" Text="Use SimTime" Margin="3" VerticalAlignment="Center"  />
                 <CheckBox Grid.Row="7" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding UseSimTime}" />
@@ -190,8 +195,8 @@
                 <TextBlock Grid.Row="15" Grid.Column="2" Text="Limit PB use of system memory (Prevents some script attacks against the server and shitty scripts from making the system unstable.  A pb over it gets the Memory punishment immediately.  Set to 0 to ignore." Margin="3" TextWrapping="Wrap" />
 
                 <TextBlock Grid.Row="16" Grid.Column="0" Text="Memory Punishment" Margin="3" VerticalAlignment="Center"/>
-                <ComboBox Grid.Row="16" Grid.Column="1" VerticalAlignment="Center" Margin="3" Foreground="Black" ItemsSource="{Binding Source={StaticResource EnumDataProvider}}" SelectedItem="{Binding MemoryPunishment}"/>
-                <TextBlock Grid.Row="16" Grid.Column="2" Text="What happens to a pb over the memory limit.  TurnOff by default.  Damage and Destroy are still available, and Destroy damages it beyond function as before." Margin="3" TextWrapping="Wrap"/>
+                <ComboBox Grid.Row="16" Grid.Column="1" VerticalAlignment="Center" Margin="3" Foreground="Black" ItemsSource="{Binding Source={StaticResource InstantPunishmentProvider}}" SelectedItem="{Binding MemoryPunishment}"/>
+                <TextBlock Grid.Row="16" Grid.Column="2" Text="What happens to a pb over the memory limit.  TurnOff by default, or Destroy, which damages it to 100 integrity.  It punishes at once, so there is no Damage: the script would keep running." Margin="3" TextWrapping="Wrap"/>
 
                 <TextBlock Grid.Row="17" Grid.Column="0" Text="Destroy Protected PB" Margin="3" VerticalAlignment="Center" />
                 <CheckBox Grid.Row="17" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding KillProtectedBlock}"/>

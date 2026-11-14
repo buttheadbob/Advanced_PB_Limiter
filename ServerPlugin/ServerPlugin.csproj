@@ -58,9 +58,11 @@
     <Reference Include="VRage.Network"><HintPath>$(Dedicated64)\VRage.Network.dll</HintPath><Private>False</Private></Reference>
   </ItemGroup>
 
-  <!-- net48 has no built in Span. Use the copy the game ships, the host provides it at runtime. net10 needs nothing. -->
+  <!-- net48 has no built in Span or System.Text.Json. Use the copies the game ships, the host provides them at runtime.
+       net10 needs nothing. System.Text.Json is for the JsonConverter attribute PluginSdk reads (InstantPunishmentJsonConverter). -->
   <ItemGroup Condition="$(TargetFramework.StartsWith('net4'))">
     <Reference Include="System.Memory"><HintPath>$(Dedicated64)\System.Memory.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="System.Text.Json"><HintPath>$(Dedicated64)\System.Text.Json.dll</HintPath><Private>False</Private></Reference>
   </ItemGroup>
 
   <ItemGroup>
