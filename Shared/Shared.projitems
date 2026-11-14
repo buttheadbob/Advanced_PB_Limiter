@@ -22,6 +22,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Utils\Enums.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Utils\GetSizeOfObject.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Utils\HelperUtils.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Utils\InstantPunishmentFile.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Utils\IsExternalInit.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Utils\LimiterLog.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Utils\PrivilegedPlayer.cs" />

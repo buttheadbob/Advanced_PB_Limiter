@@ -1,5 +1,6 @@
 ﻿using NLog;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Windows.Controls;
 using System.Xml;
@@ -93,6 +94,14 @@ namespace Advanced_PB_Limiter
         {
             string configFile = Path.Combine(StoragePath, CONFIG_FILE_NAME);
 
+            try
+            {
+                List<string> damage = InstantPunishmentFile.ReplaceDamage(configFile);
+                if (damage.Count > 0)
+                    Log.Warn(InstantPunishmentFile.LogLine(damage));
+            }
+            catch (Exception e) { Log.Warn(e, "Could not check the config for an instant punishment of Damage"); }
+
             try { _config = Persistent<Advanced_PB_LimiterConfig>.Load(configFile); }
             catch (Exception e) { Log.Warn(e); }
 
@@ -119,13 +128,13 @@ namespace Advanced_PB_Limiter
                 bool changed = false;
                 if (ConfigFileLacks(configFile, nameof(Advanced_PB_LimiterConfig.InstantKillPunishment)))
                 {
-                    config.Data.InstantKillPunishment = Enums.Punishment.Destroy;
+                    config.Data.InstantKillPunishment = Enums.InstantPunishment.Destroy;
                     changed = true;
                 }
 
                 if (ConfigFileLacks(configFile, nameof(Advanced_PB_LimiterConfig.MemoryPunishment)))
                 {
-                    config.Data.MemoryPunishment = Enums.Punishment.Destroy;
+                    config.Data.MemoryPunishment = Enums.InstantPunishment.Destroy;
                     changed = true;
                 }
 

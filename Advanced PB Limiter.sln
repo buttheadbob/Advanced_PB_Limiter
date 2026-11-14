@@ -20,6 +20,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		quasar-plugin.json = quasar-plugin.json
 		build.bat = build.bat
 		Directory.Build.props.template = Directory.Build.props.template
+		CHANGELOG.md = CHANGELOG.md
 		LICENSE = LICENSE
 		NOTICE = NOTICE
 		README.md = README.md

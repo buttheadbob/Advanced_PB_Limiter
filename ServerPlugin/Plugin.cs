@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Reflection;
+using Advanced_PB_Limiter.Utils;
 using HarmonyLib;
 using PluginSdk.Commands;
 using PluginSdk.Config;
@@ -58,8 +59,17 @@ public class Plugin : IPlugin, IPbLimiterHost
         bool loaded = false;
         try
         {
-            _config = ConfigStorage.LoadXml<LimiterConfig>(fromLegacy ? legacyPath : _configPath);
+            string path = fromLegacy ? legacyPath : _configPath;
+            List<string> damage = InstantPunishmentFile.ReplaceDamage(path);
+            _config = ConfigStorage.LoadXml<LimiterConfig>(path);
             loaded = true;
+
+            // A Quasar-managed server reads its config from JSON instead, where the converter does the same.
+            if (InstantPunishmentJsonConverter.ReadDamage && damage.Count == 0)
+                damage.AddRange(InstantPunishmentFile.Settings);
+            InstantPunishmentJsonConverter.ReadDamage = false;
+            if (damage.Count > 0)
+                Log.Warning(InstantPunishmentFile.LogLine(damage));
         }
         catch (Exception e)
         {
@@ -149,7 +159,9 @@ public class Plugin : IPlugin, IPbLimiterHost
     /// </summary>
     internal int ApplyProfile(string settingsJson)
     {
-        List<KeyValuePair<PropertyInfo, object>> values = ProfileSettings.Read(settingsJson);
+        List<KeyValuePair<PropertyInfo, object>> values = ProfileSettings.Read(settingsJson, out List<string> damage);
+        if (damage.Count > 0)
+            Log.Warning("The profile " + InstantPunishmentFile.LogLine(damage).Substring("The config ".Length));
 
         _config.PropertyChanged -= OnConfigChanged;
         try
