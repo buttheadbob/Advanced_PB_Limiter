@@ -188,7 +188,7 @@
         timeout.CancelAfter(RequestTimeout);
         try
         {
-            ReportSnapshot snapshot = await SdkClient.RequestAsync<ReportSnapshot>(JS, UiOperations.Snapshot,
+            ReportSnapshotView snapshot = await SdkClient.RequestAsync<ReportSnapshotView>(JS, UiOperations.Snapshot,
                 new ReadSnapshotRequest { ServerId = server.ServerId }, timeout.Token);
             if (!snapshot.Installed) return new ServerReport(server.DisplayName, null, "Advanced PB Limiter is not loaded");
             if (!snapshot.Online) return new ServerReport(server.DisplayName, null, "the world is still loading");

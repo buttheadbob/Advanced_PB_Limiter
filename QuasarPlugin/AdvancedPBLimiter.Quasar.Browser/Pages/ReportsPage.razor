@@ -103,15 +103,15 @@ else
                     <table class="pbl-table">
                         <thead>
                             <tr>
-                                @Header("Block", nameof(BlockRow.BlockName))
-                                @Header("Grid", nameof(BlockRow.GridName))
-                                @Header("Owner", nameof(BlockRow.OwnerName))
-                                @Header("Last ms", nameof(BlockRow.LastRunTimeMS))
-                                @Header("Average ms", nameof(BlockRow.RunTimeMSAvg))
-                                @Header("Peak ms", nameof(BlockRow.PeekRunTimeMS))
-                                @Header("Offences", nameof(BlockRow.Offences))
-                                @Header("Recompiles", nameof(BlockRow.Recompiles))
-                                @Header("Memory", nameof(BlockRow.MemoryBytes))
+                                @Header("Block", nameof(BlockRowView.BlockName))
+                                @Header("Grid", nameof(BlockRowView.GridName))
+                                @Header("Owner", nameof(BlockRowView.OwnerName))
+                                @Header("Last ms", nameof(BlockRowView.LastRunTimeMS))
+                                @Header("Average ms", nameof(BlockRowView.RunTimeMSAvg))
+                                @Header("Peak ms", nameof(BlockRowView.PeekRunTimeMS))
+                                @Header("Offences", nameof(BlockRowView.Offences))
+                                @Header("Recompiles", nameof(BlockRowView.Recompiles))
+                                @Header("Memory", nameof(BlockRowView.MemoryBytes))
                                 <th scope="col">State</th>
                             </tr>
                         </thead>
@@ -169,14 +169,14 @@ else
                     <table class="pbl-table">
                         <thead>
                             <tr>
-                                @Header("Player", nameof(PlayerRow.Name))
-                                @Header("Steam ID", nameof(PlayerRow.SteamId))
-                                @Header("Blocks", nameof(PlayerRow.BlockCount))
-                                @Header("Combined ms", nameof(PlayerRow.CombinedLastRunTimeMS))
-                                @Header("Combined average ms", nameof(PlayerRow.CombinedRunTimeMSAvg))
-                                @Header("Offences", nameof(PlayerRow.Offences))
-                                @Header("Recompiles", nameof(PlayerRow.Recompiles))
-                                @Header("Memory", nameof(PlayerRow.MemoryBytes))
+                                @Header("Player", nameof(PlayerRowView.Name))
+                                @Header("Steam ID", nameof(PlayerRowView.SteamId))
+                                @Header("Blocks", nameof(PlayerRowView.BlockCount))
+                                @Header("Combined ms", nameof(PlayerRowView.CombinedLastRunTimeMS))
+                                @Header("Combined average ms", nameof(PlayerRowView.CombinedRunTimeMSAvg))
+                                @Header("Offences", nameof(PlayerRowView.Offences))
+                                @Header("Recompiles", nameof(PlayerRowView.Recompiles))
+                                @Header("Memory", nameof(PlayerRowView.MemoryBytes))
                                 @if (_canControl)
                                 {
                                     <th scope="col">All blocks</th>
@@ -228,9 +228,9 @@ else
     // Their headers line up with their right aligned cells.
     private static readonly HashSet<string> NumericColumns = new()
     {
-        nameof(BlockRow.LastRunTimeMS), nameof(BlockRow.RunTimeMSAvg), nameof(BlockRow.PeekRunTimeMS), nameof(BlockRow.Offences),
-        nameof(BlockRow.Recompiles), nameof(BlockRow.MemoryBytes), nameof(PlayerRow.SteamId), nameof(PlayerRow.BlockCount),
-        nameof(PlayerRow.CombinedLastRunTimeMS), nameof(PlayerRow.CombinedRunTimeMSAvg)
+        nameof(BlockRowView.LastRunTimeMS), nameof(BlockRowView.RunTimeMSAvg), nameof(BlockRowView.PeekRunTimeMS), nameof(BlockRowView.Offences),
+        nameof(BlockRowView.Recompiles), nameof(BlockRowView.MemoryBytes), nameof(PlayerRowView.SteamId), nameof(PlayerRowView.BlockCount),
+        nameof(PlayerRowView.CombinedLastRunTimeMS), nameof(PlayerRowView.CombinedRunTimeMSAvg)
     };
 
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
@@ -242,7 +242,7 @@ else
     private IReadOnlyList<ServerInfo> _servers = Array.Empty<ServerInfo>();
     private string? _serverKey;
     private string? _serverId;
-    private ReportSnapshot? _snapshot;
+    private ReportSnapshotView? _snapshot;
     private string? _error;
     // A turn-off whose outcome is not known. Kept until the next turn-off or a server switch, as refreshes do not answer it.
     private string? _turnOffError;
@@ -254,7 +254,7 @@ else
     private bool _paused;
     private bool _canControl;
     private Tab _tab = Tab.Blocks;
-    private string _sortColumn = nameof(BlockRow.LastRunTimeMS);
+    private string _sortColumn = nameof(BlockRowView.LastRunTimeMS);
     private bool _sortDescending = true;
     private string? _confirming;
 
@@ -357,7 +357,7 @@ else
         timeout.CancelAfter(RequestTimeout);
         try
         {
-            ReportSnapshot snapshot = await SdkClient.RequestAsync<ReportSnapshot>(JS, UiOperations.Snapshot,
+            ReportSnapshotView snapshot = await SdkClient.RequestAsync<ReportSnapshotView>(JS, UiOperations.Snapshot,
                 new ReadSnapshotRequest { ServerId = serverId }, timeout.Token);
             if (serverId != _serverId) return; // The server was changed while this was on its way.
             _snapshot = snapshot;
@@ -430,14 +430,14 @@ else
     }
 
 
-    private Task TurnOffBlockAsync(BlockRow row)
+    private Task TurnOffBlockAsync(BlockRowView row)
     {
         return RunTurnOffAsync($"{row.BlockName} on {row.GridName}",
             (serverId, token) => SdkClient.RequestAsync<TurnOffResult>(JS, UiOperations.TurnOffBlock,
                 new TurnOffBlockUiRequest { ServerId = serverId, EntityId = row.EntityId }, token));
     }
 
-    private Task TurnOffPlayerAsync(PlayerRow row)
+    private Task TurnOffPlayerAsync(PlayerRowView row)
     {
         return RunTurnOffAsync($"all of {row.Name}'s blocks",
             (serverId, token) => SdkClient.RequestAsync<TurnOffResult>(JS, UiOperations.TurnOffPlayer,
@@ -536,7 +536,7 @@ else
     {
         if (_tab == tab) return;
         _tab = tab;
-        _sortColumn = tab == Tab.Blocks ? nameof(BlockRow.LastRunTimeMS) : nameof(PlayerRow.CombinedLastRunTimeMS);
+        _sortColumn = tab == Tab.Blocks ? nameof(BlockRowView.LastRunTimeMS) : nameof(PlayerRowView.CombinedLastRunTimeMS);
         _sortDescending = true;
     }
 
@@ -565,35 +565,35 @@ else
         return !Filtering || values.Any(v => v.Contains(_filter.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
-    private List<BlockRow> SortedBlocks()
+    private List<BlockRowView> SortedBlocks()
     {
-        IEnumerable<BlockRow> rows = _snapshot!.Blocks.Where(b => Matches(b.BlockName, b.GridName, b.OwnerName));
+        IEnumerable<BlockRowView> rows = _snapshot!.Blocks.Where(b => Matches(b.BlockName, b.GridName, b.OwnerName));
         return Sorted(rows, _sortColumn switch
         {
-            nameof(BlockRow.BlockName) => b => b.BlockName,
-            nameof(BlockRow.GridName) => b => b.GridName,
-            nameof(BlockRow.OwnerName) => b => b.OwnerName,
-            nameof(BlockRow.RunTimeMSAvg) => b => b.RunTimeMSAvg,
-            nameof(BlockRow.PeekRunTimeMS) => b => b.PeekRunTimeMS,
-            nameof(BlockRow.Offences) => b => b.Offences,
-            nameof(BlockRow.Recompiles) => b => b.Recompiles,
-            nameof(BlockRow.MemoryBytes) => b => MemorySortKey(b.MemoryBytes, b.MemoryUnmeasured),
+            nameof(BlockRowView.BlockName) => b => b.BlockName,
+            nameof(BlockRowView.GridName) => b => b.GridName,
+            nameof(BlockRowView.OwnerName) => b => b.OwnerName,
+            nameof(BlockRowView.RunTimeMSAvg) => b => b.RunTimeMSAvg,
+            nameof(BlockRowView.PeekRunTimeMS) => b => b.PeekRunTimeMS,
+            nameof(BlockRowView.Offences) => b => b.Offences,
+            nameof(BlockRowView.Recompiles) => b => b.Recompiles,
+            nameof(BlockRowView.MemoryBytes) => b => MemorySortKey(b.MemoryBytes, b.MemoryUnmeasured),
             _ => b => b.LastRunTimeMS
         });
     }
 
-    private List<PlayerRow> SortedPlayers()
+    private List<PlayerRowView> SortedPlayers()
     {
-        IEnumerable<PlayerRow> rows = _snapshot!.Players.Where(p => Matches(p.Name, p.SteamId));
+        IEnumerable<PlayerRowView> rows = _snapshot!.Players.Where(p => Matches(p.Name, p.SteamId));
         return Sorted(rows, _sortColumn switch
         {
-            nameof(PlayerRow.Name) => p => p.Name,
-            nameof(PlayerRow.SteamId) => p => p.SteamId,
-            nameof(PlayerRow.BlockCount) => p => p.BlockCount,
-            nameof(PlayerRow.CombinedRunTimeMSAvg) => p => p.CombinedRunTimeMSAvg,
-            nameof(PlayerRow.Offences) => p => p.Offences,
-            nameof(PlayerRow.Recompiles) => p => p.Recompiles,
-            nameof(PlayerRow.MemoryBytes) => p => MemorySortKey(p.MemoryBytes, p.MemoryUnmeasured),
+            nameof(PlayerRowView.Name) => p => p.Name,
+            nameof(PlayerRowView.SteamId) => p => ulong.TryParse(p.SteamId, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong id) ? id : 0UL,
+            nameof(PlayerRowView.BlockCount) => p => p.BlockCount,
+            nameof(PlayerRowView.CombinedRunTimeMSAvg) => p => p.CombinedRunTimeMSAvg,
+            nameof(PlayerRowView.Offences) => p => p.Offences,
+            nameof(PlayerRowView.Recompiles) => p => p.Recompiles,
+            nameof(PlayerRowView.MemoryBytes) => p => MemorySortKey(p.MemoryBytes, p.MemoryUnmeasured),
             _ => p => p.CombinedLastRunTimeMS
         });
     }
