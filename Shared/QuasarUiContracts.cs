@@ -17,7 +17,7 @@ namespace Advanced_PB_Limiter.QuasarContracts
         /// <summary><see cref="EmptyPayload"/> in, <see cref="ServerListResponse"/> out.</summary>
         public const string Servers = "servers.list";
 
-        /// <summary><see cref="ReadSnapshotRequest"/> in, <see cref="ReportSnapshot"/> out.</summary>
+        /// <summary><see cref="ReadSnapshotRequest"/> in, <see cref="ReportSnapshotView"/> out.</summary>
         public const string Snapshot = "report.read";
 
         /// <summary><see cref="TurnOffBlockUiRequest"/> in, <see cref="TurnOffResult"/> out.</summary>
@@ -66,6 +66,56 @@ namespace Advanced_PB_Limiter.QuasarContracts
     public class ServerListResponse
     {
         public List<ServerInfo> Servers { get; set; } = new();
+    }
+
+    /// <summary>
+    /// A report as the browser sees it. The server's contract keeps the numeric ids (<see cref="ReportSnapshot"/>), so an
+    /// older server plugin still deserializes; the worker maps them to decimal strings here, because JavaScript numbers
+    /// lose precision above 2^53. The browser sends the strings back in the turn-off requests.
+    /// </summary>
+    public class ReportSnapshotView
+    {
+        public bool Installed { get; set; }
+        public bool Online { get; set; }
+        public bool Enabled { get; set; }
+        public string Version { get; set; } = "";
+        public bool Truncated { get; set; }
+        public List<PlayerRowView> Players { get; set; } = new();
+        public List<BlockRowView> Blocks { get; set; } = new();
+    }
+
+    public class PlayerRowView
+    {
+        public string IdentityId { get; set; } = "";
+        public string SteamId { get; set; } = "";
+        public string Name { get; set; } = "";
+        public bool IsNpc { get; set; }
+        public bool IsPrivileged { get; set; }
+        public int BlockCount { get; set; }
+        public double CombinedLastRunTimeMS { get; set; }
+        public double CombinedRunTimeMSAvg { get; set; }
+        public int Offences { get; set; }
+        public int Recompiles { get; set; }
+        public long MemoryBytes { get; set; }
+        public bool MemoryUnmeasured { get; set; }
+    }
+
+    public class BlockRowView
+    {
+        public string EntityId { get; set; } = "";
+        public string OwnerIdentityId { get; set; } = "";
+        public string OwnerName { get; set; } = "";
+        public string GridName { get; set; } = "";
+        public string BlockName { get; set; } = "";
+        public bool Enabled { get; set; }
+        public double LastRunTimeMS { get; set; }
+        public double RunTimeMSAvg { get; set; }
+        public double PeekRunTimeMS { get; set; }
+        public int Offences { get; set; }
+        public int Recompiles { get; set; }
+        public long MemoryBytes { get; set; }
+        public bool MemoryUnmeasured { get; set; }
+        public bool Resting { get; set; }
     }
 
     public class ReadSnapshotRequest

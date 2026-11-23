@@ -7,7 +7,7 @@ using Advanced_PB_Limiter.QuasarContracts;
 namespace AdvancedPBLimiter.Quasar.Services;
 
 /// <summary>What one server gave for a report: a snapshot, or the reason there is none.</summary>
-public sealed record ServerReport(string ServerName, ReportSnapshot? Snapshot, string? Problem);
+public sealed record ServerReport(string ServerName, ReportSnapshotView? Snapshot, string? Problem);
 
 /// <summary>Builds the text report, in the layout of the one Torch saves, for any number of servers.</summary>
 public static class CombinedReport
@@ -40,7 +40,7 @@ public static class CombinedReport
 
     private static void AppendOverall(StringBuilder text, List<ServerReport> servers, List<BlockOnServer> blocks)
     {
-        List<PlayerRow> players = servers.SelectMany(s => s.Snapshot!.Players).ToList();
+        List<PlayerRowView> players = servers.SelectMany(s => s.Snapshot!.Players).ToList();
 
         Line(text, "> All Selected Servers");
         Line(text, Rule);
@@ -59,7 +59,7 @@ public static class CombinedReport
 
     private static void AppendServer(StringBuilder text, ServerReport server)
     {
-        ReportSnapshot snapshot = server.Snapshot!;
+        ReportSnapshotView snapshot = server.Snapshot!;
 
         Line(text, "");
         Line(text, $"> Server: {server.ServerName}");
@@ -74,7 +74,7 @@ public static class CombinedReport
 
         Line(text, "");
         Line(text, "Per Player");
-        foreach (PlayerRow player in snapshot.Players.OrderByDescending(p => p.CombinedLastRunTimeMS))
+        foreach (PlayerRowView player in snapshot.Players.OrderByDescending(p => p.CombinedLastRunTimeMS))
         {
             string tags = (player.IsNpc ? " [NPC]" : "") + (player.IsPrivileged ? " [Privileged]" : "");
             Line(text, string.Create(CultureInfo.InvariantCulture, $"    {player.Name}{tags}  ||  SteamID: {(player.IsNpc ? "-" : player.SteamId)}  ||  Blocks: {player.BlockCount}")
@@ -84,7 +84,7 @@ public static class CombinedReport
 
         Line(text, "");
         Line(text, "Per Programmable Block");
-        foreach (BlockRow block in snapshot.Blocks.OrderByDescending(b => b.LastRunTimeMS))
+        foreach (BlockRowView block in snapshot.Blocks.OrderByDescending(b => b.LastRunTimeMS))
         {
             Line(text, $"    {block.BlockName}  ||  GridName: {block.GridName}  ||  Owner: {block.OwnerName}  ||  State: {(block.Enabled ? "On" : "Off")}{(block.Resting ? " (resting, not run lately)" : "")}"
                        + $"  ||  LastRunTimeMS: {Figures.Ms(block.LastRunTimeMS)}  ||  AvgMS: {Figures.Ms(block.RunTimeMSAvg)}  ||  PeakMS: {Figures.Ms(block.PeekRunTimeMS)}"
@@ -103,7 +103,7 @@ public static class CombinedReport
     {
         if (found == null) return "None";
 
-        BlockRow block = found.Block;
+        BlockRowView block = found.Block;
         return $"{block.BlockName} on {block.GridName} owned by {block.OwnerName}, on {found.ServerName}"
                + $" ({Figures.Ms(block.LastRunTimeMS)}ms, {InvariantText.Count(block.Offences, "offence", "offences")}, {InvariantText.Count(block.Recompiles, "recompile", "recompiles")})";
     }
@@ -111,5 +111,5 @@ public static class CombinedReport
     // A report is opened on any system, so it does not depend on the line ending of the one Quasar runs on.
     private static void Line(StringBuilder text, string line) => text.Append(line).Append("\r\n");
 
-    private sealed record BlockOnServer(string ServerName, BlockRow Block);
+    private sealed record BlockOnServer(string ServerName, BlockRowView Block);
 }

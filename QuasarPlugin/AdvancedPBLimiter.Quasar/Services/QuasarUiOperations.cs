@@ -37,7 +37,7 @@ internal static class QuasarUiOperations
                 Description = "Lists the servers connected to Quasar and those seen before, with their last seen time."
             });
 
-        services.AddQuasarOperation<ReadSnapshotRequest, ReportSnapshot>(
+        services.AddQuasarOperation<ReadSnapshotRequest, ReportSnapshotView>(
             context.PluginId, UiOperations.Snapshot, [QuasarPolicyNames.CanView],
             (caller, request, token) => SnapshotAsync(caller, request, token),
             new QuasarOperationMetadata
@@ -139,14 +139,57 @@ internal static class QuasarUiOperations
         return State(store, connected);
     }
 
-    private static async Task<ReportSnapshot> SnapshotAsync(QuasarOperationContext caller, ReadSnapshotRequest request, CancellationToken token)
+    private static async Task<ReportSnapshotView> SnapshotAsync(QuasarOperationContext caller, ReadSnapshotRequest request, CancellationToken token)
     {
         LimiterReports reports = caller.Services.GetRequiredService<LimiterReports>();
         token.ThrowIfCancellationRequested();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeout.CancelAfter(SnapshotTimeout);
-        return await reports.GetSnapshotAsync(request.ServerId ?? "", SnapshotTimeout, timeout.Token);
+        ReportSnapshot snapshot = await reports.GetSnapshotAsync(request.ServerId ?? "", SnapshotTimeout, timeout.Token);
+        return View(snapshot);
     }
+
+    /// <summary>Maps the server's numeric ids to the browser's decimal strings.</summary>
+    private static ReportSnapshotView View(ReportSnapshot snapshot) => new()
+    {
+        Installed = snapshot.Installed,
+        Online = snapshot.Online,
+        Enabled = snapshot.Enabled,
+        Version = snapshot.Version,
+        Truncated = snapshot.Truncated,
+        Players = snapshot.Players.Select(player => new PlayerRowView
+        {
+            IdentityId = player.IdentityId.ToString(CultureInfo.InvariantCulture),
+            SteamId = player.SteamId.ToString(CultureInfo.InvariantCulture),
+            Name = player.Name,
+            IsNpc = player.IsNpc,
+            IsPrivileged = player.IsPrivileged,
+            BlockCount = player.BlockCount,
+            CombinedLastRunTimeMS = player.CombinedLastRunTimeMS,
+            CombinedRunTimeMSAvg = player.CombinedRunTimeMSAvg,
+            Offences = player.Offences,
+            Recompiles = player.Recompiles,
+            MemoryBytes = player.MemoryBytes,
+            MemoryUnmeasured = player.MemoryUnmeasured
+        }).ToList(),
+        Blocks = snapshot.Blocks.Select(block => new BlockRowView
+        {
+            EntityId = block.EntityId.ToString(CultureInfo.InvariantCulture),
+            OwnerIdentityId = block.OwnerIdentityId.ToString(CultureInfo.InvariantCulture),
+            OwnerName = block.OwnerName,
+            GridName = block.GridName,
+            BlockName = block.BlockName,
+            Enabled = block.Enabled,
+            LastRunTimeMS = block.LastRunTimeMS,
+            RunTimeMSAvg = block.RunTimeMSAvg,
+            PeekRunTimeMS = block.PeekRunTimeMS,
+            Offences = block.Offences,
+            Recompiles = block.Recompiles,
+            MemoryBytes = block.MemoryBytes,
+            MemoryUnmeasured = block.MemoryUnmeasured,
+            Resting = block.Resting
+        }).ToList()
+    };
 
     private static async Task<TurnOffResult> TurnOffBlockAsync(QuasarOperationContext caller, TurnOffBlockUiRequest request, CancellationToken token)
     {

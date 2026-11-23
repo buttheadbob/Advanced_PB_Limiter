@@ -16,11 +16,44 @@ namespace Advanced_PB_Limiter.MagnetarHost;
 [CommandRoot("PBLimiter", "Advanced PB Limiter", "limit programmable block run times")]
 public sealed class PbLimiterCommands : CommandModule
 {
+    private static readonly LimiterLog Log = new("PB Limiter Commands");
+
     // The player reports are built on another thread and replies belong on the game thread.
     private Action<string> RespondOnGameThread()
     {
         CommandContext context = Context;
-        return text => MySandboxGame.Static.Invoke(() => context.Respond(text), "Advanced_PB_Limiter");
+        return text =>
+        {
+            try
+            {
+                MySandboxGame? game = MySandboxGame.Static;
+                if (game is null)
+                {
+                    Respond(context, text);
+                    return;
+                }
+
+                game.Invoke(() => Respond(context, text), "Advanced_PB_Limiter");
+            }
+            catch (Exception e)
+            {
+                // The reply runs in the game's update loop, where an exception is not caught: a session that ended
+                // while the report was building must not take the server down.
+                Log.Error(e, "Could not send the PB Limiter report reply");
+            }
+        };
+    }
+
+    private static void Respond(CommandContext context, string text)
+    {
+        try
+        {
+            context.Respond(text);
+        }
+        catch (Exception e)
+        {
+            Log.Error(e, "Could not send the PB Limiter report reply");
+        }
     }
 
     [Command("About", "Displays information about the Advanced PB Limiter.")]

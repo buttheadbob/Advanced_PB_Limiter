@@ -130,15 +130,8 @@ namespace Advanced_PB_Limiter.QuasarContracts
 
     public class PlayerRow
     {
-        /// <summary>
-        /// A decimal string, not a number: the Quasar dashboard is JavaScript, where a number is a double and loses
-        /// precision above 2^53, and the browser sends this id back to turn the player's blocks off.
-        /// </summary>
-        public string IdentityId { get; set; } = "";
-
-        /// <summary>A decimal string, as <see cref="IdentityId"/>: a Steam ID is always above 2^53.</summary>
-        public string SteamId { get; set; } = "";
-
+        public long IdentityId { get; set; }
+        public ulong SteamId { get; set; }
         public string Name { get; set; } = "";
         public bool IsNpc { get; set; }
         public bool IsPrivileged { get; set; }
@@ -157,12 +150,8 @@ namespace Advanced_PB_Limiter.QuasarContracts
 
     public class BlockRow
     {
-        /// <summary>A decimal string, as <see cref="PlayerRow.IdentityId"/>: the browser sends it back to turn the block off.</summary>
-        public string EntityId { get; set; } = "";
-
-        /// <summary>A decimal string, as <see cref="PlayerRow.IdentityId"/>.</summary>
-        public string OwnerIdentityId { get; set; } = "";
-
+        public long EntityId { get; set; }
+        public long OwnerIdentityId { get; set; }
         public string OwnerName { get; set; } = "";
         public string GridName { get; set; } = "";
         public string BlockName { get; set; } = "";

@@ -79,18 +79,40 @@ namespace Advanced_PB_Limiter.UI
         private void RefreshReportData()
         {
             MySandboxGame? game = MySandboxGame.Static;
-            if (game is null || !LimiterCore.GameOnline || Thread.CurrentThread == game.UpdateThread)
+            if (game is null || Thread.CurrentThread == game.UpdateThread)
             {
-                ShowReportRows(GatherReportRows());
+                try
+                {
+                    ShowReportRows(GatherReportRows());
+                }
+                catch (Exception e)
+                {
+                    Log.Error(e, "Could not read the PB Limiter report");
+                }
                 return;
             }
 
-            game.Invoke(() =>
+            try
             {
-                ReportRows rows = GatherReportRows();
-                if (Dispatcher is null) return; // The panel is gone.
-                _ = Dispatcher.BeginInvoke(new Action(() => ShowReportRows(rows)));
-            }, "Advanced_PB_Limiter");
+                game.Invoke(() =>
+                {
+                    try
+                    {
+                        ReportRows rows = GatherReportRows();
+                        if (Dispatcher is null) return; // The panel is gone.
+                        _ = Dispatcher.BeginInvoke(new Action(() => ShowReportRows(rows)));
+                    }
+                    catch (Exception e)
+                    {
+                        // The game's update loop does not catch this action, so a report failure must not escape it.
+                        Log.Error(e, "Could not read the PB Limiter report");
+                    }
+                }, "Advanced_PB_Limiter");
+            }
+            catch (Exception e)
+            {
+                Log.Error(e, "Could not schedule the PB Limiter report");
+            }
         }
 
         /// <summary>
@@ -100,7 +122,7 @@ namespace Advanced_PB_Limiter.UI
         private void RefreshReportDataNow()
         {
             MySandboxGame? game = MySandboxGame.Static;
-            if (game is null || !LimiterCore.GameOnline || Thread.CurrentThread == game.UpdateThread)
+            if (game is null || Thread.CurrentThread == game.UpdateThread)
             {
                 ShowReportRows(GatherReportRows());
                 return;

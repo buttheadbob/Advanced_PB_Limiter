@@ -3,7 +3,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -41,12 +40,13 @@ namespace Advanced_PB_Limiter.Manager
         /// <summary>
         /// Runs <paramref name="work"/> on the game thread, where tracking data may read game objects, and returns its
         /// result to the pool thread that is formatting the report. The game thread is never blocked waiting for the
-        /// report; the caller waits for this task on its own thread.
+        /// report; the caller waits for this task on its own thread. Only a game with no update thread runs the work
+        /// where it was called; a game that is unloading still has one, and its blocks may be read only there.
         /// </summary>
         private static Task<T> OnGameThread<T>(Func<T> work)
         {
             MySandboxGame? game = MySandboxGame.Static;
-            if (game is null || !LimiterCore.GameOnline || Thread.CurrentThread == game.UpdateThread)
+            if (game is null || Thread.CurrentThread == game.UpdateThread)
                 return Task.FromResult(work());
 
             TaskCompletionSource<T> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -86,8 +86,8 @@ namespace Advanced_PB_Limiter.Manager
             {
                 PlayerRow playerRow = new()
                 {
-                    IdentityId = player.PlayerId.ToString(CultureInfo.InvariantCulture),
-                    SteamId = player.SteamId.ToString(CultureInfo.InvariantCulture),
+                    IdentityId = player.PlayerId,
+                    SteamId = player.SteamId,
                     Name = player.PlayerName ?? "Unknown",
                     IsNpc = player.IsNpc,
                     IsPrivileged = player.Privileged is not null
@@ -103,8 +103,8 @@ namespace Advanced_PB_Limiter.Manager
 
                     snapshot.Blocks.Add(new BlockRow
                     {
-                        EntityId = block.ProgrammableBlock.EntityId.ToString(CultureInfo.InvariantCulture),
-                        OwnerIdentityId = player.PlayerId.ToString(CultureInfo.InvariantCulture),
+                        EntityId = block.ProgrammableBlock.EntityId,
+                        OwnerIdentityId = player.PlayerId,
                         OwnerName = playerRow.Name,
                         GridName = block.CurrentGridName,
                         BlockName = block.ProgrammableBlock.ReadName(),
