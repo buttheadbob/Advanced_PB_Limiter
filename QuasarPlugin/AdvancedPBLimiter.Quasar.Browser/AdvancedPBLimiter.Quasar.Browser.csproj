@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <!-- Advanced PB Limiter Quasar browser assembly: the Live view, Profiles and Generate report pages.
+       Quasar 1.7 loads it into the WebAssembly dashboard, separate from the worker adapter. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>AdvancedPBLimiter.Quasar.Browser</AssemblyName>
+    <RootNamespace>AdvancedPBLimiter.Quasar</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <SupportedPlatform Include="browser" />
+    <PackageReference Include="Microsoft.AspNetCore.Authorization" Version="10.0.14" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.14" />
+  </ItemGroup>
+
+  <!-- Everything the pages need is compiled into this one assembly: the dashboard loads only the browserAssembly
+       DLL it is given, and does not deliver a plugin's other assemblies to the browser. -->
+  <ItemGroup>
+    <Compile Include="..\..\Shared\QuasarContracts.cs" Link="Contracts\QuasarContracts.cs" />
+    <Compile Include="..\..\Shared\QuasarUiContracts.cs" Link="Contracts\QuasarUiContracts.cs" />
+    <Compile Include="..\..\Shared\RecentReasons.cs" Link="Contracts\RecentReasons.cs" />
+    <Compile Include="..\..\Shared\Utils\ServerPickKeys.cs" Link="Contracts\ServerPickKeys.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\Shared\Utils\InvariantText.cs" Link="Shared\InvariantText.cs" />
+    <Compile Include="..\..\Shared\Utils\MemoryText.cs" Link="Shared\MemoryText.cs" />
+    <Compile Include="..\..\Shared\Utils\SafeName.cs" Link="Shared\SafeName.cs" />
+    <Compile Include="..\..\Shared\Utils\Signals.cs" Link="Shared\Signals.cs" />
+  </ItemGroup>
+</Project>

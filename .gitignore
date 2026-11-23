@@ -1,4 +1,4 @@
-# Junctions made by "Setup (run before opening solution).bat". No trailing slash: git does not see a junction as a folder.
+# Junctions made by Setup.ps1. No trailing slash: git does not see a junction as a folder.
 GameBinaries
 TorchBinaries
 

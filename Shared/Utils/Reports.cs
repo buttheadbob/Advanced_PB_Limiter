@@ -4,15 +4,17 @@ namespace Advanced_PB_Limiter.Utils.Reports
 {
     public sealed class PlayerReport
     {
-        public ulong SteamId { get; init; }
-        public long PlayerId { get; init; }
-        public string PlayerName { get; init; }
-        public bool IsPrivileged { get; init; }
-        public bool IsNpc { get; init; }
-        private List<PBReport> PBReports { get; init;}
+        public ulong SteamId { get; }
+        public long PlayerId { get; }
+        public string PlayerName { get; }
+        public bool IsPrivileged { get; }
+        public bool IsNpc { get; }
+        private List<PBReport> PBReports { get; }
+        private PlayerTotals Totals { get; }
 
-        public PlayerReport(ulong steamId, long playerId, string playerName, bool isNpc, List<PBReport> pbReports)
+        public PlayerReport(ulong steamId, long playerId, string playerName, bool isNpc, List<PBReport> pbReports, PlayerTotals totals)
         {
+            Totals = totals;
             SteamId = steamId;
             PlayerId = playerId;
             PlayerName = playerName;
@@ -23,65 +25,37 @@ namespace Advanced_PB_Limiter.Utils.Reports
 
         public List<PBReport> GetPBReports => PBReports;
 
-        public int TotalOffences
-        {
-            get
-            {
-                int offences = 0;
-                for (int index = 0; index < PBReports.Count; index++)
-                {
-                    offences += PBReports[index].Offences;
-                }
+        public int TotalOffences => Totals.Offences;
 
-                return offences;
-            }
-        }
+        public int TotalRecompiles => Totals.Recompiles;
 
-        public int TotalRecompiles
-        {
-            get
-            {
-                int recompiles = 0;
-                for (int index = 0; index < PBReports.Count; index++)
-                {
-                    recompiles += PBReports[index].Recompiles;
-                }
-
-                return recompiles;
-            }
-        }
-
-        public double CombinedLastRunTimeMS
-        {
-            get
-            {
-                double total = 0;
-                for (int index = 0; index < PBReports.Count; index++)
-                {
-                    total += PBReports[index].LastRunTimeMS;
-                }
-
-                return total;
-            }
-        }
-
-        public double CombinedRunTimeMSAvg
-        {
-            get
-            {
-                double total = 0;
-                for (int index = 0; index < PBReports.Count; index++)
-                {
-                    total += PBReports[index].RunTimeMSAvg;
-                }
-
-                return total;
-            }
-        }
+        /// <summary>The combined run times over this player's blocks, as every report counts them: see <see cref="PlayerTotals"/>.</summary>
+        public CombinedRunTimes Combined() => Totals.Combined;
     }
 
-    public record PBReport(ulong OwnerSteamId, string GridName, string BlockName, double LastRunTimeMS, double RunTimeMSAvg, int Offences, int Recompiles)
+    public sealed class PBReport
     {
+        public ulong OwnerSteamId { get; }
+        public string GridName { get; }
+        public string BlockName { get; }
+        public double LastRunTimeMS { get; }
+        public double RunTimeMSAvg { get; }
+        public int Offences { get; }
+        public int Recompiles { get; }
 
+        /// <summary>Resting between rare runs: dropped from tracking for being idle, kept to be tracked again on its next run.</summary>
+        public bool Resting { get; }
+
+        public PBReport(ulong ownerSteamId, string gridName, string blockName, double lastRunTimeMS, double runTimeMSAvg, int offences, int recompiles, bool resting)
+        {
+            Resting = resting;
+            OwnerSteamId = ownerSteamId;
+            GridName = gridName;
+            BlockName = blockName;
+            LastRunTimeMS = lastRunTimeMS;
+            RunTimeMSAvg = runTimeMSAvg;
+            Offences = offences;
+            Recompiles = recompiles;
+        }
     }
 }

@@ -16,6 +16,14 @@
         <!-- The Quasar install (holds Quasar.exe). When set, building the Quasar plugin copies it into
              <Quasar>\Plugins\AdvancedPBLimiter so a restarted Quasar loads it. Leave empty to not deploy. -->
         <Quasar></Quasar>
+
+        <!-- The Quasar 1.7 Quasar.Plugin.Abstractions.dll, for building the Quasar plugin without a quasar
+             checkout. Leave empty to build against ..\quasar\Quasar.Plugin.Abstractions. -->
+        <QuasarPluginAbstractionsAssembly></QuasarPluginAbstractionsAssembly>
+
+        <!-- The Quasar 1.7 Magnetar.Protocol.dll (QuasarApp\Agent), for building the companion against the running
+             Quasar. Leave empty to build against ..\quasar\Magnetar.Protocol. -->
+        <MagnetarProtocolAssembly></MagnetarProtocolAssembly>
     </PropertyGroup>
 
     <PropertyGroup>

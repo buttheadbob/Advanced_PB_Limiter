@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Advanced_PB_Limiter.Commands;
 using Advanced_PB_Limiter.Utils;
 using PluginSdk.Commands;
@@ -42,7 +43,7 @@ public sealed class PbLimiterCommands : CommandModule
     [Permission(MyPromoteLevel.None)]
     public string Limits() => LimiterCommands.Limits(Context.Caller.IsConsole ? null : Context.Caller.SteamId);
 
-    [Command("Runtimes", "Shows the last saved runtimes for each programmable block owned by the player.")]
+    [Command("Runtimes", "Shows the last saved runtimes of up to 10 of the player's programmable blocks, once every 30 seconds.")]
     [Permission(MyPromoteLevel.None)]
     public void Runtimes()
     {
@@ -54,7 +55,7 @@ public sealed class PbLimiterCommands : CommandModule
         LimiterCommands.Runtimes(Context.Caller.IdentityId, RespondOnGameThread());
     }
 
-    [Command("requestpbshutdown", "Send the shutdown request to all pb scripts that monitor for it.  add the amount of seconds until restart if desired.  Eg: !PBLimiter requestpbshutdown 10")]
+    [Command("requestpbshutdown", "Sends the shutdown request to all programmable block scripts that monitor for it, with the seconds until restart, 1 if left out. Eg: !PBLimiter requestpbshutdown 10")]
     [Permission(MyPromoteLevel.Admin)]
     public string RequestPbShutdown(int seconds = 1) => LimiterCommands.RequestPbShutdown(seconds);
 
@@ -93,9 +94,10 @@ public sealed class PbLimiterCommands : CommandModule
 
     [Command("DetailedAdminHelp", "Gives a list of all staff commands and their usage.")]
     [Permission(MyPromoteLevel.Admin)]
-    public IEnumerable<string> DetailedAdminHelp() => LimiterCommands.DetailedStaffHelp();
+    public IEnumerable<string> DetailedAdminHelp() =>
+        LimiterCommands.DetailedStaffHelp().Append("!PBLimiter Timings - Logs the limiter's own timings for a few seconds.");
 
     [Command("AdminHelp", "Gives a list of all staff commands.")]
     [Permission(MyPromoteLevel.Admin)]
-    public IEnumerable<string> AdminHelp() => LimiterCommands.StaffHelp();
+    public IEnumerable<string> AdminHelp() => LimiterCommands.StaffHelp().Append("!PBLimiter Timings");
 }

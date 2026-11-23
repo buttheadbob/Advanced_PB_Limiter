@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Threading;
 using Advanced_PB_Limiter.Manager;
@@ -67,7 +68,19 @@ namespace Advanced_PB_Limiter
     {
         IPbLimiterConfig Config { get; }
         string Version { get; }
-        void SaveConfig();
+        /// <summary>
+        /// Runs a command's <paramref name="change"/> to the config and makes sure the result is saved, once: false when it
+        /// could not be, and the host has logged why. A host whose config saves each change as it is made answers with how
+        /// that save went instead of writing the file, and logging a failure, a second time.
+        /// </summary>
+        bool ChangeConfig(Action change);
+
+        /// <summary>
+        /// Why a command may not change the config on this server, or null when it may. A node of a managed cluster runs the
+        /// cluster's configuration, which only Quasar changes, for every node at once: a change on one node could never be
+        /// saved and would set it apart from the others until it restarts.
+        /// </summary>
+        string? ConfigChangeRefusal { get; }
         void LogTrace(string message);
         void LogInfo(string message);
         void LogWarn(string message);
@@ -76,12 +89,78 @@ namespace Advanced_PB_Limiter
 
     public static class LimiterCore
     {
-        public static IPbLimiterHost Host { get; private set; } = null!;
+        private static IPbLimiterHost? _host;
+        private static IPbLimiterConfig? _config;
+
+        public static IPbLimiterHost Host => _host ?? throw NotInitialized();
 
         /// <summary>Read on every programmable block run, so it is cached rather than going through Host.</summary>
-        public static IPbLimiterConfig Config { get; private set; } = null!;
+        public static IPbLimiterConfig Config => _config ?? throw NotInitialized();
 
-        public static bool GameOnline { get; private set; }
+        // Volatile: a Torch plugin reload clears it on its own thread, see Update.
+        private static volatile bool _gameOnline;
+
+        public static bool GameOnline
+        {
+            get => _gameOnline;
+            private set => _gameOnline = value;
+        }
+
+        /// <summary>
+        /// Stopped for good: a Torch plugin reload replaced this instance. Its patches stay in the game, as it does not
+        /// revert them on a reload, and do nothing from then on. A new instance has statics of its own.
+        /// </summary>
+        public static bool Retired { get; private set; }
+
+        /// <summary>The limiter is on: enabled in the config and not retired. What the patches check before doing anything.</summary>
+        public static bool Active => !Retired && Config.Enabled;
+
+        /// <summary>Why the limiter is retired, for the commands, the log and the plugin's tab.</summary>
+        public static string RetiredMessage { get; private set; } = ReloadedMessage;
+
+        private const string ReloadedMessage = "Advanced PB Limiter was reloaded, which Torch does not support: it is off until Torch restarts.";
+
+        private const string MismatchMessage = "Advanced PB Limiter is inactive: the game no longer matches this version, as the log says. It stays off until Torch restarts with a version that matches.";
+
+        private static long _offCount;
+        private static bool _activeLastTick; // Game thread: the limiter was on at the last tick, so a disable is seen once.
+
+        /// <summary>
+        /// Goes up each time the limiter goes off: disabled in the config (counted by its Enabled setter, so an off and on
+        /// again between two ticks counts too), found disabled at a tick after being on, retired, or its world unloading. A
+        /// punishment waiting out its grace period compares it, so it is dropped when the limiter was off at any point
+        /// meanwhile, even if it is on again by the end.
+        /// </summary>
+        public static long OffCount => Interlocked.Read(ref _offCount);
+
+        /// <summary>
+        /// Call from the config's Enabled setter before it turns <paramref name="config"/> off. Counted only for the config
+        /// the limiter runs on: a copy a profile is tried on, or a config being read, turns nothing off. Any thread: Quasar,
+        /// the Torch UI and the commands all set it.
+        /// </summary>
+        public static void CountOff(IPbLimiterConfig config)
+        {
+            if (ReferenceEquals(config, _config))
+                Interlocked.Increment(ref _offCount);
+        }
+
+        /// <summary>Stops this instance for good, see <see cref="Retired"/>.</summary>
+        public static void Retire()
+        {
+            RetiredMessage = ReloadedMessage;
+            Retired = true;
+            OnSessionUnloading();
+        }
+
+        /// <summary>
+        /// Torch, when Init failed because the game no longer has something the limiter needs: nothing was patched, and the
+        /// commands, which Torch registers anyway, answer that the limiter is inactive instead of acting as if it ran.
+        /// </summary>
+        public static void RetireMismatched()
+        {
+            RetiredMessage = MismatchMessage;
+            Retired = true;
+        }
 
         private static readonly LimiterLog Log = new("Core");
         private static long _tick;
@@ -92,14 +171,20 @@ namespace Advanced_PB_Limiter
         /// </summary>
         public static void Init(IPbLimiterHost host)
         {
-            Host = host;
-            Config = host.Config;
+            _host = host;
+            _config = host.Config;
             PbAccess.Init();
             ReplicationAccess.Init();
         }
 
+        private static InvalidOperationException NotInitialized()
+        {
+            return new InvalidOperationException("Advanced PB Limiter was used before LimiterCore.Init.");
+        }
+
         public static void OnSessionLoaded()
         {
+            if (Retired) return;
             _tick = 0;
             PbProfiler.Init();
             GameOnline = true;
@@ -107,8 +192,10 @@ namespace Advanced_PB_Limiter
 
         public static void OnSessionUnloading()
         {
+            Interlocked.Increment(ref _offCount);
             GameOnline = false;
             TrackingManager.Stop();
+            PunishmentManager.Clear();
             PbProfiler.Stop();
             ReportManager.Clear();
         }
@@ -121,6 +208,12 @@ namespace Advanced_PB_Limiter
             // Magnetar does not guard this call. An exception here would take the server down.
             try
             {
+                // Disabled since the last tick: see OffCount. The setter has counted it already; this also covers a config
+                // replaced whole. Counted once when it goes off, not every tick it stays off.
+                bool active = Active;
+                if (_activeLastTick && !active)
+                    Interlocked.Increment(ref _offCount);
+                _activeLastTick = active;
                 _tick++;
                 PbProfiler.Update();
                 TrackingManager.Update(_tick);
@@ -129,6 +222,14 @@ namespace Advanced_PB_Limiter
             {
                 Log.Error(e, "The update failed");
             }
+
+            // A Torch plugin reload retires this instance on its own thread, and may have cleared the tracking data while
+            // this tick ran: what the tick added since is cleared here, so nothing keeps blocks and their grids alive in the
+            // retired assembly. Read after this tick's writes: Retire clears GameOnline before it clears the data, so either
+            // its clear comes after them or this one does.
+            Thread.MemoryBarrier();
+            if (!GameOnline)
+                TrackingManager.ClearAfterStop();
         }
 
         public static string GetThreadName()

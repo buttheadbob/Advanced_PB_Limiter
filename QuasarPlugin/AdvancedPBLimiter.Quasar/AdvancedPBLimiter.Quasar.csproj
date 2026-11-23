@@ -1,6 +1,6 @@
-<Project Sdk="Microsoft.NET.Sdk.Razor">
-  <!-- Advanced PB Limiter Quasar UI plugin: the live report of a server's programmable blocks.
-       Quasar builds it from QuasarHub, passing QuasarPluginAbstractionsAssembly. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Advanced PB Limiter Quasar worker adapter: registers the browser pages, the worker services and the SDK
+       operations the browser calls, and keeps the companion channel. Quasar builds it from QuasarHub. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -20,8 +20,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\AdvancedPBLimiter.Quasar.Browser\AdvancedPBLimiter.Quasar.Browser.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="..\..\Versioning\AssemblyVersion.cs" Link="Properties\AssemblyVersion.cs" />
-    <Compile Include="..\..\Shared\QuasarContracts.cs" Link="Contracts\QuasarContracts.cs" />
+    <Compile Include="..\..\Shared\Utils\InvariantText.cs" Link="Shared\InvariantText.cs" />
+    <Compile Include="..\..\Shared\Utils\KeptFile.cs" Link="Shared\KeptFile.cs" />
+    <Compile Include="..\..\Shared\Utils\SafeFile.cs" Link="Shared\SafeFile.cs" />
+    <Compile Include="..\..\Shared\Utils\SafeXml.cs" Link="Shared\SafeXml.cs" />
+    <Compile Include="..\..\Shared\Utils\Signals.cs" Link="Shared\Signals.cs" />
   </ItemGroup>
 
   <!-- Built by Quasar: the contract assembly of the running Quasar -->
@@ -50,11 +58,11 @@
     </PropertyGroup>
     <ItemGroup>
       <_QuasarPluginFiles Include="$(OutDir)**\*.*" Exclude="$(OutDir)**\Quasar.Plugin.Abstractions.*" />
-      <_QuasarStaticFiles Include="wwwroot\**\*.*" />
+      <_QuasarStaticFiles Include="..\AdvancedPBLimiter.Quasar.Browser\wwwroot\**\*.*" />
     </ItemGroup>
     <Copy SourceFiles="..\..\quasar-plugin.json" DestinationFolder="$(_QuasarPackage)" Retries="10" RetryDelayMilliseconds="500" />
     <Copy SourceFiles="@(_QuasarPluginFiles)" DestinationFiles="@(_QuasarPluginFiles->'$(_QuasarPackage)\%(RecursiveDir)%(Filename)%(Extension)')" Retries="10" RetryDelayMilliseconds="500" />
-    <Copy SourceFiles="@(_QuasarStaticFiles)" DestinationFiles="@(_QuasarStaticFiles->'$(_QuasarPackage)\QuasarPlugin\AdvancedPBLimiter.Quasar\wwwroot\%(RecursiveDir)%(Filename)%(Extension)')" Retries="10" RetryDelayMilliseconds="500" />
+    <Copy SourceFiles="@(_QuasarStaticFiles)" DestinationFiles="@(_QuasarStaticFiles->'$(_QuasarPackage)\QuasarPlugin\AdvancedPBLimiter.Quasar.Browser\wwwroot\%(RecursiveDir)%(Filename)%(Extension)')" Retries="10" RetryDelayMilliseconds="500" />
     <Message Importance="high" Text="Deployed the Quasar plugin to $(_QuasarPackage), restart Quasar to load it" />
   </Target>
 </Project>

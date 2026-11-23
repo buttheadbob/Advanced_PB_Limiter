@@ -9,22 +9,22 @@ namespace Advanced_PB_Limiter.UI
 {
     public partial class PrivilegedUsers
     {
-        private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
+        private static Advanced_PB_LimiterConfig Config => AdvancedPBLimiterPlugin.Instance!.Config!;
         public PrivilegedUsers()
         {
             InitializeComponent();
             DataContext = Config;
         }
-        
-        private static void Save()
+
+        // A whole-number box takes what Limits takes for any limit, so the tab refuses what the commands and Quasar refuse.
+        private static bool TryParseCount(string text, out int value)
         {
-            Advanced_PB_Limiter.Instance!.Save();
+            return int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value) && Limits.IsCount(value);
         }
 
-        // The boxes are filled with invariant numbers, and on a machine with a comma for decimals "0.5" would otherwise parse as 5.
-        private static bool TryParseNumber(string text, out double value)
+        private static void Refuse(string message)
         {
-            return double.TryParse(text.Replace(",", "."), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+            MessageBox.Show(message, "Invalid Entry", MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
         private void LoadPrivilegedPlayerDataButton_OnClick(object sender, RoutedEventArgs e)
@@ -35,11 +35,11 @@ namespace Advanced_PB_Limiter.UI
             if (selectedPlayer is null) return;
             
             PlayerNameBox.Text = selectedPlayer.Name;
-            SteamIDBox.Text = selectedPlayer.SteamId.ToString();
-            GracefulShutdownBox.Text = selectedPlayer.GracefulShutDownRequestDelay.ToString();
+            SteamIDBox.Text = selectedPlayer.SteamId.ToString(CultureInfo.InvariantCulture);
+            GracefulShutdownBox.Text = selectedPlayer.GracefulShutDownRequestDelay.ToString(CultureInfo.InvariantCulture);
             PunishmentBox.Text = selectedPlayer.Punishment.ToString();
-            DamageAmountBox.Text = selectedPlayer.DamageAmount.ToString();
-            OffencesBeforePunishmentBox.Text = selectedPlayer.OffencesBeforePunishment.ToString();
+            DamageAmountBox.Text = selectedPlayer.DamageAmount.ToString(CultureInfo.InvariantCulture);
+            OffencesBeforePunishmentBox.Text = selectedPlayer.OffencesBeforePunishment.ToString(CultureInfo.InvariantCulture);
             MaxRuntimeAllowedBox.Text = selectedPlayer.RuntimeAllowance.ToString(CultureInfo.InvariantCulture);
             MaxAVGRuntimeAllowedBox.Text = selectedPlayer.RuntimeAverageAllowance.ToString(CultureInfo.InvariantCulture);
             NoCombinedLimitsBox.IsChecked = selectedPlayer.NoCombinedLimits;
@@ -62,57 +62,65 @@ namespace Advanced_PB_Limiter.UI
                 return;
             }
 
-            if (!ulong.TryParse(SteamIDBox.Text, out ulong steamId))
+            if (!ulong.TryParse(SteamIDBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong steamId))
             {
                 MessageBox.Show("Steam ID must be a number", "Invalid Entry", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
-            if (!int.TryParse(GracefulShutdownBox.Text, out int gracefulShutDown))
+            // Identities with no Steam ID, NPCs among them, all share 0, so a row for it would apply to every one of them.
+            if (steamId == 0)
             {
-                MessageBox.Show("Graceful Shutdown must be a number", "Invalid Entry", MessageBoxButton.OK, MessageBoxImage.Error);
+                Refuse("Steam ID cannot be 0");
+                return;
+            }
+
+            if (!TryParseCount(GracefulShutdownBox.Text, out int gracefulShutDown))
+            {
+                Refuse("Graceful Shutdown must be a whole number, 0 or more");
                 return;
             }
             
-            if (!int.TryParse(OffencesBeforePunishmentBox.Text, out int offencesBeforePunishment))
+            if (!TryParseCount(OffencesBeforePunishmentBox.Text, out int offencesBeforePunishment))
             {
-                MessageBox.Show("Offences Before Punishment must be a number", "Invalid Entry", MessageBoxButton.OK, MessageBoxImage.Error);
+                Refuse("Offences Before Punishment must be a whole number, 0 or more");
                 return;
             }
             
-            if (!int.TryParse(DamageAmountBox.Text, out int damageAmount))
+            // 0 means the server's damage amount; a negative one would be saved and then quietly replaced by it.
+            if (!TryParseCount(DamageAmountBox.Text, out int damageAmount))
             {
-                MessageBox.Show("Damage Amount must be a number", "Invalid Entry", MessageBoxButton.OK, MessageBoxImage.Error);
+                Refuse("Damage Amount must be a whole number, 0 or more (0 uses the server's damage amount)");
                 return;
             }
             
-            if (!TryParseNumber(MaxRuntimeAllowedBox.Text, out double maxRuntimeAllowed))
+            if (!Limits.TryParse(MaxRuntimeAllowedBox.Text, out double maxRuntimeAllowed))
             {
-                MessageBox.Show("Max Runtime Allowed must be a number", "Invalid Entry", MessageBoxButton.OK, MessageBoxImage.Error);
+                Refuse("Max Runtime Allowed must be a number, 0 or more, with a dot for decimals");
                 return;
             }
             
-            if (!TryParseNumber(MaxAVGRuntimeAllowedBox.Text, out double maxAvgRuntimeAllowed))
+            if (!Limits.TryParse(MaxAVGRuntimeAllowedBox.Text, out double maxAvgRuntimeAllowed))
             {
-                MessageBox.Show("Max Average Runtime Allowed must be a number", "Invalid Entry", MessageBoxButton.OK, MessageBoxImage.Error);
+                Refuse("Max Average Runtime Allowed must be a number, 0 or more, with a dot for decimals");
                 return;
             }
             
-            if (!TryParseNumber(MaxCombinedRuntimeAllowedBox.Text, out double maxCombinedRuntimeAllowed))
+            if (!Limits.TryParse(MaxCombinedRuntimeAllowedBox.Text, out double maxCombinedRuntimeAllowed))
             {
-                MessageBox.Show("Max Combined Runtime Allowed must be a number", "Invalid Entry", MessageBoxButton.OK, MessageBoxImage.Error);
+                Refuse("Max Combined Runtime Allowed must be a number, 0 or more, with a dot for decimals");
                 return;
             }
             
-            if (!TryParseNumber(MaxCombinedAVGRuntimeAllowedBox.Text, out double maxCombinedAvgRuntimeAllowed))
+            if (!Limits.TryParse(MaxCombinedAVGRuntimeAllowedBox.Text, out double maxCombinedAvgRuntimeAllowed))
             {
-                MessageBox.Show("Max Combined Average Runtime Allowed must be a number", "Invalid Entry", MessageBoxButton.OK, MessageBoxImage.Error);
+                Refuse("Max Combined Average Runtime Allowed must be a number, 0 or more, with a dot for decimals");
                 return;
             }
             
-            if (!TryParseNumber(StartupBox.Text, out double startup))
+            if (!Limits.TryParse(StartupBox.Text, out double startup))
             {
-                MessageBox.Show("Startup must be a number", "Invalid Entry", MessageBoxButton.OK, MessageBoxImage.Error);
+                Refuse("Startup must be a number, 0 or more, with a dot for decimals");
                 return;
             }
             
@@ -139,7 +147,7 @@ namespace Advanced_PB_Limiter.UI
             };
 
             Config.SetPrivilegedPlayer(newPlayer);
-            Save();
+            Advanced_PB_LimiterControl.SaveConfig();
             PrivilegedPlayersGrid.ItemsSource = null;
             PrivilegedPlayersGrid.ItemsSource = Config.PrivilegedPlayers.Values;
         }
@@ -152,7 +160,7 @@ namespace Advanced_PB_Limiter.UI
             if (selectedPlayer is null) return;
             PrivilegedPlayersGrid.ItemsSource = null;
             Config.PrivilegedPlayers.Remove(selectedPlayer.SteamId);
-            Save();
+            Advanced_PB_LimiterControl.SaveConfig();
             PrivilegedPlayersGrid.ItemsSource = Config.PrivilegedPlayers.Values;
         }
 

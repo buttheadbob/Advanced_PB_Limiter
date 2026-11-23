@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Tests of the shared code that does not need the game, on both runtimes the plugin ships on:
+       .NET Framework 4.8 (Torch and MagnetarLegacy) and .NET 10 (MagnetarInterim). Run with: dotnet test Tests -->
+  <PropertyGroup>
+    <TargetFrameworks>net48;net10.0</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>Advanced_PB_Limiter.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\Utils\Enums.cs" Link="Shared\Enums.cs" />
+    <Compile Include="..\Shared\Utils\GameMembers.cs" Link="Shared\GameMembers.cs" />
+    <Compile Include="..\Shared\Utils\InstantPunishmentFile.cs" Link="Shared\InstantPunishmentFile.cs" />
+    <Compile Include="..\Shared\Utils\SafeFile.cs" Link="Shared\SafeFile.cs" />
+    <Compile Include="..\Shared\Utils\SafeXml.cs" Link="Shared\SafeXml.cs" />
+    <Compile Include="..\Shared\Utils\Limits.cs" Link="Shared\Limits.cs" />
+    <Compile Include="..\Shared\Utils\KeptFile.cs" Link="Shared\KeptFile.cs" />
+    <Compile Include="..\Shared\RecentReasons.cs" Link="Shared\RecentReasons.cs" />
+    <Compile Include="..\Shared\Utils\RunClock.cs" Link="Shared\RunClock.cs" />
+    <Compile Include="..\Shared\Utils\SafeName.cs" Link="Shared\SafeName.cs" />
+    <Compile Include="..\Shared\Utils\BatchMark.cs" Link="Shared\BatchMark.cs" />
+    <Compile Include="..\Shared\Utils\GetSizeOfObject.cs" Link="Shared\GetSizeOfObject.cs" />
+    <Compile Include="..\Shared\Utils\ServerPickKeys.cs" Link="Shared\ServerPickKeys.cs" />
+    <Compile Include="..\QuasarPlugin\AdvancedPBLimiter.QuasarCompanion\LimiterAssemblyName.cs" Link="Shared\LimiterAssemblyName.cs" />
+    <None Include="..\AdvancedPBLimiter.xml" Link="AdvancedPBLimiter.xml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- A hostile script's types as a plain assembly: Reflection.Emit can't declare them deepest first. -->
+    <ProjectReference Include="..\TestFixtures\DeepStructsFixture\DeepStructsFixture.csproj" />
+    <ProjectReference Include="..\TestFixtures\DeepFieldTypeFixture\DeepFieldTypeFixture.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <Reference Include="System.Xml.Linq" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+</Project>

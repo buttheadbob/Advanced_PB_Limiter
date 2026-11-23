@@ -55,8 +55,8 @@ On Magnetar, `!PBLimiter help` is generated for you and `!PBLimiter Timings` log
 ### Torch and Magnetar
 The plugin runs on both, and both builds share the same code in `Shared`.
 - `TorchPlugin` The Torch plugin, configured on its tab in Torch, with the live view on its Reports tab.
-- `ServerPlugin` The Magnetar plugin, configured in Quasar under Server plugins. Its options and commands match Torch. It builds for .NET Framework 4.8 and .NET 10.
-- `QuasarPlugin` The optional Quasar plugin, for the servers Quasar manages. Its companion talks to the Magnetar plugin.
+- `ServerPlugin` The Magnetar plugin, configured in Quasar under Server plugins. Its options and commands match Torch. It builds for .NET Framework 4.8 and .NET 10, and needs Magnetar 2.4.2.1 or later, the first with PluginSdk's ManagedPluginConfiguration, which it reads to tell a node of a managed cluster.
+- `QuasarPlugin` The optional Quasar plugin, for the servers Quasar manages. It needs Quasar 1.7 or later: the pages are a browser assembly for the WebAssembly dashboard, and a worker adapter answers its authorized SDK calls. Its companion talks to the Magnetar plugin.
   - **Live view:** what the Reports tab shows, with Turn off for blocks and players.
   - **Profiles:** set up one server on its Plugins page, save it as a named profile, and apply it to your other servers. Applying replaces every limiter setting and the privileged players. A server that is offline or still loading gets the profile when it is ready, and queued profiles survive a Quasar restart. A profile is applied by hand: the server isn't linked to it afterwards, so a later change to the profile reaches a server only when it is applied again. Needs the `CanEditConfigs` right.
   - **Generate report:** one text file for the servers you choose, with totals across all of them and the detail of each.
@@ -64,12 +64,13 @@ The plugin runs on both, and both builds share the same code in `Shared`.
 The Torch and Magnetar plugins keep separate config files, so settings do not carry over from one to the other.
 
 ### Building
-Run `Setup (run before opening solution).bat` once after cloning, then `build.bat`.
-- `build.bat` Builds all of them for release. Add `torch`, `magnetar` or `quasar` to build one, for example `build.bat magnetar`.
+Run `Setup.ps1` once after cloning, then `build.ps1`, from PowerShell. Windows blocks scripts by default; run them as `powershell -ExecutionPolicy Bypass -File .\build.ps1`, or allow local scripts once with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`. On Linux or macOS, build Magnetar and the Quasar plugin with PowerShell 7, for example `pwsh ./build.ps1 magnetar`; Torch builds on Windows only. `Setup.ps1` makes Windows junctions for the Torch build, so there copy `Directory.Build.props.template` to `Directory.Build.props` instead, and set its paths if they are not found.
+- `build.ps1` Builds all of them for release. Add `torch`, `magnetar` or `quasar` to build one, for example `.\build.ps1 magnetar`.
+- `dotnet test Tests` Runs the tests of the shared code on .NET Framework 4.8 and .NET 10.
 
-The Torch build needs Visual Studio and creates `Build\Advanced PB Limiter.zip`. The Magnetar build needs the .NET SDK and a Magnetar install, or the path to `PluginSdk.dll` set in `Directory.Build.props`. The Quasar plugin needs a checkout of Quasar in `..\quasar`.
+The Torch build needs Visual Studio and creates `Build\Advanced PB Limiter.zip`. The Magnetar build needs the .NET SDK and a Magnetar install, or the path to `PluginSdk.dll` set in `Directory.Build.props`. The Quasar plugin needs Quasar 1.7: a checkout in `..\quasar`, or `QuasarPluginAbstractionsAssembly` in `Directory.Build.props` (or `build.ps1 -QuasarAbstractions`) pointing at its `Quasar.Plugin.Abstractions.dll`.
 
-Each `build.bat` run raises the last part of the version in `Versioning\AssemblyVersion.cs` and copies it into `TorchPlugin\manifest.xml` and `quasar-plugin.json`. `AdvancedPBLimiter.xml` is the MagnetarHub manifest and `AdvancedPBLimiter.Quasar.xml` the QuasarHub one: set their `Commit` when publishing.
+Each `build.ps1` run raises the last part of the version in `Versioning\AssemblyVersion.cs` and copies it into `TorchPlugin\manifest.xml` and `quasar-plugin.json`. `AdvancedPBLimiter.xml` is the MagnetarHub manifest and `AdvancedPBLimiter.Quasar.xml` the QuasarHub one: set their `Commit` when publishing.
 
 ### License
 Advanced PB Limiter is licensed under the [GNU Affero General Public License](LICENSE), version 3 or (at your option) any later version, from version 1.3.1. Earlier versions were released under the MIT License.

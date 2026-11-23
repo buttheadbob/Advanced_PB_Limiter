@@ -1,0 +1,213 @@
+@page "/advanced-pb-limiter/generate-report"
+@attribute [Authorize(Policy = "CanView")]
+@implements IDisposable
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@inject ILogger<GenerateReportPage> Log
+@using System.Globalization
+
+<PageTitle>PB Limiter report</PageTitle>
+
+<PageTabs Active="PageTabs.Tab.Report" Description="Build one text report covering the servers you choose, with totals across all of them and the detail of each." />
+
+@if (_error != null)
+{
+    <div class="quasar-notice quasar-notice-error" role="alert">@_error</div>
+}
+
+<section class="quasar-panel pbl-section">
+    <h2>Generate a report</h2>
+    @{
+        List<ServerInfo> knownServers = _servers; // Read once per render.
+    }
+    @if (knownServers.Count == 0)
+    {
+        <p>No servers yet. A server is listed here once it has connected to Quasar.</p>
+    }
+    else
+    {
+        <ServerPicker Servers="knownServers" Selected="Picked.Ids" OnlineOnly="true" Changed="ServersPicked" />
+        <div class="pbl-buttons">
+            <button type="button" class="quasar-button quasar-button-primary" disabled="@(_busy || !SelectedConnected.Any())" @onclick="GenerateAsync">
+                @(_busy ? "Generating..." : "Generate report")
+            </button>
+        </div>
+    }
+</section>
+
+@if (_results != null)
+{
+    <section class="quasar-panel pbl-section">
+        <h2>Report</h2>
+        <ul class="pbl-results">
+            @foreach (var result in _results)
+            {
+                <li>
+                    @result.ServerName:
+                    @if (result.Snapshot != null)
+                    {
+                        <span>@InvariantText.Count(result.Snapshot.Players.Count, "player", "players"), @InvariantText.Count(result.Snapshot.Players.Sum(p => p.BlockCount), "block", "blocks"), @InvariantText.Count(result.Snapshot.Players.Sum(p => p.Offences), "offence", "offences")</span>
+                    }
+                    else
+                    {
+                        <span class="pbl-warning">not included: @result.Problem</span>
+                    }
+                </li>
+            }
+        </ul>
+        @if (_reportText != null)
+        {
+            <button type="button" class="quasar-button quasar-button-primary" @onclick="DownloadAsync">Download report</button>
+            <p class="pbl-hint">Saved by your browser. Nothing is kept on the server.</p>
+        }
+        else
+        {
+            <p>None of the selected servers answered, so there is nothing to download.</p>
+        }
+    </section>
+}
+
+@code {
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(20);
+
+    private readonly PageClosing Closing = new();
+    private List<ServerInfo> _servers = new();
+
+    // Picked: the servers to report on.
+    private List<ServerReport>? _results;
+    private string? _reportText;
+    private string _fileName = "";
+    private string? _error;
+    private bool _busy;
+    // Counts the admin's changes to the ticks, so a report generated for ticks changed while it was on its way is dropped.
+    private int _picks;
+
+    private PickedServers Picked { get; } = new();
+    private IEnumerable<ServerInfo> SelectedConnected => _servers.Where(s => s.Connected && Picked.Ids.Contains(s.PickKey));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadServersAsync(Closing.Token);
+        foreach (ServerInfo server in _servers.Where(s => s.Connected))
+            Picked.Ids.Add(server.PickKey);
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+            _ = PageShared.RefreshEveryAsync(TimeSpan.FromSeconds(5), Closing.Token, () => LoadServersAsync(Closing.Token));
+    }
+
+    private async Task LoadServersAsync(CancellationToken token)
+    {
+        try
+        {
+            ServerListResponse response = await SdkClient.RequestAsync<ServerListResponse>(JS, UiOperations.Servers, new EmptyPayload(), token);
+            _servers = response.Servers;
+            Picked.Keep(_servers);
+            _error = null;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception e)
+        {
+            if (PageShared.ReportReadFailures.IsNew("report-servers", e.Message))
+                Log.LogWarning(e, "Could not read the PB Limiter server list");
+            _error = "Could not read the server list: " + e.Message;
+        }
+
+        await PageShared.RenderIfOpenAsync(Closing, () => InvokeAsync(StateHasChanged));
+    }
+
+    private void ServersPicked()
+    {
+        _picks++;
+        ReportOutdated();
+    }
+
+    private void ReportOutdated()
+    {
+        _results = null;
+        _reportText = null;
+    }
+
+    private async Task GenerateAsync()
+    {
+        _busy = true;
+        ReportOutdated();
+        int picks = _picks;
+
+        // Taken before waiting: the connected list can change meanwhile, and each server must be listed exactly once.
+        List<ServerInfo> asked = SelectedConnected.ToList();
+        HashSet<string> askedIds = asked.Select(s => s.ServerId).ToHashSet(StringComparer.Ordinal);
+        List<ServerInfo> notAsked = _servers.Where(s => Picked.Ids.Contains(s.PickKey) && !askedIds.Contains(s.ServerId)).ToList();
+
+        // Each server answers on its own game thread, so a slow one need not hold up the others.
+        ServerReport[] reports = await Task.WhenAll(asked.Select(ReadServerAsync));
+        if (Closing.IsClosed) return;
+        if (picks != _picks)
+        {
+            // The ticks changed meanwhile: this report is for servers no longer picked.
+            _busy = false;
+            return;
+        }
+
+        IEnumerable<ServerReport> offline = notAsked.Select(s => new ServerReport(s.DisplayName, null, "the server is offline"));
+
+        _results = reports.Concat(offline).OrderBy(r => r.ServerName, StringComparer.OrdinalIgnoreCase).ToList();
+        if (_results.Any(r => r.Snapshot != null))
+        {
+            DateTime now = DateTime.UtcNow;
+            _reportText = CombinedReport.Build(_results, now);
+            _fileName = string.Create(CultureInfo.InvariantCulture, $"pb-limiter-report-{now:yyyyMMdd-HHmmss}.txt");
+        }
+        _busy = false;
+    }
+
+    private async Task DownloadAsync()
+    {
+        if (_reportText is null) return;
+
+        try
+        {
+            string moduleUrl = new Uri(new Uri(Navigation.BaseUri), "_quasar/plugins/advancedpblimiter.quasar/download.js").ToString();
+            await using IJSObjectReference module = await JS.InvokeAsync<IJSObjectReference>("import", moduleUrl);
+            await module.InvokeVoidAsync("downloadText", _fileName, _reportText);
+        }
+        catch (Exception e)
+        {
+            _error = "Could not save the report: " + e.Message;
+        }
+    }
+
+    private async Task<ServerReport> ReadServerAsync(ServerInfo server)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Closing.Token);
+        timeout.CancelAfter(RequestTimeout);
+        try
+        {
+            ReportSnapshot snapshot = await SdkClient.RequestAsync<ReportSnapshot>(JS, UiOperations.Snapshot,
+                new ReadSnapshotRequest { ServerId = server.ServerId }, timeout.Token);
+            if (!snapshot.Installed) return new ServerReport(server.DisplayName, null, "Advanced PB Limiter is not loaded");
+            if (!snapshot.Online) return new ServerReport(server.DisplayName, null, "the world is still loading");
+            return new ServerReport(server.DisplayName, snapshot, null);
+        }
+        catch (OperationCanceledException)
+        {
+            return new ServerReport(server.DisplayName, null, "it did not answer in time");
+        }
+        catch (Exception e)
+        {
+            if (PageShared.ReportReadFailures.IsNew(server.ServerId, e.Message))
+                Log.LogWarning(e, "Could not read the PB Limiter report of {Server}", server.DisplayName);
+            return new ServerReport(server.DisplayName, null, CompanionErrors.InSentence(e.Message) + CompanionErrors.RestartHint(e));
+        }
+    }
+
+    public void Dispose()
+    {
+        Closing.Dispose();
+    }
+}
