@@ -39,9 +39,46 @@ public static class QuasarBridge
         }, Json);
     }
 
+    /// <summary>
+    /// For companions before 1.3.3, whose Quasar plugin treats any answer as applied: a refusal is thrown, so it stays
+    /// queued there with the reason. Those companions write nothing to the server log, so a failure is logged here.
+    /// </summary>
     public static string ApplyProfile(string settingsJson)
     {
         Plugin plugin = LoadedPlugin();
+        try
+        {
+            return Apply(plugin, settingsJson);
+        }
+        catch (Exception e)
+        {
+            plugin.LogForOldCompanion(e);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// As <see cref="ApplyProfile"/>, but a server that takes no profiles, or a profile no try can apply, is answered with
+    /// the reason in Refused, so Quasar stops sending it. A save that fails still throws, as a later try may work. Called
+    /// by companions from 1.3.3 on, which log a failure themselves.
+    /// </summary>
+    public static string ApplyProfileOrRefuse(string settingsJson)
+    {
+        Plugin plugin = LoadedPlugin();
+        if (Plugin.ProfileRefusal is { } refusal)
+            return JsonConvert.SerializeObject(new ProfileData { Refused = refusal }, Json);
+        try
+        {
+            return Apply(plugin, settingsJson);
+        }
+        catch (ProfileRejectedException e)
+        {
+            return JsonConvert.SerializeObject(new ProfileData { Refused = e.Message }, Json);
+        }
+    }
+
+    private static string Apply(Plugin plugin, string settingsJson)
+    {
         int settings = plugin.ApplyProfile(settingsJson);
         return JsonConvert.SerializeObject(new ProfileData { Settings = settings, PrivilegedPlayers = plugin.PrivilegedPlayerCount }, Json);
     }

@@ -1,8 +1,10 @@
+#nullable enable
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using Advanced_PB_Limiter.Manager;
 using Advanced_PB_Limiter.Utils;
@@ -24,6 +26,23 @@ namespace Advanced_PB_Limiter.Patches
     /// </summary>
     public static class PbProfiler
     {
+        /// <summary>
+        /// Taken when this plugin's Compile prefix runs and handed to its postfix. A prefix of another plugin that skips
+        /// the original can run before this one, in which case this prefix never runs and the postfix sees
+        /// <see cref="Started"/> false: no compile of ours to finish.
+        /// </summary>
+        public readonly struct RecompileStamp
+        {
+            public RecompileStamp(bool keepDisabled)
+            {
+                Started = true;
+                KeepDisabled = keepDisabled;
+            }
+
+            public bool Started { get; }
+            public bool KeepDisabled { get; }
+        }
+
         private const int UPDATE1_RUNS_PER_UPDATE10 = 10;
         private const int DISABLED_BLOCK_SHUTDOWN_DELAY_SECONDS = 40; // Gives the freshly started server time to stabilize.
         private const int IGNORE_RUNS_AFTER_SAVE_SECONDS = 10;
@@ -54,18 +73,22 @@ namespace Advanced_PB_Limiter.Patches
         [ThreadStatic]
         private static bool _runSkipped;
 
-        // A collection pauses every thread, so it would show up as run time the script did not use.
-        // Collecting a generation also collects the ones below it, so generation 0 sees all of them.
-        private static int _gcCount;
 
         public static void Init()
         {
             MySession.OnSaved += OnWorldSaved;
 
-            if (Config.AllowSelfTurnOnExploit || Config.RequireRecompileOnRestart) return;
+            if (Config.AllowSelfTurnOnExploit || Config.RequireRecompileOnRestart)
+            {
+                // No startup shutdown this session: the blocks collected for it are let go, and none are collected later
+                // if these settings are turned off meanwhile.
+                _collectDisabledBlocks = false;
+                DisabledProgrammableBlocks.Clear();
+                return;
+            }
 
             if (Config.DebugReporting)
-                Log.Warn($"Shutting down all pb's that were off during startup in {DISABLED_BLOCK_SHUTDOWN_DELAY_SECONDS} seconds...");
+                Log.Warn($"Shutting down all programmable blocks that were off during startup in {DISABLED_BLOCK_SHUTDOWN_DELAY_SECONDS} seconds...");
 
             _disabledBlockShutdownTick = Stopwatch.GetTimestamp() + DISABLED_BLOCK_SHUTDOWN_DELAY_SECONDS * Stopwatch.Frequency;
             _disabledBlockShutdownPending = true;
@@ -106,23 +129,25 @@ namespace Advanced_PB_Limiter.Patches
 
         private static void ShutdownPb()
         {
-            if (!Config.Enabled)
+            if (!LimiterCore.Active)
             {
                 DisabledProgrammableBlocks.Clear();
                 return;
             }
 
             if (Config.DebugReporting)
-                Log.Info("Shutting down all pb's that should not be running....");
+                Log.Info("Shutting down all programmable blocks that should not be running.");
 
-            foreach (KeyValuePair<long, MyProgrammableBlock> kvp in DisabledProgrammableBlocks)
+            MyProgrammableBlock[] blocks = DisabledProgrammableBlocks.Values.ToArray();
+            for (int index = 0; index < blocks.Length; index++)
             {
-                if (kvp.Value.Closed || kvp.Value.MarkedForClose) continue;
+                MyProgrammableBlock block = blocks[index];
+                if (block.Closed || block.MarkedForClose) continue;
 
                 if (Config.DebugReporting)
-                    Log.Warn("Shutting down: " + kvp.Value.CustomName);
+                    Log.Warn("Shutting down: " + block.ReadName());
 
-                kvp.Value.Enabled = false;
+                block.Enabled = false;
             }
 
             DisabledProgrammableBlocks.Clear();
@@ -131,10 +156,9 @@ namespace Advanced_PB_Limiter.Patches
         /// <summary>Before MyProgrammableBlock.ExecuteCode. Returns false to skip the run.</summary>
         public static bool BeforeExecuteCode(MyProgrammableBlock? __instance, ref UpdateType updateSource, ref string response)
         {
-            if (!Config.Enabled) return true;
+            if (!LimiterCore.Active) return true;
             if (__instance == null) return true;
             response = string.Empty;
-            _gcCount = GC.CollectionCount(0);
 
             bool defer = Config.DeferRunAlways || (Config.DeferRunOnSimspeedRate && Sync.ServerSimulationRatio < Config.DeferRunBelowSimRate);
             bool disableUpdate1 = Config.DisableUpdate1;
@@ -143,7 +167,7 @@ namespace Advanced_PB_Limiter.Patches
             // Only timed runs are deferred. A button, timer, antenna or mod asked for this run, and so did the limiter
             // when it sends GracefulShutDown, and none of those would ever be retried.
             const UpdateType timedRuns = UpdateType.Update1 | UpdateType.Update10 | UpdateType.Update100;
-            if ((updateSource & timedRuns) == 0) return true;
+            if (!HasAny(updateSource, timedRuns)) return true;
 
             long time = Config.ShowTimingsBurp ? Stopwatch.GetTimestamp() : 0;
 
@@ -155,7 +179,7 @@ namespace Advanced_PB_Limiter.Patches
             }
 
             bool allow = false;
-            if ((updateSource & UpdateType.Update1) != 0)
+            if (HasAny(updateSource, UpdateType.Update1))
             {
                 if (disableUpdate1)
                 {
@@ -172,17 +196,21 @@ namespace Advanced_PB_Limiter.Patches
                 }
             }
 
-            if ((updateSource & UpdateType.Update10) != 0)
+            if (HasAny(updateSource, UpdateType.Update10))
                 allow |= AllowDeferredRun(defer, ref deferState.Update10);
 
-            if ((updateSource & UpdateType.Update100) != 0)
+            if (HasAny(updateSource, UpdateType.Update100))
                 allow |= AllowDeferredRun(defer, ref deferState.Update100);
 
             if (Config.ShowTimingsBurp)
-                Log.Info($"Defer Manager took {time.TicksTillNow_TimeSpan().TotalMilliseconds:N5}ms for {__instance.CustomName}.");
+                Log.Info($"Defer Manager took {time.TicksTillNow_TimeSpan().TotalMilliseconds.ToString("N5", CultureInfo.InvariantCulture)}ms for {__instance.ReadName()}.");
 
             return allow;
         }
+
+        // Runs for every script run, so the bits are compared as numbers: Enum.HasFlag would box both values on .NET
+        // Framework, which Legacy and Torch run on.
+        private static bool HasAny(UpdateType value, UpdateType flags) => ((int)value & (int)flags) != 0;
 
         private static bool AllowDeferredRun(bool defer, ref int count)
         {
@@ -193,17 +221,22 @@ namespace Advanced_PB_Limiter.Patches
         }
 
         /// <summary>Before MyProgrammableBlock.RunSandboxedProgramActionCore. Returns false to skip the run.</summary>
-        public static bool BeforeRun(MyProgrammableBlock? __instance)
+        /// <param name="__instance">The block about to run.</param>
+        /// <param name="stamp">Handed to AfterRun, see RunClock. Taken last, so this method's own work is not in it.</param>
+        public static bool BeforeRun(MyProgrammableBlock? __instance, out RunStamp stamp)
         {
+            stamp = default;
             if (__instance == null) return true; // Something funky is going on so we won't track it this pass but don't block it either.
-            if (__instance.Enabled) return true;
-            if (!Config.Enabled) return true;
-            if (Config.AllowSelfTurnOnExploit) return true;
+            if (!LimiterCore.Active || __instance.Enabled || Config.AllowSelfTurnOnExploit)
+            {
+                stamp = Stamp(__instance);
+                return true;
+            }
 
             if (Config.RequireRecompileOnRestart)
             {
                 if (Config.DebugReporting)
-                    Log.Warn("Skipping recompile for pb: " + __instance.CustomName);
+                    Log.Warn("Skipping recompile for pb: " + __instance.ReadName());
 
                 _runSkipped = true;
                 return false;
@@ -212,15 +245,32 @@ namespace Advanced_PB_Limiter.Patches
             if (_collectDisabledBlocks && DisabledProgrammableBlocks.TryAdd(__instance.EntityId, __instance))
             {
                 if (Config.DebugReporting)
-                    Log.Warn($"Programmable Block {__instance.CustomName} was not enabled during restart and will be disabled again shortly.");
+                    Log.Warn($"Programmable Block {__instance.ReadName()} was not enabled during restart and will be disabled again shortly.");
             }
 
+            stamp = Stamp(__instance);
             return true;
         }
 
-        /// <summary>After MyProgrammableBlock.RunSandboxedProgramActionCore, including when BeforeRun skipped it.</summary>
-        public static void AfterRun(ref string response, MyProgrammableBlock? __instance, ref MyProgrammableBlock.ScriptTerminationReason __result)
+        private static RunStamp Stamp(MyProgrammableBlock block)
         {
+            IMyGridProgramRuntimeInfo runtime = PbAccess.GetRuntime(block);
+            return RunClock.Start(PbAccess.GetProgram(block), runtime.LastRunTimeMs, runtime.TimeSinceLastRun.Ticks == 0);
+        }
+
+        /// <summary>After MyProgrammableBlock.RunSandboxedProgramActionCore, including when BeforeRun skipped it.</summary>
+        public static void AfterRun(ref string response, MyProgrammableBlock? __instance, ref MyProgrammableBlock.ScriptTerminationReason __result, in RunStamp stamp)
+        {
+            // First, for every stamped run, so a run nested in another through TryRun is taken off the outer one. 0 when this
+            // was not a run of Main(): the constructor, Save() and the creation of the script's instance are not measured.
+            bool collected = false;
+            double runtime = 0;
+            if (__instance is not null)
+            {
+                IMyGridProgramRuntimeInfo info = PbAccess.GetRuntime(__instance);
+                runtime = RunClock.Finish(in stamp, info.LastRunTimeMs, PbAccess.GetProgram(__instance), info.TimeSinceLastRun.Ticks == 0, out collected);
+            }
+
             if (_runSkipped)
             {
                 _runSkipped = false;
@@ -229,7 +279,11 @@ namespace Advanced_PB_Limiter.Patches
                 return;
             }
 
-            if (!Config.Enabled) return;
+            // A prefix of another plugin skipped the call before ours could stamp it, so Finish has only the block's last
+            // run figure to return. No run happened, so none may be recorded or punished.
+            if (!stamp.Started) return;
+
+            if (!LimiterCore.Active) return;
             if (__instance == null) return; // Something funky is going on, so we won't track it this pass but don't block it either.
 
             // the pb will still run up to the point of executing the script even when disabled by script termination fault, this will stop some of that.
@@ -240,16 +294,7 @@ namespace Advanced_PB_Limiter.Patches
                 return;
             }
 
-            if (_gcCount != GC.CollectionCount(0))
-            {
-                if (Config.DebugReporting) Log.Warn("GC Occured.  Not reporting runtime.");
-                return;
-            }
-
             if (_serverSaved) return;
-
-            // 0 when this was the script's constructor or Save() rather than a run of Main().
-            double runtime = PbAccess.GetRuntime(__instance).LastRunTimeMs;
             if (runtime <= 0) return;
 
             long debugStamp = Config.ShowTimingsBurp ? Stopwatch.GetTimestamp() : 0;
@@ -262,39 +307,47 @@ namespace Advanced_PB_Limiter.Patches
                     runtime *= simulationRatio;
             }
 
-            TrackingManager.UpdateTrackingData(__instance, runtime);
+            // Nothing processes runs while no world is loaded.
+            if (!LimiterCore.GameOnline) return;
+            TrackingManager.UpdateTrackingData(__instance, runtime, collected);
 
             if (Config.ShowTimingsBurp)
-                Log.Info($"[{LimiterCore.GetThreadName()} THREAD] Tracked PB[{__instance.CustomName}] Runtime in: {debugStamp.TicksTillNow_TimeSpan().TotalMilliseconds.ToString("N6", CultureInfo.InvariantCulture)}ms");
+                Log.Info($"[{LimiterCore.GetThreadName()} THREAD] Tracked PB[{__instance.ReadName()}] Runtime in: {debugStamp.TicksTillNow_TimeSpan().TotalMilliseconds.ToString("N6", CultureInfo.InvariantCulture)}ms");
         }
 
         // On its own so the lambda's capture does not allocate on every run. Rarely reached, the script is already dead.
         private static void TurnOffFaultedBlock(MyProgrammableBlock block, MyProgrammableBlock.ScriptTerminationReason reason)
         {
-            MySandboxGame.Static.Invoke(() => { block.Enabled = false; }, "Advanced PB Limiter");
+            MySandboxGame.Static.Invoke(() =>
+            {
+                block.Enabled = false;
+                TrackingManager.MarkStopped(block);
+            }, "Advanced PB Limiter");
 
             if (Config.DebugReporting)
-                Log.Info($"{block.CustomName} Script Termination Reason:{reason}");
+                Log.Info($"{block.ReadName()} Script Termination Reason: {reason}");
         }
 
         /// <summary>Before MyProgrammableBlock.Compile. Returns the value to hand to AfterRecompile.</summary>
-        public static bool BeforeRecompile(MyProgrammableBlock? __instance)
+        public static RecompileStamp BeforeRecompile(MyProgrammableBlock? __instance)
         {
             if (__instance is null)
             {
                 Log.Warn("PB is null!");
-                return false;
+                return default;
             }
 
+            if (!LimiterCore.Active) return new RecompileStamp(false);
             TrackingManager.PBRecompiled(__instance);
-            return !__instance.Enabled && !Config.AllowSelfTurnOnExploit;
+            return new RecompileStamp(!__instance.Enabled && !Config.AllowSelfTurnOnExploit);
         }
 
-        /// <summary>After MyProgrammableBlock.Compile.</summary>
-        public static void AfterRecompile(MyProgrammableBlock? __instance, bool keepDisabled)
+        /// <summary>After MyProgrammableBlock.Compile, only when this plugin's prefix stamped it.</summary>
+        public static void AfterRecompile(MyProgrammableBlock? __instance, RecompileStamp stamp)
         {
-            if (__instance is null) return;
-            if (keepDisabled) __instance.Enabled = false;
+            if (__instance is null || !stamp.Started) return;
+            if (stamp.KeepDisabled) __instance.Enabled = false;
+            TrackingManager.PBCompiled(__instance);
         }
 
         /// <summary>
@@ -305,12 +358,12 @@ namespace Advanced_PB_Limiter.Patches
         {
             if (__instance is null)
             {
-                Log.Warn("Null programmable block instance using the Save() method.. interesting.  If this happens a lot, let SentorX know please.");
+                Log.Warn("Null programmable block instance using the Save() method. If this happens a lot, let SentorX know please.");
                 return true;
             }
 
             if (__instance.Enabled) return true;
-            if (!Config.Enabled) return true;
+            if (!LimiterCore.Active) return true;
 
             bool isNpc = MySession.Static.Players.IdentityIsNpc(__instance.OwnerId);
             if (!isNpc && !Config.AllowSelfTurnOnExploit)
@@ -319,7 +372,7 @@ namespace Advanced_PB_Limiter.Patches
                 {
                     MyIdentity? player = MySession.Static.Players.TryGetIdentity(__instance.OwnerId);
                     if (player is not null)
-                        Log.Warn($"{player.DisplayName} ({__instance.OwnerId}) tried to save a programmable block [{__instance.CustomName}] while it was turned off.  This is has been disabled.");
+                        Log.Warn($"{player.DisplayName.SafeName()} ({__instance.OwnerId.ToString(CultureInfo.InvariantCulture)}) tried to save a programmable block [{__instance.ReadName()}] while it was turned off.  This has been disabled.");
                 }
                 PbAccess.CopyStorage(__instance);
                 return false;

@@ -1,15 +1,18 @@
-﻿using System;
+﻿#nullable enable
+using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Threading;
 using ExtensionMethods;
+using Advanced_PB_Limiter.Manager;
 using Sandbox.Game.Entities.Blocks;
 
 namespace Advanced_PB_Limiter.Utils
 {
     /// <summary>
     /// What is known about one programmable block. Updated on the game thread, once for every run of the script,
-    /// so that path must not allocate. Reports read it from other threads: every value they read is a single
-    /// double, long or int, so the worst they can see is a value one run out of date.
+    /// so that path must not allocate. Reports gather on the game thread too; the sample array is read under its
+    /// lock, so a recompile that clears it cannot be seen half done.
     /// </summary>
     public sealed class TrackedPBBlock
     {
@@ -26,7 +29,11 @@ namespace Advanced_PB_Limiter.Utils
         private double _upperFence;
 
         public MyProgrammableBlock ProgrammableBlock { get; }
+        /// <summary>The grid's name when tracking started, safe to write out (SafeNames.SafeName).</summary>
         public string GridName { get; }
+
+        /// <summary>The grid's name now, or the one it had when tracking started if it has none.</summary>
+        public string CurrentGridName => ProgrammableBlock.CubeGrid is null ? GridName : ProgrammableBlock.ReadGridName();
         public ConcurrentQueue<long> Offences { get; } = new();
         public int Recompiles { get; private set; }
         public double LastRunTimeMS { get; private set; }
@@ -34,30 +41,67 @@ namespace Advanced_PB_Limiter.Utils
         public long memoryUsage { get; private set; }
         public long LastOffenceTick { get; set; }
         public long LastUpdateTick { get; set; }
-        private long PBStartTime { get; set; }
 
-        /// <summary>The script was told to shut down and the punishment is waiting for the end of its grace period.</summary>
-        public bool ShutdownRequested { get; set; }
+        /// <summary>The batch of queued runs in which the block was last instant-killed. Game thread.</summary>
+        public BatchMark InstantKill { get; } = new();
+        private long PBStartTime { get; set; }
 
         public TrackedPBBlock(string gridName, MyProgrammableBlock pbBlock)
         {
-            GridName = gridName;
+            GridName = gridName.SafeName();
             ProgrammableBlock = pbBlock;
             PBStartTime = Stopwatch.GetTimestamp();
             LastUpdateTick = PBStartTime;
         }
 
-        public void updateMemoryUsage(long bytes)
+        // Counts the resets of memoryUsage, so a memory pass that read the script before a reset does not write its old
+        // size back after it. Changed under _memoryLock.
+        private int _memoryResets;
+        private readonly object _memoryLock = new();
+
+        /// <summary>To hand to <see cref="updateMemoryUsage"/> by a memory pass, taken before it reads the script.</summary>
+        public int MemoryResets => Volatile.Read(ref _memoryResets);
+
+        private int _memoryScanFailed;
+
+        /// <summary>Notes that the memory check could not measure this block; true the first time, so it is logged once.</summary>
+        public bool MemoryScanFailed() => Interlocked.Exchange(ref _memoryScanFailed, 1) == 0;
+
+        /// <summary>The memory check could not measure the script, see GetSize.Of: memoryUsage is then a stand-in, not a size.</summary>
+        public bool MemoryUnmeasured { get; private set; }
+
+        /// <summary>Records a size measured since <paramref name="resets"/> was read, unless the figure was reset meanwhile.</summary>
+        public void updateMemoryUsage(long bytes, int resets, bool unmeasured)
         {
-            memoryUsage = bytes;
+            lock (_memoryLock)
+            {
+                if (_memoryResets != resets) return;
+                memoryUsage = bytes;
+                MemoryUnmeasured = unmeasured;
+            }
         }
 
         public void ResetMemoryUsage()
         {
-            memoryUsage = 0;
+            lock (_memoryLock)
+            {
+                _memoryResets++;
+                memoryUsage = 0;
+                MemoryUnmeasured = false;
+            }
         }
 
+        // Held while the samples change: a recompile clears them from whichever thread compiles the script, while runs add
+        // to them on the game thread. Uncontended in practice, a recompile is rare.
+        private readonly object _samplesLock = new();
+
         public void AddRuntimeData(double lastRunTimeMS)
+        {
+            lock (_samplesLock)
+                AddSample(lastRunTimeMS);
+        }
+
+        private void AddSample(double lastRunTimeMS)
         {
             if (lastRunTimeMS > PeekRunTimeMS)
                 PeekRunTimeMS = lastRunTimeMS;
@@ -108,8 +152,11 @@ namespace Advanced_PB_Limiter.Utils
 
         public bool IsOutlier(double value)
         {
-            if (_sampleCount < MAX_SAMPLES) return false;
-            return value > _upperFence;
+            lock (_samplesLock)
+            {
+                if (_sampleCount < MAX_SAMPLES) return false;
+                return value > _upperFence;
+            }
         }
 
         /// <summary>A copy of the run times, oldest first.</summary>
@@ -117,16 +164,26 @@ namespace Advanced_PB_Limiter.Utils
         {
             get
             {
-                int count = _sampleCount;
-                double[] runTimes = new double[count];
-                int first = count == MAX_SAMPLES ? _nextSample : 0;
-                for (int index = 0; index < count; index++)
-                    runTimes[index] = _samples[(first + index) % MAX_SAMPLES];
-                return runTimes;
+                lock (_samplesLock)
+                {
+                    int count = _sampleCount;
+                    double[] runTimes = new double[count];
+                    int first = count == MAX_SAMPLES ? _nextSample : 0;
+                    for (int index = 0; index < count; index++)
+                        runTimes[index] = _samples[(first + index) % MAX_SAMPLES];
+                    return runTimes;
+                }
             }
         }
 
-        public double RunTimeMSAvg => _sampleCount < MAX_SAMPLES ? 0 : _filteredAverage;
+        public double RunTimeMSAvg
+        {
+            get
+            {
+                lock (_samplesLock)
+                    return _sampleCount < MAX_SAMPLES ? 0 : _filteredAverage;
+            }
+        }
 
         public bool IsUnderGracePeriod(PrivilegedPlayer? privilegedPlayer)
         {
@@ -137,13 +194,51 @@ namespace Advanced_PB_Limiter.Utils
             return Stopwatch.GetTimestamp() - PBStartTime < allowanceSeconds * Stopwatch.Frequency;
         }
 
-        /// <summary>False once the block cannot run: turned off, damaged, unpowered or gone. It stays tracked for a while after that.</summary>
+        // The game tick of its last run, and of the last time the limiter or an admin turned it off; -1 before either.
+        private long _lastRunGameTick = -1;
+        private long _stoppedGameTick = -1;
+
+        /// <summary>Notes a run at the current game tick. Game thread.</summary>
+        public void MarkRun() => Interlocked.Exchange(ref _lastRunGameTick, TrackingManager.CurrentTick);
+
+        /// <summary>Notes that the limiter or an admin turned it off now. Game thread.</summary>
+        public void MarkStopped() => Interlocked.Exchange(ref _stoppedGameTick, TrackingManager.CurrentTick);
+
+        /// <summary>
+        /// It ran since the last combined check, counted in game ticks as the check is, and was not turned off by the limiter
+        /// or an admin after that run. Any thread.
+        /// </summary>
+        public bool RanSinceCombinedCheck
+        {
+            get
+            {
+                long lastRun = Interlocked.Read(ref _lastRunGameTick);
+                return lastRun >= 0
+                       && TrackingManager.CurrentTick - lastRun <= TrackingManager.COMBINED_CHECK_TICKS
+                       && Interlocked.Read(ref _stoppedGameTick) < lastRun;
+            }
+        }
+
+        /// <summary>False once the block cannot run: turned off, damaged, unpowered or gone.</summary>
         public bool IsRunning => !ProgrammableBlock.Closed && !ProgrammableBlock.MarkedForClose && ProgrammableBlock.IsWorking;
 
         /// <summary>The last offence or punishment was too recent for another one.</summary>
         public bool IsInGraceAfterOffence => LastOffenceTick != 0 && LastOffenceTick.TicksTillNow_TimeSpan().TotalSeconds <= Config.GraceAfterOffence;
 
+        /// <summary>Counts a recompile, whether or not it clears the history. From whichever thread compiles the script.</summary>
+        public void CountRecompile()
+        {
+            lock (_samplesLock)
+                Recompiles++;
+        }
+
         public void ClearRunTimes()
+        {
+            lock (_samplesLock)
+                ClearSamples();
+        }
+
+        private void ClearSamples()
         {
             _sampleCount = 0;
             _nextSample = 0;
@@ -151,8 +246,10 @@ namespace Advanced_PB_Limiter.Utils
             _upperFence = 0;
             LastRunTimeMS = 0;
             PeekRunTimeMS = 0;
-            while (Offences.TryDequeue(out _)) { }
-            Recompiles++;
+            while (Offences.TryDequeue(out _))
+            {
+                // ConcurrentQueue has no Clear on .NET Framework, which Legacy and Torch run on.
+            }
             PBStartTime = Stopwatch.GetTimestamp();
             LastUpdateTick = PBStartTime;
         }

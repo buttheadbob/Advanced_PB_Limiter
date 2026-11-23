@@ -9,13 +9,17 @@ namespace Advanced_PB_Limiter.UI
 {
     public partial class BasicSettings
     {
-        private static Advanced_PB_LimiterConfig Config => Advanced_PB_Limiter.Instance!.Config!;
+        private static Advanced_PB_LimiterConfig Config => AdvancedPBLimiterPlugin.Instance!.Config!;
 
         public BasicSettings()
         {
             InitializeComponent();
             DataContext = Config;
+            FillPunishments();
+        }
 
+        private void FillPunishments()
+        {
             // The items are in the order of the enum, so the selected index is the punishment.
             foreach (string punishment in Enum.GetNames(typeof(Enums.Punishment)))
                 PunishmentComboBox.Items.Add(new ComboBoxItem { Content = punishment });
@@ -24,14 +28,9 @@ namespace Advanced_PB_Limiter.UI
             PunishmentLabel.Text = $"Punishment type: [Active:{Config.Punishment.ToString()}]";
         }
 
-        private void Save()
-        {
-            Advanced_PB_Limiter.Instance!.Save();
-        }
-
         private void SaveLocallyButton_OnClick(object sender, RoutedEventArgs e)
         {
-            Save();
+            Advanced_PB_LimiterControl.SaveConfig();
         }
 
         private void PunishmentComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -44,7 +43,9 @@ namespace Advanced_PB_Limiter.UI
 
         private void TimingBurp_OnClick(object sender, RoutedEventArgs e)
         {
-            LimiterCommands.ShowTimings();
+            string reply = LimiterCommands.ShowTimings();
+            if (LimiterCore.Retired)
+                System.Windows.MessageBox.Show(reply, "Advanced PB Limiter", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 }

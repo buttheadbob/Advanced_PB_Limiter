@@ -18,18 +18,22 @@ namespace Advanced_PB_Limiter.Utils.Reports
         public string MemoryUsed { get; }
         public MyProgrammableBlock? pbBlock { get; }
 
-        public CustomBlockReport(ulong steamId, string playerName, string gridName, string blockName, double lastRunTimeMs, double avgMs, double peekRunTimeMS, int offences, int recompiles, long memoryUsed, MyProgrammableBlock? progBlock)
+        /// <summary>Resting between rare runs, not run lately: its run times may be an hour old and are left out of the totals.</summary>
+        public bool Resting { get; }
+
+        public CustomBlockReport(ulong steamId, string playerName, string gridName, string blockName, double lastRunTimeMs, double avgMs, double peekRunTimeMS, int offences, int recompiles, long memoryUsed, bool memoryUnmeasured, MyProgrammableBlock? progBlock, bool resting)
         {
+            Resting = resting;
             SteamId = steamId;
             PlayerName = playerName;
             GridName = gridName;
             BlockName = blockName;
-            LastRunTimeMS = Math.Round(lastRunTimeMs, 6);
-            AvgMS = Math.Round(avgMs, 6);
+            LastRunTimeMS = Math.Round(lastRunTimeMs, 6, MidpointRounding.ToEven);
+            AvgMS = Math.Round(avgMs, 6, MidpointRounding.ToEven);
             PeekRunTimeMS = peekRunTimeMS;
             Offences = offences;
             Recompiles = recompiles;
-            MemoryUsed = HelperUtils.FormatBytesToKB(memoryUsed);
+            MemoryUsed = MemoryText.Block(memoryUsed, memoryUnmeasured);
             pbBlock = progBlock;
         }
     }
@@ -47,16 +51,20 @@ namespace Advanced_PB_Limiter.Utils.Reports
         public string MemoryUsed { get; }
         public TrackedPlayer? PlayerTracked { get; }
 
-        public CustomPlayerReport(ulong steamId, string playerName, double combinedLastRunTimeMs, double combinedAvgMs, int offences, int pbCount, int recompiles, long memoryUsed, TrackedPlayer? playerTracked)
+        /// <summary>The combined run times, unrounded, as every report counts them; the hottest player is ranked by these.</summary>
+        public CombinedRunTimes Combined { get; }
+
+        public CustomPlayerReport(ulong steamId, string playerName, CombinedRunTimes combined, int offences, int pbCount, int recompiles, long memoryUsed, bool memoryUnmeasured, TrackedPlayer? playerTracked)
         {
+            Combined = combined;
             SteamId = steamId;
             PlayerName = playerName;
-            CombinedLastRunTimeMS = Math.Round(combinedLastRunTimeMs,4);
-            CombinedAvgMS = Math.Round(combinedAvgMs, 4);
+            CombinedLastRunTimeMS = Math.Round(combined.LastRunTimeMS, 4, MidpointRounding.ToEven);
+            CombinedAvgMS = Math.Round(combined.RunTimeMSAvg, 4, MidpointRounding.ToEven);
             Offences = offences;
             PbCount = pbCount;
             Recompiles = recompiles;
-            MemoryUsed = HelperUtils.FormatBytesToKB(memoryUsed);
+            MemoryUsed = MemoryText.Total(memoryUsed, memoryUnmeasured);
             PlayerTracked = playerTracked;
         }
     }

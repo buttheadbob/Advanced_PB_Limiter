@@ -1,13 +1,18 @@
-﻿using System;
+﻿#nullable enable
+using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
+using System.Threading;
 using System.Threading.Tasks;
 using Advanced_PB_Limiter.Patches;
 using Advanced_PB_Limiter.Utils;
 using ExtensionMethods;
 using Sandbox;
 using Sandbox.Engine.Multiplayer;
+using Sandbox.Engine.Physics;
 using Sandbox.Game;
 using Sandbox.Game.Entities;
 using Sandbox.Game.Entities.Blocks;
@@ -32,6 +37,34 @@ namespace Advanced_PB_Limiter.Manager
         private static readonly LimiterLog Log = new("Punishment Manager");
         private static IPbLimiterConfig Config => LimiterCore.Config;
 
+        // The blocks waiting out a grace period, by entity id, each with its grace period. Kept by block rather than on its
+        // tracking entry: a block handed to someone else keeps its entry, but one whose entry was dropped meanwhile, resting
+        // under its new owner past the player keep time say, is tracked again with a fresh entry, and must not be punished
+        // again on top. Cleared when the world unloads, as its grace periods are dropped then and an entity id comes back
+        // with the world; a grace period removes only itself, so one from before a reload never removes a newer one. Added
+        // and taken by an instant kill on the game thread; removed there or, on failure, from any thread.
+        private static readonly ConcurrentDictionary<long, Grace> AwaitingGrace = new();
+
+        /// <summary>A punishment waiting out its grace period: who it is for and with what, as PerformPunish resolves it.</summary>
+        private sealed class Grace
+        {
+            public Grace(TrackedPlayer player, Punishment? punishment)
+            {
+                Player = player;
+                Punishment = punishment;
+            }
+
+            public TrackedPlayer Player { get; }
+            public Punishment? Punishment { get; }
+        }
+
+        /// <summary>Forgets the grace periods waiting: the world is unloading, and each is dropped when it ends.</summary>
+        public static void Clear() => AwaitingGrace.Clear();
+
+        /// <summary>A punishment is already on its way for this block, under this owner or the one before.</summary>
+        private static bool PunishmentPending(TrackedPBBlock trackedPbBlock) =>
+            AwaitingGrace.ContainsKey(trackedPbBlock.ProgrammableBlock.EntityId);
+
         /// <summary>At least one minute: with 0 every offence is forgotten as it happens, which turns off offence punishment altogether.</summary>
         internal static int OffenceLifetimeMinutes => Math.Max(1, Config.OffenseDurationBeforeDeletion);
 
@@ -45,33 +78,46 @@ namespace Advanced_PB_Limiter.Manager
         }
 
         /// <summary>Called after every run of every tracked script. Nothing here may allocate until a limit is broken.</summary>
-        public static void CheckForPunishment(TrackedPlayer player, TrackedPBBlock trackedPbBlock, double lastRunTimeMS)
+        /// <param name="collected">A garbage collection happened during the run, see RunClock.</param>
+        public static void CheckForPunishment(TrackedPlayer player, TrackedPBBlock trackedPbBlock, double lastRunTimeMS, bool collected)
         {
-            if (!Config.Enabled) return;
+            if (!LimiterCore.Active) return;
             if (Config.EnforceOnlyBelowSimThreshold && Sync.ServerSimulationRatio >= Config.EnforceOnlyBelowSimRate) return;
-            if (trackedPbBlock.ShutdownRequested) return;
+            // Instant-killed already for an earlier run of it queued in the same tick: not punished or told twice. Decided by
+            // the batch, not by whether the block works now, so a script that turns itself off after each run is judged.
+            if (trackedPbBlock.InstantKill.In(TrackingManager.Batch)) return;
 
+            // The instant kills come first: they are immediate, also while an ordinary punishment waits out its grace period,
+            // see PunishPB.
             // InstaKill by run-time
-            if (Config.InstantKillThreshold > 0 && lastRunTimeMS > Config.InstantKillThreshold)
+            // Not for a run a collection paused, whose time may be mostly that pause: such a run is left to the run-time and
+            // average limits below, which it still counts for in full.
+            if (!collected && Config.InstantKillThreshold > 0 && lastRunTimeMS > Config.InstantKillThreshold)
             {
-                Log.Error($"INSTANT-KILL TRIGGERED: {player.PlayerName} on grid {trackedPbBlock.ProgrammableBlock.CubeGrid.DisplayName} with a run-time of {lastRunTimeMS:0.0000}ms");
-                PunishPB(player, trackedPbBlock, PunishReason.ExtremeUsage, Config.InstantKillPunishment.ToPunishment(), $"[{lastRunTimeMS:0.0000}ms]");
+                trackedPbBlock.InstantKill.Set(TrackingManager.Batch);
+                Log.Error($"INSTANT-KILL TRIGGERED: {player.PlayerName} on grid {trackedPbBlock.CurrentGridName} with a run-time of {InvariantText.Of(lastRunTimeMS, "0.0000")}ms");
+                PunishPB(player, trackedPbBlock, PunishReason.ExtremeUsage, Config.InstantKillPunishment.ToPunishment(), $"[{InvariantText.Of(lastRunTimeMS, "0.0000")}ms]");
                 return;
             }
 
             // InstaKill by memory
             if (Config.EnableMemoryMonitoring && Config.PBMemoryThreshold != 0 && Config.PBMemoryThreshold < trackedPbBlock.memoryUsage)
             {
-                string usage = HelperUtils.FormatBytesToKB(trackedPbBlock.memoryUsage);
-                Log.Error($"INSTANT-KILL TRIGGERED: {player.PlayerName} on grid {trackedPbBlock.ProgrammableBlock.CubeGrid.DisplayName} with a memory usage of {usage}");
+                string usage = trackedPbBlock.MemoryUnmeasured
+                    ? "not measurable (counted as over the limit)"
+                    : MemoryText.Kilobytes(trackedPbBlock.memoryUsage);
+                trackedPbBlock.InstantKill.Set(TrackingManager.Batch);
+                Log.Error($"INSTANT-KILL TRIGGERED: {player.PlayerName} on grid {trackedPbBlock.CurrentGridName} with memory use: {usage}");
                 PunishPB(player, trackedPbBlock, PunishReason.ExtremeUsage, Config.MemoryPunishment.ToPunishment(), $"[{usage}]");
                 return;
             }
 
+            if (PunishmentPending(trackedPbBlock)) return;
+
             PrivilegedPlayer? privilegedPlayer = player.Privileged;
             double allowedRunTime = privilegedPlayer?.RuntimeAllowance ?? Config.MaxRunTimeMS;
             double allowedRunTimeAvg = privilegedPlayer?.RuntimeAverageAllowance ?? Config.MaxRunTimeMSAvg;
-            int allowedOffenses = privilegedPlayer?.OffencesBeforePunishment ?? Config.MaxOffencesBeforePunishment;
+            int allowedOffences = privilegedPlayer?.OffencesBeforePunishment ?? Config.MaxOffencesBeforePunishment;
 
             trackedPbBlock.ForgetOffencesOlderThan(OffenceLifetimeMinutes);
 
@@ -79,45 +125,41 @@ namespace Advanced_PB_Limiter.Manager
             if (trackedPbBlock.IsInGraceAfterOffence)
                 return;
 
-            // Check for runtime offense
+            // A run over the run-time limit, unless it stands far out from the block's runs, a collection pausing it say.
             if (allowedRunTime != 0 && lastRunTimeMS > allowedRunTime && !trackedPbBlock.IsOutlier(lastRunTimeMS))
             {
-                RecordOffence(trackedPbBlock);
-                Log.Info($"PB Block: {trackedPbBlock.ProgrammableBlock.EntityId} for [{trackedPbBlock.GridName} >> {trackedPbBlock.ProgrammableBlock.CustomName}] has exceeded the run-time limit.  Last Run-Time: {lastRunTimeMS:0.0000}ms  Allowed-Run-Time: {allowedRunTime:0.0000}ms  Offenses: {trackedPbBlock.Offences.Count}");
-
-                if (trackedPbBlock.Offences.Count <= allowedOffenses)
-                {
-                    if (Config.WarnUserOnOffense)
-                        Chat.Send($"You have received offense [{trackedPbBlock.Offences.Count} of {allowedOffenses}] for exceeding your run-time limit [{allowedRunTime:0.0000}ms] for [{trackedPbBlock.GridName} >> {trackedPbBlock.ProgrammableBlock.CustomName}].  Please reduce the run time of your Programmable Block or it will be punished.", player.PlayerId, Color.Red);
-
-                    if (trackedPbBlock.Offences.Count == allowedOffenses)
-                        trackedPbBlock.ProgrammableBlock.Run("GracefulShutDown::-1", UpdateType.Script);
-                    return;
-                }
-
-                PunishPB(player, trackedPbBlock, PunishReason.SingleRuntimeOverLimit, null, UsageNotes(allowedRunTime, lastRunTimeMS));
-                return; // Block is punished, no need to punish again with average run-time violations.
+                Offence(player, trackedPbBlock, allowedOffences, PunishReason.SingleRuntimeOverLimit, allowedRunTime, lastRunTimeMS, lastRunTimeMS);
+                return; // One offence a run: the average is not checked as well.
             }
 
-            // check for block average runtime offense
             double runTimeMSAvg = trackedPbBlock.RunTimeMSAvg;
             if (allowedRunTimeAvg != 0 && runTimeMSAvg > allowedRunTimeAvg)
+                Offence(player, trackedPbBlock, allowedOffences, PunishReason.AverageRuntimeOverLimit, allowedRunTimeAvg, runTimeMSAvg, lastRunTimeMS);
+        }
+
+        /// <summary>
+        /// Records an offence against the run-time or average limit and warns the owner, sends the graceful shutdown request
+        /// with the last offence allowed, and punishes past that.
+        /// </summary>
+        private static void Offence(TrackedPlayer player, TrackedPBBlock trackedPbBlock, int allowedOffences, PunishReason reason, double limit, double usage, double lastRunTimeMS)
+        {
+            bool average = reason == PunishReason.AverageRuntimeOverLimit;
+            string what = average ? "average-run-time" : "run-time";
+            RecordOffence(trackedPbBlock);
+            int offences = trackedPbBlock.Offences.Count;
+            Log.Info($"PB Block: {InvariantText.Of(trackedPbBlock.ProgrammableBlock.EntityId)} for [{trackedPbBlock.CurrentGridName} >> {trackedPbBlock.ProgrammableBlock.ReadName()}] has exceeded the {what} limit.  Allowed: {InvariantText.Of(limit, "0.0000")}ms  Used: {InvariantText.Of(usage, "0.0000")}ms  Last Run-Time: {InvariantText.Of(lastRunTimeMS, "0.0000")}ms  Offences: {InvariantText.Of(offences)}");
+
+            if (offences <= allowedOffences)
             {
-                RecordOffence(trackedPbBlock);
-                Log.Info($"PB Block: {trackedPbBlock.ProgrammableBlock.EntityId} for [{trackedPbBlock.GridName} >> {trackedPbBlock.ProgrammableBlock.CustomName}] has exceeded the average-run-time limit.  Allowed Average-Run-Time: {allowedRunTimeAvg:0.0000}ms   Last Run-Time: {lastRunTimeMS:0.0000}ms   Average-Run-Time: {runTimeMSAvg:0.0000}ms  Offenses: {trackedPbBlock.Offences.Count}");
+                if (Config.WarnUserOnOffense)
+                    Chat.Send($"You have received offence [{InvariantText.Of(offences)} of {InvariantText.Of(allowedOffences)}] for exceeding your {what} limit [{InvariantText.Of(limit, "0.0000")}ms] for [{trackedPbBlock.CurrentGridName} >> {trackedPbBlock.ProgrammableBlock.ReadName()}].  Please reduce the run time of your Programmable Block or it will be punished.", player.PlayerId, Color.Red);
 
-                if (trackedPbBlock.Offences.Count <= allowedOffenses)
-                {
-                    if (Config.WarnUserOnOffense)
-                        Chat.Send($"You have received offense [{trackedPbBlock.Offences.Count} of {allowedOffenses}] for exceeding your average-run-time limit [{allowedRunTimeAvg:0.0000}ms] for [{trackedPbBlock.GridName} >> {trackedPbBlock.ProgrammableBlock.CustomName}].  Please reduce the run time of your Programmable Block or it will be punished.", player.PlayerId, Color.Red);
-
-                    if (trackedPbBlock.Offences.Count == allowedOffenses)
-                        trackedPbBlock.ProgrammableBlock.Run("GracefulShutDown::-2", UpdateType.Script);
-                    return;
-                }
-
-                PunishPB(player, trackedPbBlock, PunishReason.AverageRuntimeOverLimit, null, UsageNotes(allowedRunTimeAvg, runTimeMSAvg));
+                if (offences == allowedOffences)
+                    trackedPbBlock.ProgrammableBlock.Run(average ? "GracefulShutDown::-2" : "GracefulShutDown::-1", UpdateType.Script);
+                return;
             }
+
+            PunishPB(player, trackedPbBlock, reason, null, UsageNotes(limit, usage));
         }
 
         private static void RecordOffence(TrackedPBBlock trackedPbBlock)
@@ -129,51 +171,114 @@ namespace Advanced_PB_Limiter.Manager
 
         private static string UsageNotes(double limit, double usage)
         {
-            return $"{Environment.NewLine}Your Limit: [{limit:0.0000}ms]{Environment.NewLine}Your Usage: [{usage:0.0000}ms]{Environment.NewLine}";
+            return $"{Environment.NewLine}Your Limit: [{InvariantText.Of(limit, "0.0000")}ms]{Environment.NewLine}Your Usage: [{InvariantText.Of(usage, "0.0000")}ms]{Environment.NewLine}";
         }
 
         public static void PunishPB(TrackedPlayer player, TrackedPBBlock trackedPbBlock, PunishReason reason, Punishment? punishment = null, string? notes = null)
         {
-            if (trackedPbBlock.ShutdownRequested) return; // Already on its way.
+            // An instant kill is immediate. It takes the place of an ordinary punishment waiting out its grace period, and the
+            // harsher of the two is applied, once: a script told of its grace period can't trade a harsher punishment for
+            // the instant kill's, nor be punished twice.
+            if (reason == PunishReason.ExtremeUsage)
+            {
+                Punishment now = punishment ?? player.Privileged?.Punishment ?? Config.Punishment;
+                if (AwaitingGrace.TryRemove(trackedPbBlock.ProgrammableBlock.EntityId, out Grace? waiting))
+                {
+                    Punishment pending = waiting.Punishment ?? waiting.Player.Privileged?.Punishment ?? Config.Punishment;
+                    if (Severity(pending) > Severity(now)) now = pending;
+                }
+                PerformPunish(trackedPbBlock, player, reason, now, notes);
+                return;
+            }
+            if (PunishmentPending(trackedPbBlock)) return; // Already on its way.
 
             int gracePeriodSeconds = player.Privileged?.GracefulShutDownRequestDelay ?? Config.GracefulShutDownRequestDelay;
-            if (reason == PunishReason.ExtremeUsage || gracePeriodSeconds <= 0)
+            if (gracePeriodSeconds <= 0)
             {
                 PerformPunish(trackedPbBlock, player, reason, punishment, notes);
                 return;
             }
 
-            trackedPbBlock.ShutdownRequested = true;
-            trackedPbBlock.ProgrammableBlock.Run($"GracefulShutDown::{gracePeriodSeconds}", UpdateType.Script);
+            Grace grace = new(player, punishment);
+            AwaitingGrace[trackedPbBlock.ProgrammableBlock.EntityId] = grace;
+            trackedPbBlock.ProgrammableBlock.Run("GracefulShutDown::" + InvariantText.Of(gracePeriodSeconds), UpdateType.Script);
+            _ = PunishAfterGraceAsync(trackedPbBlock, player, reason, punishment, notes, gracePeriodSeconds, grace);
+        }
 
-            // Punishments are always applied after the delay, whatever the script did with it.
-            Task.Delay(gracePeriodSeconds * 1000).ContinueWith(_ =>
+        // Task.Delay takes at most int.MaxValue milliseconds, about 24 days.
+        private const int MaxGracePeriodSeconds = int.MaxValue / 1000;
+
+        /// <summary>
+        /// Punishments are always applied after the delay, whatever the script did with it. If this fails, the block is
+        /// released so the next offence is handled again, and the failure is logged.
+        /// </summary>
+        private static async Task PunishAfterGraceAsync(TrackedPBBlock trackedPbBlock, TrackedPlayer player, PunishReason reason, Punishment? punishment, string? notes, int gracePeriodSeconds, Grace grace)
+        {
+            long offCount = LimiterCore.OffCount;
+            try
             {
-                MySandboxGame.Static.Invoke(() =>
+                await Task.Delay(TimeSpan.FromSeconds(Math.Min(gracePeriodSeconds, MaxGracePeriodSeconds))).ConfigureAwait(false);
+                MySandboxGame? game = MySandboxGame.Static;
+                if (game is null)
                 {
-                    trackedPbBlock.ShutdownRequested = false;
-                    if (LimiterCore.GameOnline)
+                    EndGrace(trackedPbBlock, grace); // The game has stopped.
+                    return;
+                }
+
+                game.Invoke(() =>
+                {
+                    // Taken by an instant kill, which applied the harsher punishment, or dropped when the world unloaded.
+                    if (!EndGrace(trackedPbBlock, grace)) return;
+                    // Off at any point during the grace period, disabled or the world reloaded, even if on again now: dropped.
+                    // A block that changed owner meanwhile is still punished: it is the block that broke the limit, and handing
+                    // it to another identity during the grace period must not let it off.
+                    if (LimiterCore.GameOnline && LimiterCore.Active && LimiterCore.OffCount == offCount)
                         PerformPunish(trackedPbBlock, player, reason, punishment, notes);
                 }, "Advanced_PB_Limiter");
-            });
+            }
+            catch (Exception e)
+            {
+                EndGrace(trackedPbBlock, grace);
+                Log.Error(e, "The grace period before a punishment failed");
+            }
         }
+
+        /// <summary>Ends a grace period: false when it was no longer waiting, taken by an instant kill or dropped by a world unload.</summary>
+        private static bool EndGrace(TrackedPBBlock trackedPbBlock, Grace grace)
+        {
+            // Only its own entry, compared by reference: after a world reload the same block may wait out a newer grace period.
+            return ((ICollection<KeyValuePair<long, Grace>>)AwaitingGrace).Remove(new KeyValuePair<long, Grace>(trackedPbBlock.ProgrammableBlock.EntityId, grace));
+        }
+
+        /// <summary>How harsh a punishment is: Destroy over Damage over Turn Off.</summary>
+        private static int Severity(Punishment punishment) => punishment switch
+        {
+            Punishment.Destroy => 2,
+            Punishment.Damage => 1,
+            _ => 0
+        };
 
         private static void PerformPunish(TrackedPBBlock trackedPbBlock, TrackedPlayer player, PunishReason reason, Punishment? punishment, string? notes)
         {
             MyProgrammableBlock block = trackedPbBlock.ProgrammableBlock;
             if (block.Closed || block.MarkedForClose) return; // Removed while the script had its grace period.
 
-            Log.Trace($"Punishing PB Block: {block.EntityId} on grid {block.CubeGrid.DisplayName} for {reason}. {notes}");
+            Log.Trace($"Punishing PB Block: {InvariantText.Of(block.EntityId)} on grid {trackedPbBlock.CurrentGridName} for {reason.ToString()}. {notes}");
             trackedPbBlock.LastOffenceTick = Stopwatch.GetTimestamp();
+            trackedPbBlock.MarkStopped(); // Not counted in the combined run times from here on, unless it runs again.
 
             try
             {
                 Chat.Send(CreateUserMessage(player, trackedPbBlock, reason, notes), player.PlayerId, Color.Red);
+                // Handed to someone else during the grace period: they are told too, as it is now their block that stops.
+                long owner = block.OwnerId;
+                if (owner != 0 && owner != player.PlayerId)
+                    Chat.Send($"[{trackedPbBlock.CurrentGridName} >> {block.ReadName()}] was punished for exceeding the limits before it was given to you.", owner, Color.Red);
 
                 switch (punishment ?? player.Privileged?.Punishment ?? Config.Punishment)
                 {
                     case Punishment.TurnOff:
-                        PerformPunishment_TurnOff(block);
+                        TurnOff(block);
                         return;
 
                     case Punishment.Destroy:
@@ -184,6 +289,9 @@ namespace Advanced_PB_Limiter.Manager
                         // 0 uses the server's setting. Resolved here and not when the row is read, so the 0 stays in the
                         // row when CreatePrivilegedUser writes the looked-up player back.
                         PerformPunishment_Damage(block, player.Privileged is { DamageAmount: > 0 } privileged ? privileged.DamageAmount : Config.PunishDamageAmount);
+                        // Damage an instant kill took over from a waiting punishment: an instant kill always stops the script.
+                        if (reason == PunishReason.ExtremeUsage && !block.Closed && !block.MarkedForClose)
+                            TurnOff(block);
                         return;
                 }
             }
@@ -193,7 +301,8 @@ namespace Advanced_PB_Limiter.Manager
             }
         }
 
-        private static void PerformPunishment_TurnOff(MyProgrammableBlock block)
+        /// <summary>Turns the block off and ends its script, so it runs again only once recompiled. Game thread.</summary>
+        internal static void TurnOff(MyProgrammableBlock block)
         {
             block.Enabled = false;
             PbAccess.ClearNeedsInstantiation(block);
@@ -203,11 +312,11 @@ namespace Advanced_PB_Limiter.Manager
 
         private static void PerformPunishment_Destroy(MyProgrammableBlock block)
         {
-            block.Enabled = false;
-            PbAccess.ClearNeedsInstantiation(block);
-            PbAccess.TerminateProgram(block);
+            TurnOff(block);
 
-            if (IsProtectedFromDamage(block))
+            // What one point of damage does to this block once the game has applied its modifiers.
+            float scale = ScaledDamage(block, 1) * block.SlimBlock.DamageRatio;
+            if (IsProtectedFromDamage(block) || scale <= 0)
             {
                 Dismount(block);
                 return;
@@ -215,53 +324,65 @@ namespace Advanced_PB_Limiter.Manager
 
             // Down to 100 integrity, below functional level. Worked out from the integrity the block has left, less damage
             // the game has not applied yet, so a block that has already taken damage stops at 100 as well instead of being
-            // removed. A block at or below 100 takes no more.
+            // removed. A block at or below 100 takes no more. Divided by the modifiers the game multiplies it by again; a mod
+            // that changes damage through the game's damage system can still move where it stops.
             float left = block.SlimBlock.Integrity - block.SlimBlock.AccumulatedDamage;
-            block.SlimBlock.DoDamage(Math.Max(0, left - 100), MyDamageType.Unknown, true, null, 0);
+            block.SlimBlock.DoDamage(Math.Max(0, left - 100) / scale, MyDamageType.Unknown, true, null, 0);
         }
 
         private static void PerformPunishment_Damage(MyProgrammableBlock block, int damageAmount)
         {
             PbAccess.ClearNeedsInstantiation(block);
 
-            if (IsProtectedFromDamage(block))
+            // A damage amount of 0 does nothing to any block, so the block is turned off as Damage can't punish it. It is
+            // not protected, so "destroy protected PB" does not apply to it.
+            if (damageAmount <= 0)
             {
+                TurnOff(block);
+                return;
+            }
+
+            // Protected: the game drops damage here, or a damage modifier of 0 makes it nothing (checked with one point,
+            // so the amount itself does not count).
+            if (IsProtectedFromDamage(block) || ScaledDamage(block, 1) <= 0)
+            {
+                // Damage can't land here, so the block is turned off instead: otherwise it keeps running over its limits,
+                // and is "punished" again on every offence with nothing happening.
                 if (Config.KillProtectedBlock)
                     Dismount(block);
+                else
+                    TurnOff(block);
                 return;
             }
 
             block.SlimBlock.DoDamage(damageAmount, MyDamageType.Unknown, true, null, 0);
         }
 
+        /// <summary>The damage the block takes from this amount, with the grid's and the block's modifiers, as MySlimBlock.DoDamage works it out.</summary>
+        private static float ScaledDamage(MyProgrammableBlock block, float damageAmount)
+        {
+            MyCubeGrid grid = block.CubeGrid;
+            MyCubeGrid root = MyGridPhysicalHierarchy.Static?.GetRoot(grid) ?? grid;
+            float gridModifier = Math.Min(grid.GridGeneralDamageModifier.Value, root.GridGeneralDamageModifier.Value);
+            return damageAmount * block.SlimBlock.BlockGeneralDamageModifier * gridModifier * block.SlimBlock.BlockDefinition.GeneralDamageMultiplier;
+        }
+
+        /// <summary>
+        /// True where the game drops damage on this block, asked as MySlimBlock.DoDamage asks it: a grid or world with block
+        /// destruction off, or a safe zone, or the world's own setting, that forbids damage at the block's position.
+        /// </summary>
         private static bool IsProtectedFromDamage(MyProgrammableBlock block)
         {
-            // Yes, I tried the other method, MySessionComponentSafeZones... but it doesn't always return correctly.
-            BoundingBoxD blockBoundingBoxD = block.SlimBlock.WorldAABB;
-
-            // The game's own shared list, it must be left empty or the next caller gets these entities as well.
-            List<MyEntity> foundEntities = MyEntities.GetEntitiesInAABB(ref blockBoundingBoxD);
-            try
-            {
-                foreach (MyEntity foundEntity in foundEntities)
-                {
-                    if (foundEntity is MySafeZone safeZone)
-                        return (safeZone.AllowedActions & MySafeZoneAction.Damage) != MySafeZoneAction.Damage;
-                }
-                return false;
-            }
-            finally
-            {
-                foundEntities.Clear();
-            }
+            if (!block.CubeGrid.BlocksDestructionEnabled && !block.SlimBlock.ForceBlockDestructible)
+                return true;
+            return !MySessionComponentSafeZones.IsActionAllowed(block.SlimBlock.WorldPosition, MySafeZoneAction.Damage, 0, 0);
         }
 
         private static void Dismount(MyProgrammableBlock block)
         {
-            string blockDisplayName = block.CustomName.ToString(); // need this for resync!
             block.Enabled = false; // Turn off because it won't need a recompile and restarts when rebuilt by player.
             block.SlimBlock.FullyDismount(new MyInventory());
-            PunishReSync(blockDisplayName);
+            PunishReSync(block.EntityId);
         }
 
         private static string CreateUserMessage(TrackedPlayer player, TrackedPBBlock pbBlock, PunishReason reason, string? message = null )
@@ -270,7 +391,7 @@ namespace Advanced_PB_Limiter.Manager
             bool isOnline = MySession.Static.Players.IsPlayerOnline(player.PlayerId);
             if (player.SteamId == 0 || isNpc || !isOnline)
             {
-                Log.Warn($"No punishment message was sent: SteamID[{player.SteamId}]  IsNPC[{isNpc}]  IsOnline[{isOnline}]  GridName[{pbBlock.GridName}]");
+                Log.Warn($"No punishment message was sent: SteamID[{player.SteamId}]  IsNPC[{isNpc}]  IsOnline[{isOnline}]  GridName[{pbBlock.CurrentGridName}]");
                 return "";
             }
 
@@ -284,11 +405,17 @@ namespace Advanced_PB_Limiter.Manager
                 _ => "was punished for some reason, please check with server admins. "
             };
 
-            return $"Your Programmable Block on grid <{pbBlock.ProgrammableBlock.CubeGrid.DisplayName}> {why}{message}";
+            return $"Your Programmable Block on grid <{pbBlock.CurrentGridName}> {why}{message}";
         }
 
-        private static void PunishReSync(string blockDisplayName)
+        /// <summary>
+        /// Re-sends the block to every online player. Its replicable is found by entity id: its name is the block's
+        /// "MyProgrammableBlock {id} name" (MyEntity.ToString, MyTerminalBlock.ToString), and the block's own name, which
+        /// its owner chooses, must not pick up other players' blocks.
+        /// </summary>
+        private static void PunishReSync(long entityId)
         {
+            string prefix = "MyProgrammableBlock {" + entityId.ToString("X8", CultureInfo.InvariantCulture) + "}";
             // Update state to all players, by Jim and slight modification by Senx.
             MyReplicationServer replicationServer = (MyReplicationServer)MyMultiplayer.ReplicationLayer;
             IDictionary clientDataDict = ReplicationAccess.GetClientStates(replicationServer);
@@ -306,11 +433,9 @@ namespace Advanced_PB_Limiter.Manager
                 List<IMyReplicable> replicableList = new (clientReplicables.Count);
                 foreach (KeyValuePair<IMyReplicable, MyReplicableClientData> pair in clientReplicables)
                 {
-                    ReadOnlySpan<char> instanceName = pair.Key.InstanceName.AsSpan();
-                    if (instanceName.IsEmpty) continue;
-                    if (!instanceName.StartsWith("MyP".AsSpan())) continue; // Quick and Dirty
-                    if (!instanceName.StartsWith("MyProgrammableBlock".AsSpan())) continue;
-                    if (!instanceName.EndsWith(blockDisplayName.AsSpan())) continue;
+                    string instanceName = pair.Key.InstanceName;
+                    if (!instanceName.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                    if (instanceName.Length > prefix.Length && instanceName[prefix.Length] != ' ') continue;
                     replicableList.Add(pair.Key);
                 }
 

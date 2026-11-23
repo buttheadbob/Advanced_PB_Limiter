@@ -1,28 +1,29 @@
-# Run by build.bat before every build. Increments the build number (fourth part) of the version in
+# Run by build.ps1 before every build. Increments the build number (fourth part) of the version in
 # AssemblyVersion.cs, which the Torch, Magnetar and Quasar projects compile, and copies it into the Torch manifest
 # and the Quasar plugin manifest (quasar-plugin.json).
 # To start a new release, edit the first three parts in AssemblyVersion.cs by hand (for example 1.4.0.0).
-$versionFile = "$PSScriptRoot/AssemblyVersion.cs"
-$manifestPath = "$PSScriptRoot/../TorchPlugin/manifest.xml"
+# Every file is read and its new text worked out before any is written, and any failure ends with exit code 1,
+# so a build never runs with versions that disagree.
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 
-$major = 1; $minor = 0; $patch = 0; $build = 0
-if (Test-Path $versionFile) {
-    $match = [regex]::Match([System.IO.File]::ReadAllText($versionFile), 'AssemblyVersion\("([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)"\)')
-    if ($match.Success) {
-        $major = [int]$match.Groups[1].Value
-        $minor = [int]$match.Groups[2].Value
-        $patch = [int]$match.Groups[3].Value
-        $build = [int]$match.Groups[4].Value
-    } else {
-        throw "Could not read the version from $versionFile"
-    }
-}
-$build++
+try {
+    $versionFile = "$PSScriptRoot/AssemblyVersion.cs"
+    $manifestPath = "$PSScriptRoot/../TorchPlugin/manifest.xml"
+    $quasarManifestPath = "$PSScriptRoot/../quasar-plugin.json"
+    $versionPattern = 'AssemblyVersion\("([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)"\)'
 
-$dotNetVersion = "$major.$minor.$patch.$build"
-$infoVersion = "v$dotNetVersion"
+    $match = [regex]::Match([System.IO.File]::ReadAllText($versionFile), $versionPattern)
+    if (-not $match.Success) { throw "Could not read the version from $versionFile" }
+    $major = [int]$match.Groups[1].Value
+    $minor = [int]$match.Groups[2].Value
+    $patch = [int]$match.Groups[3].Value
+    $build = [int]$match.Groups[4].Value + 1
 
-$fileContent = @"
+    $dotNetVersion = "$major.$minor.$patch.$build"
+    $infoVersion = "v$dotNetVersion"
+
+    $versionText = @"
 using System.Reflection;
 
 [assembly: AssemblyVersion("$dotNetVersion")]
@@ -31,13 +32,23 @@ using System.Reflection;
 
 "@
 
-[System.IO.File]::WriteAllText($versionFile, $fileContent)
+    $manifest = [System.IO.File]::ReadAllText($manifestPath)
+    if ($manifest -notmatch '<Version>.*?</Version>') { throw "No <Version> in $manifestPath" }
+    $manifest = $manifest -replace '<Version>.*?</Version>', "<Version>$infoVersion</Version>"
 
-$manifest = [System.IO.File]::ReadAllText($manifestPath)
-[System.IO.File]::WriteAllText($manifestPath, ($manifest -replace "<Version>.*?</Version>", "<Version>$infoVersion</Version>"))
+    $quasarManifest = [System.IO.File]::ReadAllText($quasarManifestPath)
+    if ($quasarManifest -cnotmatch '"version": "[^"]*"') { throw "No version in $quasarManifestPath" }
+    $quasarManifest = $quasarManifest -creplace '"version": "[^"]*"', "`"version`": `"$dotNetVersion`""
 
-$quasarManifestPath = "$PSScriptRoot/../quasar-plugin.json"
-$quasarManifest = [System.IO.File]::ReadAllText($quasarManifestPath)
-[System.IO.File]::WriteAllText($quasarManifestPath, ($quasarManifest -creplace '"version": "[^"]*"', "`"version`": `"$dotNetVersion`""))
+    [System.IO.File]::WriteAllText($versionFile, $versionText)
+    [System.IO.File]::WriteAllText($manifestPath, $manifest)
+    [System.IO.File]::WriteAllText($quasarManifestPath, $quasarManifest)
 
-echo "$infoVersion"
+    Write-Output $infoVersion
+}
+catch {
+    Write-Output "ERROR: $($_.Exception.Message)"
+    exit 1
+}
+# Said outright, so a caller running this in its own PowerShell never reads an exit code left by an earlier command.
+exit 0

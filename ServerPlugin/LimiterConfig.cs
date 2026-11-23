@@ -1,3 +1,4 @@
+#nullable enable
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json.Serialization;
@@ -101,13 +102,33 @@ public struct PrivilegedPlayerEntry
 [Section("restart", parent: "advanced", caption: "Turned off blocks and restarts")]
 [Section("memory", parent: "advanced", caption: "Memory")]
 [Section("housekeeping", parent: "advanced", caption: "Housekeeping")]
-public class LimiterConfig : PluginConfig, IPbLimiterConfig
+public class LimiterConfig : PluginConfig, IPbLimiterConfig, IJsonOnDeserializing, IJsonOnDeserialized
 {
+    // A config read from JSON, as Quasar applies it: an old Damage is logged once the whole config was read, see
+    // InstantPunishmentJsonConverter. System.Text.Json calls these around reading this object, not around each value.
+    void IJsonOnDeserializing.OnDeserializing() => InstantPunishmentJsonConverter.BeginConfig();
+
+    void IJsonOnDeserialized.OnDeserialized()
+    {
+        if (InstantPunishmentJsonConverter.EndConfig() is { } readAsTurnOff)
+            Plugin.LogJsonDamage(readAsTurnOff);
+    }
+
     // Replaced whole, never edited, because the punishment and tracking threads read it without a lock.
     private Dictionary<ulong, PrivilegedPlayer> _privilegedLookup = new();
 
     [BoolOption("Enable or disable the plugin", Parent = "single")]
-    public bool Enabled { get; set => SetField(ref field, value); } = true;
+    public bool Enabled
+    {
+        get;
+        set
+        {
+            // Counted before it goes off, so a grace period that ends meanwhile sees either.
+            if (field && !value)
+                LimiterCore.CountOff(this);
+            SetField(ref field, value);
+        }
+    } = true;
 
     [DoubleOption(0, 1000, "Max time in ms a script is allowed to use before being issued any punishment, 0 for no limit", Parent = "single")]
     public double MaxRunTimeMS { get; set => SetField(ref field, value); } = 0.8;
@@ -115,11 +136,11 @@ public class LimiterConfig : PluginConfig, IPbLimiterConfig
     [DoubleOption(0, 1000, "Max time in ms a script is allowed to average before being issued any punishment, 0 for no limit", Parent = "single")]
     public double MaxRunTimeMSAvg { get; set => SetField(ref field, value); } = 0.4;
 
-    [DoubleOption(0, 100000, "Any block that reaches this run time in ms is punished immediately with the instant kill punishment, regardless of offences and with no graceful shutdown request. 0 to disable", Parent = "single")]
+    [DoubleOption(0, 100000, "Any block that reaches this run time in ms is punished immediately with the instant kill punishment, regardless of offences and with no graceful shutdown request. A run during which a garbage collection happened is left to the other limits instead, as its time may be mostly that pause. 0 to disable", Parent = "single")]
     public double InstantKillThreshold { get; set => SetField(ref field, value); } = 10.0;
 
     [EnumOption("Instant kill punishment: what happens to a block over the instant kill run time. TurnOff by default, or Destroy, which damages it to 100 integrity. An instant kill punishes at once, so there is no Damage: the script would keep running", Parent = "single")]
-    [JsonConverter(typeof(InstantPunishmentJsonConverter))]
+    [JsonConverter(typeof(InstantKillPunishmentJsonConverter))]
     public Enums.InstantPunishment InstantKillPunishment { get; set => SetField(ref field, value); } = Enums.InstantPunishment.TurnOff;
 
     [IntOption(0, 3600, "Seconds to ignore a block's run time when it first starts", Parent = "single")]
@@ -152,10 +173,10 @@ public class LimiterConfig : PluginConfig, IPbLimiterConfig
     [BoolOption("Do not track programmable blocks owned by NPCs", Parent = "enforcement")]
     public bool IgnoreNPCs { get; set => SetField(ref field, value); } = true;
 
-    [BoolOption("Blocks with no owner can still run... but should they? On turns them off", Parent = "enforcement")]
+    [BoolOption("Blocks owned by nobody are not tracked, as no player answers for them. On turns such a block off and ends its script when it runs, so it runs again only once recompiled by an owner. Off lets it run without limits", Parent = "enforcement")]
     public bool TurnOffUnownedBlocks { get; set => SetField(ref field, value); } = true;
 
-    [EnumOption("TurnOff disables the block. Damage applies the set damage points, which may not happen in safe zones. Destroy damages it to 100 integrity, below functional level, and a block already at or below that is left as it is", Parent = "punishment")]
+    [EnumOption("TurnOff disables the block. Damage applies the set damage points; a block the game won't damage is turned off instead, or removed with Kill Protected Block on. Destroy damages it to 100 integrity, below functional level, and a block already at or below that is left as it is; a block the game won't damage is removed", Parent = "punishment")]
     public Enums.Punishment Punishment { get; set => SetField(ref field, value); } = Enums.Punishment.TurnOff;
 
     [IntOption(0, 1000, "Amount of offences before punishment is applied", Parent = "punishment")]
@@ -173,7 +194,7 @@ public class LimiterConfig : PluginConfig, IPbLimiterConfig
     [IntOption(0, 100000, "Points of damage to apply when the punishment is Damage", Parent = "punishment")]
     public int PunishDamageAmount { get; set => SetField(ref field, value); } = 100;
 
-    [BoolOption("Blocks in a safe zone with damage disabled take no damage. On makes the Damage punishment remove all of such a block's building materials and reset it to unwelded. The Destroy punishment always does this, also when the instant kill or memory punishment is Destroy", Parent = "punishment")]
+    [BoolOption("Blocks the game won't damage (where a safe zone or the world forbids damage, on a grid or world with block destruction off, or with a damage modifier of 0) take no damage. Off, the Damage punishment turns such a block off. On, it removes all of such a block's building materials and resets it to unwelded. The Destroy punishment always does this to such a block, also when the instant kill or memory punishment is Destroy", Parent = "punishment")]
     public bool KillProtectedBlock { get; set => SetField(ref field, value); }
 
     [BoolOption("Send a warning to the owner when their block incurs an offence", Parent = "punishment")]
@@ -209,20 +230,20 @@ public class LimiterConfig : PluginConfig, IPbLimiterConfig
     [BoolOption("Enable the limiting and monitoring of memory use", Parent = "memory")]
     public bool EnableMemoryMonitoring { get; set => SetField(ref field, value); } = true;
 
-    [LongOption(0, 1073741824, "Max memory per block in bytes. Over this it is punished immediately with the memory punishment, like the instant kill run time. 0 to ignore", Parent = "memory")]
+    [LongOption(0, 1073741824, "Max memory per block in bytes. Over this it is punished with the memory punishment the next time it runs, like the instant kill run time. 0 to ignore", Parent = "memory")]
     public long PBMemoryThreshold { get; set => SetField(ref field, value); } = 10240000;
 
     [EnumOption("Memory punishment: what happens to a block over the memory limit. TurnOff by default, or Destroy, which damages it to 100 integrity. It punishes at once, so there is no Damage: the script would keep running", Parent = "memory")]
-    [JsonConverter(typeof(InstantPunishmentJsonConverter))]
+    [JsonConverter(typeof(MemoryPunishmentJsonConverter))]
     public Enums.InstantPunishment MemoryPunishment { get; set => SetField(ref field, value); } = Enums.InstantPunishment.TurnOff;
 
-    [BoolOption("When a player recompiles their script, reset all its tracking data", Parent = "housekeeping")]
+    [BoolOption("When a player recompiles their script, clear its run times and offences and start its startup time again. Its recompile count and the wait after its last offence or punishment are kept", Parent = "housekeeping")]
     public bool ClearHistoryOnRecompile { get; set => SetField(ref field, value); } = true;
 
-    [IntOption(1, 86400, "Seconds to keep the data of an inactive block, only useful for showing data. Blocks removed from the game are removed from tracking regardless", Parent = "housekeeping")]
+    [IntOption(1, 86400, "Seconds without a run before a block rests: it leaves the combined limits and its run times are left out of the combined run times. It keeps its history and is tracked as it was when it runs again. Blocks removed from the game are removed from tracking regardless", Parent = "housekeeping")]
     public int RemoveInactivePBsAfterSeconds { get; set => SetField(ref field, value); } = 30;
 
-    [IntOption(0, 10080, "Minutes to keep a player in reports after they have no blocks in game. 0 to never remove them", Parent = "housekeeping")]
+    [IntOption(0, 10080, "Minutes to keep a player in reports after they have no blocks in game, and the history of a resting block that has not run for that long. 0 to never remove them", Parent = "housekeeping")]
     public int RemovePlayersWithNoPBFrequencyInMinutes { get; set => SetField(ref field, value); } = 60;
 
     [BoolOption("Allow staff to use the CreatePrivilegedUser command", Parent = "housekeeping")]
@@ -231,7 +252,11 @@ public class LimiterConfig : PluginConfig, IPbLimiterConfig
     [BoolOption("Shows some extra stuff that will fill your log file", Parent = "housekeeping")]
     public bool DebugReporting { get; set => SetField(ref field, value); }
 
-    /// <summary>Runtime only: the Timings command turns this on for a few seconds, so it has no option attribute and is never saved.</summary>
+    /// <summary>
+    /// Runtime only: the Timings command turns this on for a few seconds. No option attribute and not in the JSON, so it is
+    /// never saved and is no part of a managed cluster's configuration, which a node must keep as the cluster has it.
+    /// </summary>
+    [JsonIgnore]
     public bool ShowTimingsBurp { get; set => SetField(ref field, value); }
 
     public bool TryGetPrivilegedPlayer(ulong steamId, out PrivilegedPlayer? player) => _privilegedLookup.TryGetValue(steamId, out player);

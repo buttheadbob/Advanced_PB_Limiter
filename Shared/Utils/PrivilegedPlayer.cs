@@ -14,5 +14,8 @@
         public int GracefulShutDownRequestDelay { get; set; } = 10;
         public int OffencesBeforePunishment { get; set; } = 6;
         public int DamageAmount { get; set; } = 100;
+
+        /// <summary>A copy to change and then put in place of this one: an entry in use is read by other threads, never edited.</summary>
+        public PrivilegedPlayer Copy() => (PrivilegedPlayer)MemberwiseClone();
     }
 }

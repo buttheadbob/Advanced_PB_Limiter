@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Xml;
 using System.Xml.Schema;
 using System.Xml.Serialization;
@@ -55,9 +54,9 @@ namespace Advanced_PB_Limiter.Utils
                 reader.ReadEndElement(); // Value
 
                 if (key is null)
-                    throw new ArgumentNullException(nameof(key), @"The key cannot be null.");
+                    throw new XmlException("A privileged player entry has no key.");
                 if (value is null)
-                    throw new ArgumentNullException(nameof(value), @"The value cannot be null.");
+                    throw new XmlException("A privileged player entry has no value.");
                 
                 Add(key, value);
 
@@ -77,14 +76,14 @@ namespace Advanced_PB_Limiter.Utils
                 writer.WriteStartElement("Item");
 
                 writer.WriteStartElement("Key");
-                if (kvp.Key != null)
+                if (kvp.Key is not null)
                 {
                     keySerializer.Serialize(writer, kvp.Key);
                 }
                 writer.WriteEndElement(); // Key
 
                 writer.WriteStartElement("Value");
-                if (kvp.Value != null)
+                if (kvp.Value is not null)
                 {
                     valueSerializer.Serialize(writer, kvp.Value);
                 }

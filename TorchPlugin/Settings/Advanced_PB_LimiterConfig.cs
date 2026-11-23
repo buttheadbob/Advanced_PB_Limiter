@@ -5,14 +5,24 @@ using Torch;
 
 namespace Advanced_PB_Limiter.Settings
 {
-    public partial class Advanced_PB_LimiterConfig : ViewModel, IPbLimiterConfig
+    public class Advanced_PB_LimiterConfig : ViewModel, IPbLimiterConfig
     {
         public bool TryGetPrivilegedPlayer(ulong steamId, out PrivilegedPlayer? player) => PrivilegedPlayers.TryGetValue(steamId, out player);
 
         public void SetPrivilegedPlayer(PrivilegedPlayer player) => PrivilegedPlayers.AddOrReplace(player.SteamId, player);
 
         private bool _Enabled = true;
-        public bool Enabled { get => _Enabled; set => SetValue(ref _Enabled, value); }
+        public bool Enabled
+        {
+            get => _Enabled;
+            set
+            {
+                // Counted before it goes off, so a grace period that ends meanwhile sees either.
+                if (_Enabled && !value)
+                    LimiterCore.CountOff(this);
+                SetValue(ref _Enabled, value);
+            }
+        }
         
         private bool _AllowStaffCommands = true;
         public bool AllowStaffCommands { get => _AllowStaffCommands; set => SetValue(ref _AllowStaffCommands, value); }
@@ -35,7 +45,7 @@ namespace Advanced_PB_Limiter.Settings
         private double _InstantKillThreshold = 10.0; // threshold that there are no warnings or offence limits before instant kill
         public double InstantKillThreshold { get => _InstantKillThreshold; set => SetValue(ref _InstantKillThreshold, value); }
 
-        // A config saved before this setting existed keeps Destroy, see Advanced_PB_Limiter.KeepOlderDefaults.
+        // A config saved before this setting existed keeps Destroy, see AdvancedPBLimiterPlugin.KeepOlderDefaults.
         private Enums.InstantPunishment _instantKillPunishment = Enums.InstantPunishment.TurnOff;
         public Enums.InstantPunishment InstantKillPunishment { get => _instantKillPunishment; set => SetValue(ref _instantKillPunishment, value); }
         
@@ -105,7 +115,7 @@ namespace Advanced_PB_Limiter.Settings
         private long _PBMemoryThreshold = 10240000; // 10MB
         public long PBMemoryThreshold { get => _PBMemoryThreshold; set => SetValue(ref _PBMemoryThreshold, value); }
 
-        // A config saved before this setting existed keeps Destroy, see Advanced_PB_Limiter.KeepOlderDefaults.
+        // A config saved before this setting existed keeps Destroy, see AdvancedPBLimiterPlugin.KeepOlderDefaults.
         private Enums.InstantPunishment _memoryPunishment = Enums.InstantPunishment.TurnOff;
         public Enums.InstantPunishment MemoryPunishment { get => _memoryPunishment; set => SetValue(ref _memoryPunishment, value); }
 

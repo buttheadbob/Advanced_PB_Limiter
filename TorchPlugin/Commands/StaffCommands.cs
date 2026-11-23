@@ -8,7 +8,7 @@ namespace Advanced_PB_Limiter.Commands
     [Category("PBLimiter")]
     public class StaffCommands : CommandModule
     {
-        [Command("requestpbshutdown", "Send the shutdown request to all pb scripts that monitor for it.  add the amount of seconds until restart if desired.  Eg: !requestpbshutdown 10")]
+        [Command("requestpbshutdown", "Sends the shutdown request to all programmable block scripts that monitor for it, with the seconds until restart, 1 if left out. Eg: !PBLimiter requestpbshutdown 10")]
         [Permission(MyPromoteLevel.Admin)]
         public void RequestPbShutdown(int seconds = 1)
         {
@@ -26,8 +26,7 @@ namespace Advanced_PB_Limiter.Commands
         [Permission(MyPromoteLevel.Admin)]
         public void GenerateReport()
         {
-            CommandContext context = Context;
-            LimiterCommands.GetReport(text => context.Respond(text));
+            LimiterCommands.GetReport(GameThreadReply.For(Context));
         }
 
         [Command("Disable", "Disables the Advanced PB Limiter.")]

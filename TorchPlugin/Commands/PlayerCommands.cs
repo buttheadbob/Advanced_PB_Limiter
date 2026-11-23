@@ -26,7 +26,7 @@ namespace Advanced_PB_Limiter.Commands
                 return;
             }
             CommandContext context = Context;
-            LimiterCommands.MyStats(context.Player.SteamUserId, text => context.Respond(text));
+            LimiterCommands.MyStats(context.Player.SteamUserId, GameThreadReply.For(context));
         }
 
         [Command("Limits", "Shows all limits applied to programmable blocks for this server.")]
@@ -36,7 +36,7 @@ namespace Advanced_PB_Limiter.Commands
             Context.Respond(LimiterCommands.Limits(Context.Player?.SteamUserId));
         }
 
-        [Command("Runtimes", "Shows the last saved runtimes for each programmable block owned by the player.")]
+        [Command("Runtimes", "Shows the last saved runtimes of up to 10 of the player's programmable blocks, once every 30 seconds.")]
         [Permission(MyPromoteLevel.None)]
         public void Runtimes()
         {
@@ -46,7 +46,7 @@ namespace Advanced_PB_Limiter.Commands
                 return;
             }
             CommandContext context = Context;
-            LimiterCommands.Runtimes(context.Player.IdentityId, text => context.Respond(text));
+            LimiterCommands.Runtimes(context.Player.IdentityId, GameThreadReply.For(context));
         }
 
         [Command("Help", "Shows player commands.")]
@@ -59,8 +59,8 @@ namespace Advanced_PB_Limiter.Commands
             sb.AppendLine("------------------------------------");
             sb.AppendLine("Limits - Shows your limits applied to programmable blocks for this server.");
             sb.AppendLine("MyStats - Generates a report about your programmable blocks for this server.");
-            sb.AppendLine("Runtimes - Shows the last saved runtimes for each of your programmable blocks.");
-            sb.AppendLine("");
+            sb.AppendLine("Runtimes - Shows the last saved runtimes of up to 10 of your programmable blocks, once every 30 seconds.");
+            sb.AppendLine();
             sb.AppendLine("About - Displays information about the Advanced PB Limiter.");
             Context.Respond(sb.ToString());
         }

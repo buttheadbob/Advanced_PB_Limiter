@@ -1,0 +1,47 @@
+@implements IDisposable
+@inject IJSRuntime JS
+
+<header class="quasar-page-heading">
+    <div class="quasar-page-intro">
+        <div class="quasar-eyebrow">Plugins</div>
+        <h1>Advanced PB Limiter</h1>
+        <div class="quasar-page-description">@Description</div>
+    </div>
+</header>
+
+<nav class="pbl-tabs" aria-label="Advanced PB Limiter">
+    <a class="quasar-button @ActiveClass(Tab.Live)" href="@LimiterRoutes.Live.TrimStart('/')">Live view</a>
+    @if (_canEdit)
+    {
+        <a class="quasar-button @ActiveClass(Tab.Profiles)" href="@LimiterRoutes.Profiles.TrimStart('/')">Profiles</a>
+    }
+    <a class="quasar-button @ActiveClass(Tab.Report)" href="@LimiterRoutes.Report.TrimStart('/')">Generate report</a>
+</nav>
+
+@code {
+    public enum Tab { Live, Profiles, Report }
+
+    [Parameter, EditorRequired] public Tab Active { get; set; }
+    [Parameter, EditorRequired] public string Description { get; set; } = "";
+
+    // The worker checks CanEditConfigs on the page and on every profile operation; this only hides a link the user
+    // cannot use. It is asked through the SDK because the browser dashboard has no ASP.NET authorization state.
+    private readonly PageClosing _closing = new();
+    private bool _canEdit;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _canEdit = await SdkClient.AllowedAsync(JS, "CanEditConfigs", _closing.Token);
+        }
+        catch (Exception)
+        {
+            _canEdit = false;
+        }
+    }
+
+    private string ActiveClass(Tab tab) => tab == Active ? "quasar-button-primary" : "";
+
+    public void Dispose() => _closing.Dispose();
+}

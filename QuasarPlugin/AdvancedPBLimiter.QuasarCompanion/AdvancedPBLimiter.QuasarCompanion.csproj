@@ -25,6 +25,7 @@
   <ItemGroup>
     <Compile Include="..\..\Versioning\AssemblyVersion.cs" Link="Properties\AssemblyVersion.cs" />
     <Compile Include="..\..\Shared\QuasarContracts.cs" Link="Contracts\QuasarContracts.cs" />
+    <Compile Include="..\..\Shared\RecentReasons.cs" Link="Contracts\RecentReasons.cs" />
   </ItemGroup>
 
   <ItemGroup>

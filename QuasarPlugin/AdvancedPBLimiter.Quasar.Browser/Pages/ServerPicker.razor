@@ -6,12 +6,11 @@
     </div>
     @foreach (var server in Servers)
     {
-        bool online = Connected.Any(c => c.ServerId == server.ServerId);
         <label @key="server.ServerId" class="pbl-server">
-            <input type="checkbox" checked="@Selected.Contains(server.ServerId)" disabled="@(OnlineOnly && !online)"
-                   @onchange="e => Toggle(server.ServerId, e)" />
+            <input type="checkbox" checked="@Selected.Contains(server.PickKey)" disabled="@(OnlineOnly && !server.Connected)"
+                   @onchange="e => Toggle(server.PickKey, e)" />
             @server.DisplayName
-            @if (!online)
+            @if (!server.Connected)
             {
                 <span class="pbl-tag">Offline</span>
             }
@@ -20,8 +19,7 @@
 </fieldset>
 
 @code {
-    [Parameter, EditorRequired] public IReadOnlyList<KnownServer> Servers { get; set; } = Array.Empty<KnownServer>();
-    [Parameter, EditorRequired] public IReadOnlyList<QuasarCompanionServer> Connected { get; set; } = Array.Empty<QuasarCompanionServer>();
+    [Parameter, EditorRequired] public IReadOnlyList<ServerInfo> Servers { get; set; } = Array.Empty<ServerInfo>();
 
     /// <summary>The parent's set, changed in place.</summary>
     [Parameter, EditorRequired] public HashSet<string> Selected { get; set; } = new();
@@ -31,12 +29,12 @@
 
     [Parameter] public EventCallback Changed { get; set; }
 
-    private Task Toggle(string serverId, ChangeEventArgs e)
+    private Task Toggle(string pickKey, ChangeEventArgs e)
     {
         if (e.Value is true)
-            Selected.Add(serverId);
+            Selected.Add(pickKey);
         else
-            Selected.Remove(serverId);
+            Selected.Remove(pickKey);
         return Changed.InvokeAsync();
     }
 
@@ -44,8 +42,8 @@
     {
         foreach (var server in Servers)
         {
-            if (!OnlineOnly || Connected.Any(c => c.ServerId == server.ServerId))
-                Selected.Add(server.ServerId);
+            if (!OnlineOnly || server.Connected)
+                Selected.Add(server.PickKey);
         }
         return Changed.InvokeAsync();
     }

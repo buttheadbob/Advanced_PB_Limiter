@@ -8,10 +8,14 @@ namespace Advanced_PB_Limiter.Utils
         public readonly MyProgrammableBlock ProgBlock;
         public readonly double RunTime;
 
-        public TrackingDataUpdateRequest(MyProgrammableBlock progBlock, double runTime)
+        /// <summary>A garbage collection happened during the run, see RunClock: the instant kill leaves it to the ordinary limits.</summary>
+        public readonly bool Collected;
+
+        public TrackingDataUpdateRequest(MyProgrammableBlock progBlock, double runTime, bool collected)
         {
             ProgBlock = progBlock;
             RunTime = runTime;
+            Collected = collected;
         }
     }
 }
