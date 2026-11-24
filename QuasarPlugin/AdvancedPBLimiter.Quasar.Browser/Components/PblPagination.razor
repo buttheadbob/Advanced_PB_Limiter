@@ -1,0 +1,60 @@
+@if (Total > 0)
+{
+    <div class="pbl-pagination">
+        <div class="pbl-pagination-info">
+            Showing <strong>@Start</strong>–<strong>@End</strong> of <strong>@Total</strong>
+        </div>
+
+        <div class="pbl-pagination-controls">
+            <label class="pbl-page-size">
+                <span>Rows</span>
+                <select value="@PageSize" @onchange="PageSizeChangedAsync">
+                    @foreach (int size in PageSizes)
+                    {
+                        <option value="@size">@size</option>
+                    }
+                </select>
+            </label>
+
+            <button type="button" class="pbl-icon-btn" aria-label="First page" disabled="@(Page <= 1)" @onclick="() => Go(1)">
+                <PblIcon Name="chevron-left" />
+            </button>
+            <span class="pbl-page-number">@Page / @PageCount</span>
+            <button type="button" class="pbl-icon-btn" aria-label="Last page" disabled="@(Page >= PageCount)" @onclick="() => Go(PageCount)">
+                <PblIcon Name="chevron-right" />
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int Total { get; set; }
+    [Parameter] public int Page { get; set; } = 1;
+    [Parameter] public int PageSize { get; set; } = 50;
+    [Parameter] public EventCallback<int> PageChanged { get; set; }
+    [Parameter] public EventCallback<int> PageSizeChanged { get; set; }
+
+    private static readonly int[] PageSizes = [25, 50, 100];
+
+    private int PageCount => Math.Max(1, (Total + PageSize - 1) / PageSize);
+    private int Start => Total == 0 ? 0 : ((Page - 1) * PageSize) + 1;
+    private int End => Math.Min(Total, Page * PageSize);
+
+    private Task Go(int page)
+    {
+        int clamped = Math.Clamp(page, 1, PageCount);
+        return clamped == Page ? Task.CompletedTask : PageChanged.InvokeAsync(clamped);
+    }
+
+    private Task PageSizeChangedAsync(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out int size)
+            && PageSizes.Contains(size))
+        {
+            return PageSizeChanged.InvokeAsync(size);
+        }
+
+        return Task.CompletedTask;
+    }
+}

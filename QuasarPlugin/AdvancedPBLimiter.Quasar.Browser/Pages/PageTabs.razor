@@ -1,28 +1,49 @@
 @implements IDisposable
 @inject IJSRuntime JS
 
-<header class="quasar-page-heading">
-    <div class="quasar-page-intro">
-        <div class="quasar-eyebrow">Plugins</div>
-        <h1>Advanced PB Limiter</h1>
-        <div class="quasar-page-description">@Description</div>
-    </div>
-</header>
+<div class="pbl-page">
+    <header class="pbl-page-heading">
+        <div class="pbl-page-intro">
+            <div class="pbl-eyebrow">Plugins</div>
+            <h1>Advanced PB Limiter</h1>
+            <p class="pbl-page-description">@Description</p>
+        </div>
+        @if (HeaderActions is not null)
+        {
+            <div class="pbl-page-actions">@HeaderActions</div>
+        }
+    </header>
 
-<nav class="pbl-tabs" aria-label="Advanced PB Limiter">
-    <a class="quasar-button @ActiveClass(Tab.Live)" href="@LimiterRoutes.Live.TrimStart('/')">Live view</a>
-    @if (_canEdit)
-    {
-        <a class="quasar-button @ActiveClass(Tab.Profiles)" href="@LimiterRoutes.Profiles.TrimStart('/')">Profiles</a>
-    }
-    <a class="quasar-button @ActiveClass(Tab.Report)" href="@LimiterRoutes.Report.TrimStart('/')">Generate report</a>
-</nav>
+    <nav class="pbl-subnav" aria-label="Advanced PB Limiter">
+        <a class="pbl-subnav-link @ActiveClass(Tab.Live)" href="@LimiterRoutes.Live.TrimStart('/')" aria-current="@Current(Tab.Live)">
+            <PblIcon Name="activity" />
+            <span>Live view</span>
+        </a>
+        @if (_canEdit)
+        {
+            <a class="pbl-subnav-link @ActiveClass(Tab.Profiles)" href="@LimiterRoutes.Profiles.TrimStart('/')" aria-current="@Current(Tab.Profiles)">
+                <PblIcon Name="sliders" />
+                <span>Profiles</span>
+            </a>
+        }
+        <a class="pbl-subnav-link @ActiveClass(Tab.Report)" href="@LimiterRoutes.Report.TrimStart('/')" aria-current="@Current(Tab.Report)">
+            <PblIcon Name="file" />
+            <span>Generate report</span>
+        </a>
+    </nav>
+
+    @ChildContent
+
+    <PblToastHost />
+</div>
 
 @code {
     public enum Tab { Live, Profiles, Report }
 
     [Parameter, EditorRequired] public Tab Active { get; set; }
     [Parameter, EditorRequired] public string Description { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? HeaderActions { get; set; }
 
     // The worker checks CanEditConfigs on the page and on every profile operation; this only hides a link the user
     // cannot use. It is asked through the SDK because the browser dashboard has no ASP.NET authorization state.
@@ -41,7 +62,9 @@
         }
     }
 
-    private string ActiveClass(Tab tab) => tab == Active ? "quasar-button-primary" : "";
+    private string ActiveClass(Tab tab) => tab == Active ? "active" : "";
+
+    private string? Current(Tab tab) => tab == Active ? "page" : null;
 
     public void Dispose() => _closing.Dispose();
 }

@@ -1,0 +1,28 @@
+<Project>
+  <!-- Copy this to Directory.Build.props.user (ignored by Git) and fill in your local paths. Setup.ps1 writes that
+       file for you; edit it when a path changes. Empty values fall back to the auto-detection in Directory.Build.props. -->
+  <PropertyGroup>
+    <!-- Folder containing SpaceEngineersDedicated.exe, usually Torch's DedicatedServer64 folder. -->
+    <Dedicated64>C:\Path\To\SpaceEngineersDedicatedServer\DedicatedServer64</Dedicated64>
+
+    <!-- Folder containing Sandbox.Game.dll and the other game assemblies the Torch plugin references. Empty uses
+         Dedicated64. -->
+    <GameBinaries>C:\Path\To\SpaceEngineersDedicatedServer\DedicatedServer64</GameBinaries>
+
+    <!-- Folder containing Torch.dll and Torch.Server.exe. -->
+    <TorchBinaries>C:\Path\To\Torch</TorchBinaries>
+
+    <!-- Optional: the Magnetar install folder; empty auto-detects %AppData%\Magnetar. -->
+    <Magnetar></Magnetar>
+
+    <!-- Folder containing PluginSdk.dll. Empty derives it from Magnetar. -->
+    <MagnetarBin>C:\Path\To\magnetar\PluginSdk\bin\Release\netstandard2.0</MagnetarBin>
+
+    <!-- Optional: the Quasar data folder, so a build deploys the plugin there. -->
+    <Quasar>C:\Path\To\QuasarData</Quasar>
+
+    <!-- Optional: Quasar 1.7 assemblies, for building without a ..\quasar checkout. -->
+    <QuasarPluginAbstractionsAssembly>C:\Path\To\QuasarApp\Quasar.Plugin.Abstractions.dll</QuasarPluginAbstractionsAssembly>
+    <MagnetarProtocolAssembly>C:\Path\To\QuasarApp\Agent\Magnetar.Protocol.dll</MagnetarProtocolAssembly>
+  </PropertyGroup>
+</Project>

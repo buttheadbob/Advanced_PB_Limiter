@@ -4,20 +4,18 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using Advanced_PB_Limiter.QuasarContracts;
 using Advanced_PB_Limiter.Utils;
 using Advanced_PB_Limiter.Utils.Reports;
-using ExtensionMethods;
-using Sandbox;
 // ReSharper disable CommentTypo
 
 namespace Advanced_PB_Limiter.Manager
 {
     /// <summary>
-    /// Builds the chat reports. The tracking data is gathered on the game thread, because it reads live game objects
-    /// (a block's IsWorking, grid and block names), and the text is formatted on the thread pool afterwards.
+    /// Builds the chat and Quasar reports. The tracking data and the names and working state the game thread caches in
+    /// it are safe to read from any thread, so a report is gathered where it is asked for; no report needs the game
+    /// thread. The text is formatted on the thread pool afterwards.
     /// </summary>
     public static class ReportManager
     {
@@ -31,47 +29,16 @@ namespace Advanced_PB_Limiter.Manager
         private static readonly ConcurrentDictionary<ulong, DateTime> LastPlayerReportRequest = new();
         private static readonly ConcurrentDictionary<long, DateTime> LastRuntimesRequest = new();
 
-        public static async Task GetReportAsync(Action<string> respond)
+        public static Task GetReportAsync(Action<string> respond)
         {
-            List<PlayerReport> reports = await OnGameThread(GatherReports).ConfigureAwait(false);
-            respond(FormatReport(reports));
+            respond(FormatReport(GatherReports()));
+            return Task.CompletedTask;
         }
 
         /// <summary>
-        /// Runs <paramref name="work"/> on the game thread, where tracking data may read game objects, and returns its
-        /// result to the pool thread that is formatting the report. The game thread is never blocked waiting for the
-        /// report; the caller waits for this task on its own thread. Only a game with no update thread runs the work
-        /// where it was called; a game that is unloading still has one, and its blocks may be read only there.
+        /// The live report for Quasar, from any thread: it reads tracking data and the block and grid names the game
+        /// thread cached. A report stays a bounded size, whatever the server holds.
         /// </summary>
-        private static Task<T> OnGameThread<T>(Func<T> work)
-        {
-            MySandboxGame? game = MySandboxGame.Static;
-            if (game is null || Thread.CurrentThread == game.UpdateThread)
-                return Task.FromResult(work());
-
-            TaskCompletionSource<T> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            try
-            {
-                game.Invoke(() =>
-                {
-                    try
-                    {
-                        completion.TrySetResult(work());
-                    }
-                    catch (Exception e)
-                    {
-                        completion.TrySetException(e);
-                    }
-                }, "Advanced_PB_Limiter");
-            }
-            catch (Exception e)
-            {
-                completion.TrySetException(e);
-            }
-            return completion.Task;
-        }
-
-        /// <summary>The live report for Quasar. Call it on the game thread. A report stays a bounded size, whatever the server holds.</summary>
         public static ReportSnapshot BuildSnapshot()
         {
             ReportSnapshot snapshot = new()
@@ -103,12 +70,12 @@ namespace Advanced_PB_Limiter.Manager
 
                     snapshot.Blocks.Add(new BlockRow
                     {
-                        EntityId = block.ProgrammableBlock.EntityId,
+                        EntityId = block.EntityId,
                         OwnerIdentityId = player.PlayerId,
                         OwnerName = playerRow.Name,
-                        GridName = block.CurrentGridName,
-                        BlockName = block.ProgrammableBlock.ReadName(),
-                        Enabled = block.ProgrammableBlock.Enabled,
+                        GridName = block.GridName,
+                        BlockName = block.BlockName,
+                        Enabled = block.Enabled,
                         LastRunTimeMS = block.LastRunTimeMS,
                         RunTimeMSAvg = block.RunTimeMSAvg,
                         PeekRunTimeMS = block.PeekRunTimeMS,
@@ -133,7 +100,7 @@ namespace Advanced_PB_Limiter.Manager
             return snapshot;
         }
 
-        /// <summary>Game thread only: it reads live grid and block objects through PlayerTotals and each block's names.</summary>
+        /// <summary>Any thread: it reads tracking data, and the names the game thread cached, only.</summary>
         private static List<PlayerReport> GatherReports()
         {
             List<TrackedPlayer> players = TrackingManager.GetTrackedPlayerData();
@@ -143,13 +110,13 @@ namespace Advanced_PB_Limiter.Manager
             return reports;
         }
 
-        /// <summary>Game thread only: see GatherReports.</summary>
+        /// <summary>Any thread: see GatherReports.</summary>
         private static PlayerReport GatherReport(TrackedPlayer player)
         {
             List<PBReport> pbReports = new();
             PlayerTotals totals = PlayerTotals.Of(player, (block, resting) => pbReports.Add(new PBReport(player.SteamId,
-                block.CurrentGridName,
-                block.ProgrammableBlock.ReadName(),
+                block.GridName,
+                block.BlockName,
                 block.LastRunTimeMS,
                 block.RunTimeMSAvg,
                 block.Offences.Count,
@@ -290,12 +257,12 @@ namespace Advanced_PB_Limiter.Manager
             return report.ToString();
         }
 
-        public static async Task PlayerStatsRequest(ulong steamId, Action<string> respond)
+        public static Task PlayerStatsRequest(ulong steamId, Action<string> respond)
         {
             if (!Claim(LastPlayerReportRequest, steamId, DateTime.UtcNow))
             {
                 respond($"You can only request player stats once every {InvariantText.Of(PLAYER_REPORT_COOLDOWN_SECONDS)} seconds.");
-                return;
+                return Task.CompletedTask;
             }
 
             Stopwatch sw = Stopwatch.StartNew();
@@ -311,10 +278,10 @@ namespace Advanced_PB_Limiter.Manager
             if (player is null)
             {
                 respond("No report data found for you.  This could be because you have no programmable blocks or they are not running.");
-                return;
+                return Task.CompletedTask;
             }
 
-            PlayerReport playerReport = await OnGameThread(() => GatherReport(player)).ConfigureAwait(false);
+            PlayerReport playerReport = GatherReport(player);
             StringBuilder report = new();
             report.AppendLine();
             report.AppendLine(" >> Advanced PB Limiter Player Report");
@@ -350,26 +317,27 @@ namespace Advanced_PB_Limiter.Manager
             respond(report.ToString());
             sw.Stop();
             Log.Info($"{playerReport.PlayerName} requested a player report, generated in {InvariantText.Of(sw.Elapsed.TotalMilliseconds, "0.0000")}ms.");
+            return Task.CompletedTask;
         }
 
         private const string NoBlocksText = "No programmable blocks found for you.  This could be because you have no programmable blocks or they are not running.";
 
-        public static async Task PlayerRuntimesRequest(long identityId, Action<string> respond)
+        public static Task PlayerRuntimesRequest(long identityId, Action<string> respond)
         {
             if (!Claim(LastRuntimesRequest, identityId, DateTime.UtcNow))
             {
                 respond($"You can only request your runtimes once every {InvariantText.Of(PLAYER_REPORT_COOLDOWN_SECONDS)} seconds.");
-                return;
+                return Task.CompletedTask;
             }
 
             TrackedPlayer? player = TrackingManager.GetTrackedPlayerDataById(identityId);
             if (player is null)
             {
                 respond(NoBlocksText);
-                return;
+                return Task.CompletedTask;
             }
 
-            RuntimesSnapshot snapshot = await OnGameThread(() => GatherRuntimes(player)).ConfigureAwait(false);
+            RuntimesSnapshot snapshot = GatherRuntimes(player);
 
             StringBuilder sb = new();
             foreach (RuntimeBlock block in snapshot.Blocks)
@@ -391,6 +359,7 @@ namespace Advanced_PB_Limiter.Manager
                 sb.Append("Only the first ").Append(InvariantText.Of(MAX_RUNTIMES_BLOCKS)).Append(" blocks are listed; ").Append(InvariantText.Count(snapshot.NotListed, "more is", "more are")).AppendLine(" not.");
             // Kept for a while after its last block went: nothing to show.
             respond(sb.Length > 0 ? sb.ToString() : NoBlocksText);
+            return Task.CompletedTask;
         }
 
         private sealed class RuntimeBlock
@@ -423,7 +392,7 @@ namespace Advanced_PB_Limiter.Manager
             public int NotListed { get; }
         }
 
-        /// <summary>Game thread only: it reads live grid and block objects, and the samples while no run is changing them.</summary>
+        /// <summary>Any thread: it reads tracking data, the cached names, and the samples under their lock.</summary>
         private static RuntimesSnapshot GatherRuntimes(TrackedPlayer player)
         {
             List<RuntimeBlock> blocks = new();
@@ -441,7 +410,7 @@ namespace Advanced_PB_Limiter.Manager
                 for (int index = 0; index < runTimes.Length; index++)
                     outliers[index] = pbBlock.IsOutlier(runTimes[index]);
 
-                blocks.Add(new RuntimeBlock(pbBlock.CurrentGridName, pbBlock.ProgrammableBlock.ReadName(), resting, runTimes, outliers));
+                blocks.Add(new RuntimeBlock(pbBlock.GridName, pbBlock.BlockName, resting, runTimes, outliers));
             }
             return new RuntimesSnapshot(blocks, notListed);
         }

@@ -1,0 +1,15 @@
+<div class="pbl-skeletons @Class" aria-hidden="true">
+    @for (int row = 0; row < Rows; row++)
+    {
+        <div class="pbl-skeleton-row">
+            <span class="pbl-skeleton pbl-skeleton-dot"></span>
+            <span class="pbl-skeleton pbl-skeleton-line"></span>
+            <span class="pbl-skeleton pbl-skeleton-short"></span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int Rows { get; set; } = 4;
+    [Parameter] public string? Class { get; set; }
+}

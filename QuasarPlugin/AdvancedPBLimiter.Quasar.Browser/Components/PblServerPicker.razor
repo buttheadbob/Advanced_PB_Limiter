@@ -1,0 +1,76 @@
+@if (Servers.Count == 0)
+{
+    <p class="pbl-muted">No servers yet.</p>
+}
+else
+{
+    <div class="pbl-picker-head">
+        <span class="pbl-muted">@Selected.Count of @SelectableCount selected</span>
+        <div class="pbl-buttons">
+            <button type="button" class="pbl-btn pbl-btn-small" @onclick="SelectAll">Select all</button>
+            <button type="button" class="pbl-btn pbl-btn-small" @onclick="SelectNone">Select none</button>
+        </div>
+    </div>
+
+    <div class="pbl-server-grid">
+        @foreach (ServerInfo server in Servers)
+        {
+            bool selected = Selected.Contains(server.PickKey);
+            bool disabled = OnlineOnly && !server.Connected;
+            <label @key="server.ServerId" class="pbl-server-card @(selected ? "selected" : "") @(server.Connected ? "" : "offline") @(disabled ? "disabled" : "")">
+                <input type="checkbox" checked="@selected" disabled="@disabled" @onchange="e => Toggle(server.PickKey, e)" />
+                <span class="pbl-server-dot @(server.Connected ? "online" : "offline")"></span>
+                <span class="pbl-server-name">@server.DisplayName</span>
+                @if (!string.IsNullOrWhiteSpace(server.ClusterId))
+                {
+                    <span class="pbl-server-meta">cluster @server.ClusterSlot</span>
+                }
+                @if (!server.Connected)
+                {
+                    <PblBadge Text="Offline" Tone="neutral" />
+                }
+            </label>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<ServerInfo> Servers { get; set; } = Array.Empty<ServerInfo>();
+
+    /// <summary>The parent's set, changed in place.</summary>
+    [Parameter, EditorRequired] public HashSet<string> Selected { get; set; } = new();
+
+    /// <summary>A report can only come from a running server, so the others cannot be ticked.</summary>
+    [Parameter] public bool OnlineOnly { get; set; }
+
+    [Parameter] public EventCallback Changed { get; set; }
+
+    private int SelectableCount => Servers.Count(server => !OnlineOnly || server.Connected);
+
+    private Task Toggle(string pickKey, ChangeEventArgs args)
+    {
+        if (args.Value is true)
+            Selected.Add(pickKey);
+        else
+            Selected.Remove(pickKey);
+
+        return Changed.InvokeAsync();
+    }
+
+    private Task SelectAll()
+    {
+        foreach (ServerInfo server in Servers)
+        {
+            if (!OnlineOnly || server.Connected)
+                Selected.Add(server.PickKey);
+        }
+
+        return Changed.InvokeAsync();
+    }
+
+    private Task SelectNone()
+    {
+        Selected.Clear();
+        return Changed.InvokeAsync();
+    }
+}

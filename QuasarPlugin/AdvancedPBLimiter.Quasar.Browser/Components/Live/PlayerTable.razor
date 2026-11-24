@@ -1,0 +1,131 @@
+@using Advanced_PB_Limiter.QuasarContracts
+
+@if (Rows.Count == 0)
+{
+    <PblEmptyState Icon="users" Title="No players match" Description="Players appear once one of their programmable blocks has run.">
+        <button type="button" class="pbl-btn" @onclick="ClearFilter">Clear filters</button>
+    </PblEmptyState>
+}
+else
+{
+    <div class="pbl-table-wrap">
+        <table class="pbl-table">
+            <thead>
+                <tr>
+                    @Header("Player", nameof(PlayerRowView.Name), "pbl-col-name")
+                    @Header("Steam ID", nameof(PlayerRowView.SteamId), "pbl-col-steam pbl-num", numeric: true)
+                    @Header("Blocks", nameof(PlayerRowView.BlockCount), "pbl-num", numeric: true)
+                    @Header("Combined ms", nameof(PlayerRowView.CombinedLastRunTimeMS), "pbl-num", numeric: true)
+                    @Header("Combined avg", nameof(PlayerRowView.CombinedRunTimeMSAvg), "pbl-col-avg pbl-num", numeric: true)
+                    @Header("Offences", nameof(PlayerRowView.Offences), "pbl-col-offences pbl-num", numeric: true)
+                    @Header("Recompiles", nameof(PlayerRowView.Recompiles), "pbl-col-recompiles pbl-num", numeric: true)
+                    @Header("Memory", nameof(PlayerRowView.MemoryBytes), "pbl-col-memory pbl-num", numeric: true)
+                    <th scope="col" class="pbl-col-actions"><span class="pbl-visually-hidden">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (PlayerRowView row in Rows)
+                {
+                    <tr @key="row.IdentityId" class="pbl-row-click" @onclick="() => Details.InvokeAsync(row)">
+                        <td class="pbl-col-name">
+                            <div class="pbl-player-cell">
+                                <span class="pbl-avatar pbl-avatar-@AvatarIndex(row.Name)">@Initials(row.Name)</span>
+                                <div>
+                                    <div class="pbl-player-name">
+                                        @row.Name
+                                        @if (row.IsNpc)
+                                        {
+                                            <PblBadge Text="NPC" Tone="neutral" />
+                                        }
+                                        @if (row.IsPrivileged)
+                                        {
+                                            <PblBadge Text="Privileged" Tone="primary" Icon="shield" />
+                                        }
+                                    </div>
+                                    <div class="pbl-cell-sub">
+                                        @InvariantText.Count(row.BlockCount, "block", "blocks")
+                                        @if (row.Offences > 0)
+                                        {
+                                            <PblBadge Text="@InvariantText.Count(row.Offences, "offence", "offences")" Tone="warning" />
+                                        }
+                                        <span>@Figures.MemoryTotal(row.MemoryBytes, row.MemoryUnmeasured)</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="pbl-col-steam pbl-num">@(row.IsNpc ? "—" : row.SteamId)</td>
+                        <td class="pbl-num">@row.BlockCount</td>
+                        <td class="pbl-num">@Figures.Ms(row.CombinedLastRunTimeMS)</td>
+                        <td class="pbl-col-avg pbl-num">@Figures.Ms(row.CombinedRunTimeMSAvg)</td>
+                        <td class="pbl-col-offences pbl-num">@row.Offences</td>
+                        <td class="pbl-col-recompiles pbl-num">@row.Recompiles</td>
+                        <td class="pbl-col-memory pbl-num" title="@(row.MemoryUnmeasured ? PlayerMemoryUnmeasuredTip : null)">
+                            @Figures.MemoryTotal(row.MemoryBytes, row.MemoryUnmeasured)
+                        </td>
+                        <td class="pbl-col-actions">
+                            <button type="button" class="pbl-icon-btn" title="Details" aria-label="Details"
+                                    @onclick="() => Details.InvokeAsync(row)" @onclick:stopPropagation="true">
+                                <PblIcon Name="eye" />
+                            </button>
+                            @if (CanControl)
+                            {
+                                <button type="button" class="pbl-icon-btn pbl-icon-btn-danger" title="Turn off all blocks" aria-label="Turn off all blocks"
+                                        @onclick="() => TurnOff.InvokeAsync(row)" @onclick:stopPropagation="true">
+                                    <PblIcon Name="power" />
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private const string PlayerMemoryUnmeasuredTip = "At least one of this player's scripts could not be measured by the memory check; any figure shown is the memory of the scripts that could be.";
+
+    [Parameter] public IReadOnlyList<PlayerRowView> Rows { get; set; } = Array.Empty<PlayerRowView>();
+    [Parameter] public string SortColumn { get; set; } = nameof(PlayerRowView.CombinedLastRunTimeMS);
+    [Parameter] public bool SortDescending { get; set; } = true;
+    [Parameter] public bool CanControl { get; set; }
+    [Parameter] public EventCallback<string> Sort { get; set; }
+    [Parameter] public EventCallback<PlayerRowView> Details { get; set; }
+    [Parameter] public EventCallback<PlayerRowView> TurnOff { get; set; }
+    [Parameter] public EventCallback ClearFilter { get; set; }
+
+    private RenderFragment Header(string title, string column, string className, bool numeric = false) => __builder =>
+    {
+        string sort = SortColumn == column ? (SortDescending ? "descending" : "ascending") : "none";
+        <th scope="col" class="@className @(numeric ? "pbl-num" : "")" aria-sort="@sort">
+            <button type="button" class="pbl-th" @onclick="() => Sort.InvokeAsync(column)">
+                @title
+                @if (SortColumn == column)
+                {
+                    <PblIcon Name="@(SortDescending ? "arrow-down" : "arrow-up")" />
+                }
+            </button>
+        </th>
+    };
+
+    private static string Initials(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        string trimmed = name.Trim();
+        string[] words = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length >= 2)
+            return (char.ToUpperInvariant(words[0][0]).ToString() + char.ToUpperInvariant(words[1][0])).Trim();
+
+        return trimmed.Length >= 2
+            ? trimmed[..2].ToUpperInvariant()
+            : trimmed[..1].ToUpperInvariant();
+    }
+
+    private static int AvatarIndex(string name)
+    {
+        int hash = 0;
+        foreach (char c in name)
+            hash = ((hash * 31) + c) & 0x7fffffff;
+        return hash % 6;
+    }
+}

@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="Advanced_PB_Limiter.UI.BasicSettings"
+<UserControl x:Class="Advanced_PB_Limiter.UI.BasicSettings"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -8,9 +8,16 @@
              xmlns:sys="clr-namespace:System;assembly=mscorlib"
              xmlns:utils="clr-namespace:Advanced_PB_Limiter.Utils"
              mc:Ignorable="d"
-             d:DesignHeight="Auto" d:DesignWidth="Auto" Background="#FF1E1E1E">
+             d:DesignHeight="Auto" d:DesignWidth="Auto"
+             Background="{DynamicResource WhiteBrush}"
+             Foreground="{DynamicResource BlackBrush}">
     
     <UserControl.Resources>
+    <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary Source="PblStyles.xaml" />
+        </ResourceDictionary.MergedDictionaries>
+
         <ObjectDataProvider MethodName="GetValues" ObjectType="{x:Type sys:Enum}" x:Key="EnumDataProvider">
             <ObjectDataProvider.MethodParameters>
                 <x:Type TypeName="utils:Enums+Punishment"/>
@@ -21,75 +28,8 @@
                 <x:Type TypeName="utils:Enums+InstantPunishment"/>
             </ObjectDataProvider.MethodParameters>
         </ObjectDataProvider>
-        <Style TargetType="{x:Type TabControl}">
-            <Setter Property="BorderThickness" Value="3"/>
-            <Setter Property="BorderBrush" Value="Black"/>
-            <Setter Property="Background" Value="LightBlue"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="TabControl">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-                            <TabPanel Grid.Row="0" IsItemsHost="true"/>
-                            <Border Grid.Row="1" BorderBrush="Black" Height="Auto" BorderThickness="1" CornerRadius="5">
-                                <ContentPresenter ContentSource="SelectedContent" />
-                            </Border>
-                        </Grid>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        
-        <Style TargetType="{x:Type TabItem}">
-            <Setter Property="BorderThickness" Value="2"/>
-            <Setter Property="BorderBrush" Value="Black"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="HorizontalContentAlignment" Value="Center"/>
-            <Setter Property="FontSize" Value="15"/>
-            <Setter Property="Foreground" Value="#FF27E915"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="{x:Type TabItem}">
-                        <Grid>
-                            <Border Name="Border" Background="Transparent" BorderBrush="Black" BorderThickness="1" CornerRadius="5,5,1,1">
-                                <ContentPresenter x:Name="ContentSite"
-                                                  VerticalAlignment="Center"
-                                                  HorizontalAlignment="Center"
-                                                  ContentSource="Header"
-                                                  Margin="12,2,12,2"/>
-                            </Border>
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Border" Property="Background" Value="Black"/>
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="False">
-                                <Setter TargetName="Border" Property="Background" Value="Transparent"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style TargetType="{x:Type CheckBox}">
-            <Setter Property="Foreground" Value="#FF27E915" />
-            <Setter Property="FontSize" Value="12"/>
-        </Style>
-        <Style TargetType="{x:Type TextBlock}">
-            <Setter Property="Foreground" Value="#FF27E915" />
-            <Setter Property="FontSize" Value="12"/>
-        </Style>
-        <Style TargetType="{x:Type RadioButton}">
-            <Setter Property="Foreground" Value="#FF27E915" />
-            <Setter Property="FontSize" Value="12"/>
-        </Style>
-        <Style TargetType="{x:Type Button}">
-            <Setter Property="FontSize" Value="12"/>
-        </Style>
-    </UserControl.Resources>
+    </ResourceDictionary>
+</UserControl.Resources>
     <TabControl d:DataContext="{d:DesignInstance settings:Advanced_PB_LimiterConfig}">
         <TabItem Header="Main Settings">
             <Grid>
@@ -150,19 +90,19 @@
                 <CheckBox Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding AllowNPCToAutoTurnOn}"/>
                 <TextBlock Grid.Row="4" Grid.Column="2" Text="Allows the Save() of an NPC's programmable block to run while it is turned off, which is otherwise blocked. For an NPC's Save() only this box counts; Auto Enable still covers an NPC block's other runs and recompiles. Useful for custom operations on the server." Margin="3" TextWrapping="Wrap"/>
                 
-                <TextBlock Grid.Row="5" Grid.Column="0" Text="InstaKill Limit" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="InstaKill Limit" Margin="3" VerticalAlignment="Center" Foreground="{StaticResource Pbl.Danger}"/>
                 <TextBox Grid.Row="5" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding InstantKillThreshold}" TextAlignment="Center"/>
                 <TextBlock Grid.Row="5" Grid.Column="2" Text="Any pb that reaches this limit will be punished immediately with the InstaKill punishment, regardless of whether it has offences.  No Graceful shutdown request will be sent.  A run during which a garbage collection happened is left to the other limits instead, as its time may be mostly that pause.  Set to 0 to disable." Margin="3" TextWrapping="Wrap"/>
 
-                <TextBlock Grid.Row="6" Grid.Column="0" Text="InstaKill Punishment" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
-                <ComboBox Grid.Row="6" Grid.Column="1" VerticalAlignment="Center" Margin="3" Foreground="Black" ItemsSource="{Binding Source={StaticResource InstantPunishmentProvider}}" SelectedItem="{Binding InstantKillPunishment}"/>
+                <TextBlock Grid.Row="6" Grid.Column="0" Text="InstaKill Punishment" Margin="3" VerticalAlignment="Center" Foreground="{StaticResource Pbl.Danger}"/>
+                <ComboBox Grid.Row="6" Grid.Column="1" VerticalAlignment="Center" Margin="3" ItemsSource="{Binding Source={StaticResource InstantPunishmentProvider}}" SelectedItem="{Binding InstantKillPunishment}"/>
                 <TextBlock Grid.Row="6" Grid.Column="2" Text="What happens to a pb over the InstaKill limit.  TurnOff by default, or Destroy, which damages it to 100 integrity.  An instant kill punishes at once, so there is no Damage: the script would keep running." Margin="3" TextWrapping="Wrap"/>
 
                 <TextBlock Grid.Row="7" Grid.Column="0" Text="Use SimTime" Margin="3" VerticalAlignment="Center"  />
                 <CheckBox Grid.Row="7" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding UseSimTime}" />
                 <TextBlock Grid.Row="7" Grid.Column="2" Text="Use SimTime will adjust the runtime for Sim Speed.  When sim speed tanks then the script running can also take longer to run at no fault of the player." Margin="3" TextWrapping="Wrap" />
                 
-                <TextBlock Grid.Row="8" Grid.Column="0" Text="No Recompile On Restart" Margin="3" VerticalAlignment="Center" Foreground="Red"/>
+                <TextBlock Grid.Row="8" Grid.Column="0" Text="No Recompile On Restart" Margin="3" VerticalAlignment="Center" Foreground="{StaticResource Pbl.Danger}"/>
                 <CheckBox Grid.Row="8" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding RequireRecompileOnRestart}" HorizontalAlignment="Center"/>
                 <TextBlock Grid.Row="8" Grid.Column="2" Text="Checking this will prevent pbs from being compiled during restart when turned off.  This means the player will have to click Recompile instead of Run.  This is best to prevent timers from enabling pbs.  This also means a button will not turn the pb on." Margin="3" TextWrapping="Wrap" />
                 
@@ -195,7 +135,7 @@
                 <TextBlock Grid.Row="15" Grid.Column="2" Text="Limit PB use of system memory (Prevents some script attacks against the server and badly written scripts from making the system unstable).  A pb over it gets the Memory punishment the next time it runs.  Set to 0 to ignore." Margin="3" TextWrapping="Wrap" />
 
                 <TextBlock Grid.Row="16" Grid.Column="0" Text="Memory Punishment" Margin="3" VerticalAlignment="Center"/>
-                <ComboBox Grid.Row="16" Grid.Column="1" VerticalAlignment="Center" Margin="3" Foreground="Black" ItemsSource="{Binding Source={StaticResource InstantPunishmentProvider}}" SelectedItem="{Binding MemoryPunishment}"/>
+                <ComboBox Grid.Row="16" Grid.Column="1" VerticalAlignment="Center" Margin="3" ItemsSource="{Binding Source={StaticResource InstantPunishmentProvider}}" SelectedItem="{Binding MemoryPunishment}"/>
                 <TextBlock Grid.Row="16" Grid.Column="2" Text="What happens to a pb over the memory limit.  TurnOff by default, or Destroy, which damages it to 100 integrity.  It punishes at once, so there is no Damage: the script would keep running." Margin="3" TextWrapping="Wrap"/>
 
                 <TextBlock Grid.Row="17" Grid.Column="0" Text="Destroy Protected PB" Margin="3" VerticalAlignment="Center" />
@@ -313,7 +253,7 @@
                 <TextBlock Grid.Row="17" Grid.Column="2" Text="How many minutes to keep a player in reports after they have no pbs in game, and the history of a pb that has not run for that long.  Set to 0 (zero) to disable removing." Margin="3" TextWrapping="Wrap"/>
                 
                 <TextBlock Grid.Row="18" Grid.Column="0" Name="PunishmentLabel" Text="Punishment type" Margin="3" VerticalAlignment="Center"/>
-                <ComboBox Grid.Row="18" Grid.Column="1" Name="PunishmentComboBox" VerticalAlignment="Center" Margin="3" Width="40" Foreground="Black" SelectionChanged="PunishmentComboBox_OnSelectionChanged"/>
+                <ComboBox Grid.Row="18" Grid.Column="1" Name="PunishmentComboBox" VerticalAlignment="Center" Margin="3" Width="40" SelectionChanged="PunishmentComboBox_OnSelectionChanged"/>
                 <TextBlock Grid.Row="18" Grid.Column="2" Text="Turn off disables the block.  Damage applies the set amount of damage points to the block; a pb the game won't damage is turned off instead, or removed with Destroy Protected PB on.  Destroy damages the pb to 100 integrity, below functional level, and a pb already at or below that is left as it is; a pb the game won't damage is removed." Margin="3" TextWrapping="Wrap"/>
                 
                 <TextBlock Grid.Row="19" Grid.Column="0" Text="Damage points" Margin="3"/>
@@ -370,7 +310,7 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Label Grid.Column="0" Grid.Row="0" Content="Limiting factions is planned for a later update." FontSize="40" Foreground="Chartreuse"/>
+                <Label Grid.Column="0" Grid.Row="0" Content="Limiting factions is planned for a later update." FontSize="12" Foreground="{StaticResource Pbl.Warning}"/>
             </Grid>
         </TabItem>
     </TabControl>

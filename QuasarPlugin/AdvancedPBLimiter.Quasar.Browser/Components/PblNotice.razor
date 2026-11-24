@@ -1,0 +1,26 @@
+<div class="pbl-notice pbl-notice-@Tone @Class" role="@(Tone is "danger" or "warning" ? "alert" : "status")">
+    <span class="pbl-notice-icon"><PblIcon Name="@ResolvedIcon" /></span>
+    <div class="pbl-notice-text">@ChildContent</div>
+    @if (Dismiss.HasDelegate)
+    {
+        <button type="button" class="pbl-icon-btn pbl-notice-close" aria-label="Dismiss" @onclick="Dismiss">
+            <PblIcon Name="x" />
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter] public string Tone { get; set; } = "info";
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback Dismiss { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private string ResolvedIcon => Icon ?? Tone switch
+    {
+        "success" => "check",
+        "warning" => "alert",
+        "danger" => "alert",
+        _ => "info"
+    };
+}

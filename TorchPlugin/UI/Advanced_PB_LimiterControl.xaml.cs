@@ -1,4 +1,5 @@
-﻿using Advanced_PB_Limiter.Settings;
+﻿using System;
+using Advanced_PB_Limiter.Settings;
 
 namespace Advanced_PB_Limiter.UI
 {
@@ -12,6 +13,22 @@ namespace Advanced_PB_Limiter.UI
             InitializeComponent();
             DataContext = Config;
             AddTabs();
+            ShowStatus();
+        }
+
+        /// <summary>What the header says about this instance. The version comes from the host, not a copied constant.</summary>
+        private void ShowStatus()
+        {
+            try
+            {
+                StatusText.Text = "v" + LimiterCore.Host.Version;
+                StatusDetailText.Text = LimiterCore.Retired ? "Retired, restart Torch" : "Torch";
+            }
+            catch (InvalidOperationException)
+            {
+                // The header is cosmetic; a plugin still initializing must not fail to draw because of it.
+                StatusText.Text = "Advanced PB Limiter";
+            }
         }
 
         private void AddTabs()

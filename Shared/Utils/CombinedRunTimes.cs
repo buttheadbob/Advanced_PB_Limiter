@@ -3,8 +3,10 @@
 namespace Advanced_PB_Limiter.Utils
 {
     /// <summary>
-    /// One player's combined run times, the same for the combined limits and every report: over the blocks that count, see
-    /// TrackedPlayer.CountsInCombined. The hottest player is the one with the highest of these per counted block.
+    /// One player's combined run times, counted by the same rules for the combined limits and every report: over the
+    /// blocks that count, see TrackedPlayer.CountsInCombined for the limits and CountsInCombinedForReport for reports.
+    /// Reports use the state cached on the game thread, so their totals can trail the limits by up to one cleanup pass.
+    /// The hottest player is the one with the highest of these per counted block.
     /// </summary>
     public sealed class CombinedRunTimes
     {

@@ -24,6 +24,22 @@ if ($Target -notin 'all', 'torch', 'magnetar', 'quasar') {
     exit 2
 }
 
+# Reads a local path property from the user file, then the committed defaults. Empty when unset.
+function Get-BuildProp([string]$name) {
+    foreach ($file in @('Directory.Build.props.user', 'Directory.Build.props')) {
+        if (-not (Test-Path -LiteralPath $file)) { continue }
+        try {
+            [xml]$document = Get-Content -LiteralPath $file -Raw -ErrorAction Stop
+            $node = $document.SelectSingleNode("/Project/PropertyGroup/$name[not(@Condition)]")
+            if ($node -and $node.InnerText.Trim()) { return $node.InnerText.Trim() }
+        }
+        catch {
+            # A malformed props file is reported by the build itself; here it only means no value was found.
+        }
+    }
+    return ''
+}
+
 # The caller's shell goes back to its own folder afterwards, as the old build.bat did with setlocal.
 Push-Location $PSScriptRoot
 try {
@@ -39,37 +55,66 @@ try {
         if (-not $onWindows) {
             $torchProblem = 'Skipped: Torch builds only on Windows, with Visual Studio MSBuild.'
         }
-        elseif (-not (Test-Path 'GameBinaries')) {
-            $torchProblem = 'ERROR: GameBinaries junction missing. Run Setup.ps1 first.'
-        }
         else {
-            $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-            if (Test-Path $vswhere) {
-                $vswhereArgs = @(
-                    '-latest', '-prerelease', '-requires', 'Microsoft.Component.MSBuild',
-                    '-find', 'MSBuild\**\Bin\MSBuild.exe'
-                )
-                $msbuild = & $vswhere @vswhereArgs | Select-Object -First 1
+            $gameBinaries = Get-BuildProp 'GameBinaries'
+            if (-not $gameBinaries) { $gameBinaries = Get-BuildProp 'DS64' }
+            if (-not $gameBinaries) { $gameBinaries = Get-BuildProp 'Dedicated64' }
+
+            $torchBinaries = Get-BuildProp 'TorchBinaries'
+
+            if (-not $gameBinaries -or -not (Test-Path -LiteralPath (Join-Path $gameBinaries 'Sandbox.Game.dll'))) {
+                $torchProblem = 'ERROR: GameBinaries (or DS64/Dedicated64) is missing or has no Sandbox.Game.dll. Run Setup.ps1 or set it in Directory.Build.props.user.'
             }
-            if (-not $msbuild) {
-                $torchProblem = 'ERROR: Visual Studio MSBuild not found. Install the .NET desktop workload.'
+            elseif (-not $torchBinaries -or -not (Test-Path -LiteralPath (Join-Path $torchBinaries 'Torch.dll'))) {
+                $torchProblem = 'ERROR: TorchBinaries is missing or has no Torch.dll. Run Setup.ps1 or set it in Directory.Build.props.user.'
+            }
+            else {
+                $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+                if (Test-Path $vswhere) {
+                    $vswhereArgs = @(
+                        '-latest', '-prerelease', '-requires', 'Microsoft.Component.MSBuild',
+                        '-find', 'MSBuild\**\Bin\MSBuild.exe'
+                    )
+                    $msbuild = & $vswhere @vswhereArgs | Select-Object -First 1
+                }
+                if (-not $msbuild) {
+                    $torchProblem = 'ERROR: Visual Studio MSBuild not found. Install the .NET desktop workload.'
+                }
             }
         }
     }
     $magnetarProblem = $null
-    if (-not (Test-Path 'Directory.Build.props')) {
-        $magnetarProblem = 'ERROR: Directory.Build.props missing. Run Setup.ps1 first.'
+    $magnetarBin = Get-BuildProp 'MagnetarBin'
+    if (-not $magnetarBin) {
+        # The main props derive MagnetarBin from Magnetar; do the same here so a missing install fails before the
+        # version is raised, as a missing Directory.Build.props used to.
+        $magnetar = Get-BuildProp 'Magnetar'
+        if (-not $magnetar -and $onWindows -and $env:APPDATA) { $magnetar = Join-Path $env:APPDATA 'Magnetar' }
+        if (-not $magnetar -and -not $onWindows -and $HOME) { $magnetar = Join-Path $HOME '.local/share/Magnetar' }
+        if ($magnetar) {
+            foreach ($file in @(
+                [System.IO.Path]::Combine($magnetar, 'Libraries', 'MagnetarLegacy', 'PluginSdk.dll'),
+                [System.IO.Path]::Combine($magnetar, 'Libraries', 'MagnetarInterim', 'PluginSdk.dll'),
+                [System.IO.Path]::Combine($magnetar, 'Bin', 'PluginSdk.dll')
+            )) {
+                if (Test-Path -LiteralPath $file) { $magnetarBin = Split-Path $file -Parent; break }
+            }
+        }
+        if (-not $magnetarBin) {
+            $local = [System.IO.Path]::Combine((Split-Path $PSScriptRoot -Parent), 'magnetar', 'PluginSdk', 'bin', 'Release', 'netstandard2.0')
+            if (Test-Path -LiteralPath (Join-Path $local 'PluginSdk.dll')) { $magnetarBin = $local }
+        }
+    }
+    if ($magnetarBin -and -not (Test-Path -LiteralPath (Join-Path $magnetarBin 'PluginSdk.dll'))) {
+        $magnetarProblem = "ERROR: PluginSdk.dll not found in MagnetarBin: $magnetarBin. Fix Directory.Build.props.user."
+    }
+    elseif (-not $magnetarBin) {
+        $magnetarProblem = 'ERROR: Magnetar PluginSdk not found. Run Setup.ps1 or set MagnetarBin in Directory.Build.props.user.'
     }
     $quasarProblem = $null
     $quasarAbstractionsArg = $null
-    if (-not $QuasarAbstractions -and (Test-Path 'Directory.Build.props')) {
-        $match = Select-String -Path 'Directory.Build.props' -Pattern '<QuasarPluginAbstractionsAssembly>(.*?)</QuasarPluginAbstractionsAssembly>' | Select-Object -First 1
-        if ($match) { $QuasarAbstractions = $match.Matches[0].Groups[1].Value }
-    }
-    if (-not $MagnetarProtocol -and (Test-Path 'Directory.Build.props')) {
-        $match = Select-String -Path 'Directory.Build.props' -Pattern '<MagnetarProtocolAssembly>(.*?)</MagnetarProtocolAssembly>' | Select-Object -First 1
-        if ($match) { $MagnetarProtocol = $match.Matches[0].Groups[1].Value }
-    }
+    if (-not $QuasarAbstractions) { $QuasarAbstractions = Get-BuildProp 'QuasarPluginAbstractionsAssembly' }
+    if (-not $MagnetarProtocol) { $MagnetarProtocol = Get-BuildProp 'MagnetarProtocolAssembly' }
     if ($QuasarAbstractions) {
         if (Test-Path $QuasarAbstractions) {
             $quasarAbstractionsArg = "-p:QuasarPluginAbstractionsAssembly=$QuasarAbstractions"

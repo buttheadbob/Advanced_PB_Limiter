@@ -123,17 +123,39 @@ namespace AdvancedPBLimiter.QuasarCompanion
             }
         }
 
+        /// <summary>
+        /// Builds the snapshot on this thread when the server plugin can do that: it reads tracking data and the block
+        /// and grid names the game thread cached, so there is no need to wait for the game thread, which during a world
+        /// load can be busy for minutes. An older server plugin has no such marker and reads live block state, so it is
+        /// asked on the game thread, as before, with the request's deadline.
+        /// </summary>
         private async Task<string> GetSnapshotJson(long deadline, CancellationToken cancellationToken)
         {
             var bridge = FindBridge();
             if (bridge == null)
                 return JsonConvert.SerializeObject(new ReportSnapshot { Installed = false }, Json);
 
-            // During a world load the game thread is busy for minutes, and asking it would stall the agent.
             if (!(bool)Invoke(bridge, "IsOnline")!)
                 return JsonConvert.SerializeObject(new ReportSnapshot { Installed = true, Online = false }, Json);
 
+            cancellationToken.ThrowIfCancellationRequested();
+
+            MethodInfo? anyThread = bridge.GetMethod("ReportSnapshotOnAnyThread", BindingFlags.Public | BindingFlags.Static);
+            if (anyThread?.Invoke(null, null) is bool allowed && allowed)
+            {
+                RefuseLate(deadline);
+                return (string)Invoke(bridge, "GetReportJson")!;
+            }
+
+            // An older server plugin reads live block state here: it must run on the game thread.
             return await OnGameThread(() => (string)Invoke(bridge, "GetReportJson")!, deadline, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>Refuses a request that has already waited past its own deadline, as OnGameThread does.</summary>
+        private static void RefuseLate(long deadline)
+        {
+            if (deadline != 0 && Stopwatch.GetTimestamp() >= deadline)
+                throw new TimeoutException("The request waited on this server for longer than it allows before it could run, so it was not run.");
         }
 
         private async Task<string> TurnOff(string method, long id, long deadline, CancellationToken cancellationToken)

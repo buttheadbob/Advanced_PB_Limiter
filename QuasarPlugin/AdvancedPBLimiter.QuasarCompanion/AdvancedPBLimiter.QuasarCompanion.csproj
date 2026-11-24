@@ -16,9 +16,8 @@
     <GenerateAssemblyVersionAttribute>false</GenerateAssemblyVersionAttribute>
     <GenerateAssemblyFileVersionAttribute>false</GenerateAssemblyFileVersionAttribute>
     <GenerateAssemblyInformationalVersionAttribute>false</GenerateAssemblyInformationalVersionAttribute>
-    <!-- Local builds: the Dedicated Server from Directory.Build.props, or the GameBinaries junction -->
+    <!-- Local builds: the Dedicated Server folder from Directory.Build.props.user -->
     <DS64 Condition="'$(DS64)' == ''">$(Dedicated64)</DS64>
-    <DS64 Condition="'$(DS64)' == ''">..\..\GameBinaries</DS64>
     <MagnetarProtocolProject Condition="'$(MagnetarProtocolProject)' == ''">..\..\..\quasar\Magnetar.Protocol\Magnetar.Protocol.csproj</MagnetarProtocolProject>
   </PropertyGroup>
 

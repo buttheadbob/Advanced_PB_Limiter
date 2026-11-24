@@ -1,0 +1,74 @@
+@if (Open)
+{
+    <div class="pbl-modal-backdrop" tabindex="-1" @onclick="Close" @onkeydown="OnKeyDown">
+        <section @ref="_panel" class="pbl-modal @Class" role="dialog" aria-modal="true" aria-labelledby="@TitleId"
+                 tabindex="-1" @onclick:stopPropagation="true" @onkeydown="OnKeyDown">
+            <header class="pbl-modal-head">
+                <div class="pbl-modal-title">
+                    @if (!string.IsNullOrWhiteSpace(Icon))
+                    {
+                        <span class="pbl-modal-icon"><PblIcon Name="@Icon" /></span>
+                    }
+                    <div>
+                        <h2 id="@TitleId">@Title</h2>
+                        @if (!string.IsNullOrWhiteSpace(Subtitle))
+                        {
+                            <p>@Subtitle</p>
+                        }
+                    </div>
+                </div>
+                <button type="button" class="pbl-icon-btn" aria-label="Close" @onclick="Close">
+                    <PblIcon Name="x" />
+                </button>
+            </header>
+
+            <div class="pbl-modal-body">@ChildContent</div>
+
+            @if (Footer is not null)
+            {
+                <footer class="pbl-modal-foot">@Footer</footer>
+            }
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private readonly string TitleId = "pbl-modal-title-" + Guid.NewGuid().ToString("N");
+    private ElementReference _panel;
+    private bool _wasOpen;
+    private bool _focus;
+
+    protected override void OnParametersSet()
+    {
+        if (Open && !_wasOpen) _focus = true;
+        _wasOpen = Open;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!Open || !_focus) return;
+        _focus = false;
+        try
+        {
+            await _panel.FocusAsync();
+        }
+        catch (InvalidOperationException)
+        {
+            // The modal went away before it could take focus.
+        }
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+
+    private Task OnKeyDown(KeyboardEventArgs args) =>
+        string.Equals(args.Key, "Escape", StringComparison.Ordinal) ? Close() : Task.CompletedTask;
+}

@@ -1,0 +1,43 @@
+@implements IDisposable
+
+<div class="pbl-toasts" aria-live="polite" aria-atomic="false">
+    @foreach (PblToast toast in _toasts)
+    {
+        <div class="pbl-toast pbl-toast-@toast.Tone" @key="toast.Id">
+            <span class="pbl-toast-icon"><PblIcon Name="@Icon(toast.Tone)" /></span>
+            <span class="pbl-toast-text">@toast.Message</span>
+            <button type="button" class="pbl-icon-btn" aria-label="Dismiss" @onclick="() => ToastService.Dismiss(toast.Id)">
+                <PblIcon Name="x" />
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<PblToast> _toasts = Array.Empty<PblToast>();
+
+    protected override void OnInitialized()
+    {
+        _toasts = ToastService.Snapshot;
+        ToastService.Changed += OnChanged;
+    }
+
+    private void OnChanged()
+    {
+        _ = InvokeAsync(() =>
+        {
+            _toasts = ToastService.Snapshot;
+            StateHasChanged();
+        });
+    }
+
+    private static string Icon(ToastTone tone) => tone switch
+    {
+        ToastTone.Success => "check",
+        ToastTone.Warning => "alert",
+        ToastTone.Danger => "alert",
+        _ => "info"
+    };
+
+    public void Dispose() => ToastService.Changed -= OnChanged;
+}

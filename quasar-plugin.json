@@ -1,7 +1,7 @@
 {
   "id": "advancedpblimiter.quasar",
   "displayName": "Advanced PB Limiter",
-  "version": "1.3.3.0",
+  "version": "1.3.4.4",
   "entryAssembly": "AdvancedPBLimiter.Quasar.dll",
   "entryType": "AdvancedPBLimiter.Quasar.AdvancedPBLimiterQuasarPlugin",
   "browserAssembly": "AdvancedPBLimiter.Quasar.Browser.dll",

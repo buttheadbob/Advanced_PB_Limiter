@@ -1,33 +1,31 @@
 <Project>
-    <!-- Copy this file to Directory.Build.props (not committed) to override paths on your machine.
-         Only the Magnetar ServerPlugin uses these. The Torch plugin uses the GameBinaries/TorchBinaries junctions.
-         Leave a value empty to use the auto-detection below. -->
+    <!-- Local machine paths live in Directory.Build.props.user (gitignored, written by Setup.ps1), so this file can be
+         committed. A value passed on the command line still wins:
+           Dedicated64    folder containing SpaceEngineersDedicated.exe
+           GameBinaries   folder containing the game assemblies the Torch plugin references (empty uses DS64, then
+                          Dedicated64)
+           TorchBinaries  folder containing Torch.dll and Torch.Server.exe; the Torch build needs it
+           Magnetar       the Magnetar install folder
+           MagnetarBin    folder containing PluginSdk.dll (empty derives it from Magnetar)
+           Quasar         the Quasar data folder, to deploy the plugin after a build
+           QuasarPluginAbstractionsAssembly and MagnetarProtocolAssembly   Quasar 1.7 assemblies, to build without a
+                          ..\quasar checkout
+           DS64           alias some projects use for the Dedicated Server folder
+    -->
+    <Import Project="$(MSBuildThisFileDirectory)Directory.Build.props.user"
+            Condition="Exists('$(MSBuildThisFileDirectory)Directory.Build.props.user')" />
+
+    <!-- A user who sets only one of the aliases gets the others from it; auto-detection then leaves them alone. -->
     <PropertyGroup>
-        <!-- Folder containing SpaceEngineersDedicated.exe (Torch: its DedicatedServer64 folder) -->
-        <Dedicated64></Dedicated64>
-
-        <!-- The Magnetar install (holds Libraries\MagnetarLegacy\PluginSdk.dll on Windows, Bin\PluginSdk.dll on Linux) -->
-        <Magnetar></Magnetar>
-
-        <!-- Folder containing PluginSdk.dll. Normally derived from Magnetar below; set it to point at a PluginSdk
-             you built yourself from the Magnetar repository (PluginSdk\bin\Release\netstandard2.0). -->
-        <MagnetarBin></MagnetarBin>
-
-        <!-- The Quasar install (holds Quasar.exe). When set, building the Quasar plugin copies it into
-             <Quasar>\Plugins\AdvancedPBLimiter so a restarted Quasar loads it. Leave empty to not deploy. -->
-        <Quasar></Quasar>
-
-        <!-- The Quasar 1.7 Quasar.Plugin.Abstractions.dll, for building the Quasar plugin without a quasar
-             checkout. Leave empty to build against ..\quasar\Quasar.Plugin.Abstractions. -->
-        <QuasarPluginAbstractionsAssembly></QuasarPluginAbstractionsAssembly>
-
-        <!-- The Quasar 1.7 Magnetar.Protocol.dll (QuasarApp\Agent), for building the companion against the running
-             Quasar. Leave empty to build against ..\quasar\Magnetar.Protocol. -->
-        <MagnetarProtocolAssembly></MagnetarProtocolAssembly>
+        <GameBinaries Condition=" '$(GameBinaries)' == '' AND '$(DS64)' != '' ">$(DS64)</GameBinaries>
+        <GameBinaries Condition=" '$(GameBinaries)' == '' AND '$(Dedicated64)' != '' ">$(Dedicated64)</GameBinaries>
+        <Dedicated64 Condition=" '$(Dedicated64)' == '' AND '$(GameBinaries)' != '' ">$(GameBinaries)</Dedicated64>
     </PropertyGroup>
 
     <PropertyGroup>
         <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>
+        <PathSeparator Condition="$([MSBuild]::IsOSPlatform('Windows'))">\</PathSeparator>
+        <PathSeparator Condition="!$([MSBuild]::IsOSPlatform('Windows'))">/</PathSeparator>
     </PropertyGroup>
 
     <PropertyGroup Condition=" !$([MSBuild]::IsOSPlatform('Windows')) ">
@@ -52,5 +50,21 @@
         <!-- Windows: .NET Framework build -> MagnetarLegacy, .NET build -> MagnetarInterim -->
         <MagnetarBin Condition=" '$(MagnetarBin)' == '' AND '$(Magnetar)' != '' AND $([MSBuild]::IsOSPlatform('Windows')) AND $(TargetFramework.StartsWith('net4')) ">$([System.IO.Path]::Combine('$(Magnetar)', 'Libraries', 'MagnetarLegacy'))</MagnetarBin>
         <MagnetarBin Condition=" '$(MagnetarBin)' == '' AND '$(Magnetar)' != '' AND $([MSBuild]::IsOSPlatform('Windows')) AND '$(TargetFramework)' != '' AND !$(TargetFramework.StartsWith('net4')) ">$([System.IO.Path]::Combine('$(Magnetar)', 'Libraries', 'MagnetarInterim'))</MagnetarBin>
+    </PropertyGroup>
+
+    <!-- Torch game and server folders. No junctions or other links are used: the paths come from the user props, with
+         Dedicated64 as the last fallback for the game folder. -->
+    <PropertyGroup>
+        <GameBinaries Condition=" '$(GameBinaries)' == '' AND '$(Dedicated64)' != '' ">$(Dedicated64)</GameBinaries>
+        <DS64 Condition=" '$(DS64)' == '' AND '$(GameBinaries)' != '' ">$(GameBinaries)</DS64>
+    </PropertyGroup>
+
+    <!-- Reference folders with a trailing directory separator, for use in HintPath -->
+    <PropertyGroup>
+        <GameBinariesDir>$(GameBinaries)</GameBinariesDir>
+        <GameBinariesDir Condition=" '$(GameBinariesDir)' != '' AND !HasTrailingSlash('$(GameBinariesDir)') ">$(GameBinariesDir)$(PathSeparator)</GameBinariesDir>
+
+        <TorchBinariesDir>$(TorchBinaries)</TorchBinariesDir>
+        <TorchBinariesDir Condition=" '$(TorchBinariesDir)' != '' AND !HasTrailingSlash('$(TorchBinariesDir)') ">$(TorchBinariesDir)$(PathSeparator)</TorchBinariesDir>
     </PropertyGroup>
 </Project>

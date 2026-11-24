@@ -11,8 +11,9 @@ namespace Advanced_PB_Limiter.Utils
 {
     /// <summary>
     /// What is known about one programmable block. Updated on the game thread, once for every run of the script,
-    /// so that path must not allocate. Reports gather on the game thread too; the sample array is read under its
-    /// lock, so a recompile that clears it cannot be seen half done.
+    /// so that path must not allocate. The few live values reports need (the names and whether the block is working)
+    /// are cached here by the game thread, so reports read the block from any thread without touching game objects;
+    /// the sample array is read under its lock, so a recompile that clears it cannot be seen half done.
     /// </summary>
     public sealed class TrackedPBBlock
     {
@@ -28,16 +29,47 @@ namespace Advanced_PB_Limiter.Utils
         private double _filteredAverage;
         private double _upperFence;
 
-        public MyProgrammableBlock ProgrammableBlock { get; }
-        /// <summary>The grid's name when tracking started, safe to write out (SafeNames.SafeName).</summary>
-        public string GridName { get; }
+        // The live values reports need, cached on the game thread: at tracking start, and by the cleanup pass that
+        // walks every tracked and resting block. Volatile: reports read them from other threads.
+        private string _gridName;
+        private string _blockName;
+        private bool _working;
+        private bool _enabled;
 
-        /// <summary>The grid's name now, or the one it had when tracking started if it has none.</summary>
+        public MyProgrammableBlock ProgrammableBlock { get; }
+
+        /// <summary>The block's entity id, fixed for its life, so reports can key their rows from any thread.</summary>
+        public long EntityId { get; }
+
+        /// <summary>The grid's name, safe to write out (SafeNames.SafeName), as the game thread last cached it.</summary>
+        public string GridName => Volatile.Read(ref _gridName);
+
+        /// <summary>The block's name, safe to write out, as the game thread last cached it.</summary>
+        public string BlockName => Volatile.Read(ref _blockName);
+
+        /// <summary>The grid's name now, or the cached one when it has none. Game thread only.</summary>
         public string CurrentGridName => ProgrammableBlock.CubeGrid is null ? GridName : ProgrammableBlock.ReadGridName();
+
+        /// <summary>The block's Enabled flag, as the game thread last cached it. Any thread.</summary>
+        public bool Enabled => Volatile.Read(ref _enabled);
+
+        /// <summary>
+        /// Whether the block was working when the game thread last cached it: reports count run times with this,
+        /// never the live <see cref="IsRunning"/>. Any thread.
+        /// </summary>
+        public bool IsRunningCached => Volatile.Read(ref _working);
+
         public ConcurrentQueue<long> Offences { get; } = new();
         public int Recompiles { get; private set; }
-        public double LastRunTimeMS { get; private set; }
-        public double PeekRunTimeMS { get; private set; }
+
+        // Written under _samplesLock, read by reports on other threads without taking it. A double read or write is
+        // atomic on the x64 runtime the plugin ships on; Volatile keeps the read from being cached in a register.
+        private double _lastRunTimeMS;
+        private double _peekRunTimeMS;
+        private double _reportAverage;
+
+        public double LastRunTimeMS => Volatile.Read(ref _lastRunTimeMS);
+        public double PeekRunTimeMS => Volatile.Read(ref _peekRunTimeMS);
         public long memoryUsage { get; private set; }
         public long LastOffenceTick { get; set; }
         public long LastUpdateTick { get; set; }
@@ -46,12 +78,37 @@ namespace Advanced_PB_Limiter.Utils
         public BatchMark InstantKill { get; } = new();
         private long PBStartTime { get; set; }
 
-        public TrackedPBBlock(string gridName, MyProgrammableBlock pbBlock)
+        public TrackedPBBlock(MyProgrammableBlock pbBlock)
         {
-            GridName = gridName.SafeName();
             ProgrammableBlock = pbBlock;
+            EntityId = pbBlock.EntityId;
+            _gridName = string.Empty;
+            _blockName = string.Empty;
             PBStartTime = Stopwatch.GetTimestamp();
             LastUpdateTick = PBStartTime;
+            RefreshLiveState();
+        }
+
+        /// <summary>
+        /// Reads the block's names and state, which only the game thread may do, and caches them for reports on other
+        /// threads. Called when tracking starts and by the cleanup pass, so a report shows values up to that age.
+        /// Game thread only.
+        /// </summary>
+        public void RefreshLiveState()
+        {
+            Volatile.Write(ref _gridName, ProgrammableBlock.ReadGridName());
+            Volatile.Write(ref _blockName, ProgrammableBlock.ReadName());
+            RefreshEnabledState();
+        }
+
+        /// <summary>
+        /// Reads only the cheap enabled/working flags. The cleanup pass uses this for resting blocks, whose names can stay
+        /// from their last run until they run again, while reports still see an accurate on/off state. Game thread only.
+        /// </summary>
+        public void RefreshEnabledState()
+        {
+            Volatile.Write(ref _enabled, ProgrammableBlock.Enabled);
+            Volatile.Write(ref _working, ProgrammableBlock.IsWorking);
         }
 
         // Counts the resets of memoryUsage, so a memory pass that read the script before a reset does not write its old
@@ -103,9 +160,9 @@ namespace Advanced_PB_Limiter.Utils
 
         private void AddSample(double lastRunTimeMS)
         {
-            if (lastRunTimeMS > PeekRunTimeMS)
-                PeekRunTimeMS = lastRunTimeMS;
-            LastRunTimeMS = lastRunTimeMS;
+            if (lastRunTimeMS > Volatile.Read(ref _peekRunTimeMS))
+                Volatile.Write(ref _peekRunTimeMS, lastRunTimeMS);
+            Volatile.Write(ref _lastRunTimeMS, lastRunTimeMS);
 
             if (_sampleCount == MAX_SAMPLES)
                 RemoveSorted(_samples[_nextSample], MAX_SAMPLES);
@@ -148,6 +205,7 @@ namespace Advanced_PB_Limiter.Utils
 
             _upperFence = upperFence;
             _filteredAverage = filteredCount > 0 ? filteredSum / filteredCount : 0;
+            Volatile.Write(ref _reportAverage, _filteredAverage);
         }
 
         public bool IsOutlier(double value)
@@ -176,14 +234,11 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
 
-        public double RunTimeMSAvg
-        {
-            get
-            {
-                lock (_samplesLock)
-                    return _sampleCount < MAX_SAMPLES ? 0 : _filteredAverage;
-            }
-        }
+        /// <summary>
+        /// The filtered average of the last 50 runs, or 0 until there are 50. Updated under the sample lock and read
+        /// without it, so a report never waits on a run or a recompile.
+        /// </summary>
+        public double RunTimeMSAvg => Volatile.Read(ref _reportAverage);
 
         public bool IsUnderGracePeriod(PrivilegedPlayer? privilegedPlayer)
         {
@@ -202,7 +257,12 @@ namespace Advanced_PB_Limiter.Utils
         public void MarkRun() => Interlocked.Exchange(ref _lastRunGameTick, TrackingManager.CurrentTick);
 
         /// <summary>Notes that the limiter or an admin turned it off now. Game thread.</summary>
-        public void MarkStopped() => Interlocked.Exchange(ref _stoppedGameTick, TrackingManager.CurrentTick);
+        public void MarkStopped()
+        {
+            Volatile.Write(ref _working, false);
+            Volatile.Write(ref _enabled, false);
+            Interlocked.Exchange(ref _stoppedGameTick, TrackingManager.CurrentTick);
+        }
 
         /// <summary>
         /// It ran since the last combined check, counted in game ticks as the check is, and was not turned off by the limiter
@@ -219,7 +279,10 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
 
-        /// <summary>False once the block cannot run: turned off, damaged, unpowered or gone.</summary>
+        /// <summary>
+        /// False once the block cannot run: turned off, damaged, unpowered or gone. Game thread only, for the limits;
+        /// reports use <see cref="IsRunningCached"/>.
+        /// </summary>
         public bool IsRunning => !ProgrammableBlock.Closed && !ProgrammableBlock.MarkedForClose && ProgrammableBlock.IsWorking;
 
         /// <summary>The last offence or punishment was too recent for another one.</summary>
@@ -244,8 +307,9 @@ namespace Advanced_PB_Limiter.Utils
             _nextSample = 0;
             _filteredAverage = 0;
             _upperFence = 0;
-            LastRunTimeMS = 0;
-            PeekRunTimeMS = 0;
+            Volatile.Write(ref _lastRunTimeMS, 0);
+            Volatile.Write(ref _peekRunTimeMS, 0);
+            Volatile.Write(ref _reportAverage, 0);
             while (Offences.TryDequeue(out _))
             {
                 // ConcurrentQueue has no Clear on .NET Framework, which Legacy and Torch run on.

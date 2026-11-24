@@ -1,0 +1,16 @@
+@if (!string.IsNullOrWhiteSpace(Text))
+{
+    <span class="pbl-badge pbl-badge-@Tone">
+        @if (!string.IsNullOrWhiteSpace(Icon))
+        {
+            <PblIcon Name="@Icon" />
+        }
+        <span>@Text</span>
+    </span>
+}
+
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; } = "";
+    [Parameter] public string Tone { get; set; } = "neutral";
+    [Parameter] public string? Icon { get; set; }
+}

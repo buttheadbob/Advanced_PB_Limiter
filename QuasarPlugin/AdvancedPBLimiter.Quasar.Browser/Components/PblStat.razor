@@ -1,0 +1,44 @@
+<div class="pbl-stat pbl-stat-@Tone @Class">
+    <div class="pbl-stat-head">
+        @if (!string.IsNullOrWhiteSpace(Icon))
+        {
+            <span class="pbl-stat-icon"><PblIcon Name="@Icon" /></span>
+        }
+        <span class="pbl-stat-label">@Label</span>
+        @if (!string.IsNullOrWhiteSpace(Hint))
+        {
+            <span class="pbl-stat-help" title="@Hint"><PblIcon Name="info" /></span>
+        }
+    </div>
+
+    <div class="pbl-stat-value">@Value</div>
+
+    @if (!string.IsNullOrWhiteSpace(Trend))
+    {
+        <div class="pbl-stat-trend pbl-trend-@TrendTone">@Trend</div>
+    }
+
+    @if (Sparkline is { Count: > 1 })
+    {
+        <div class="pbl-stat-spark">
+            <PblSparkline Values="Sparkline" Tone="@Tone" />
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Hint))
+    {
+        <div class="pbl-stat-foot">@Hint</div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter, EditorRequired] public string Value { get; set; } = "";
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public string Tone { get; set; } = "neutral";
+    [Parameter] public string? Trend { get; set; }
+    [Parameter] public string TrendTone { get; set; } = "neutral";
+    [Parameter] public IReadOnlyList<double>? Sparkline { get; set; }
+    [Parameter] public string? Class { get; set; }
+}
