@@ -1,0 +1,17 @@
+@if (Indeterminate)
+{
+    <div class="pbl-progress pbl-progress-indeterminate @Class" role="progressbar" aria-label="@Label"><span></span></div>
+}
+else
+{
+    <div class="pbl-progress @Class" role="progressbar" aria-label="@Label" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@Percent">
+        <span style="width: @(Math.Clamp(Percent, 0d, 100d).ToString(System.Globalization.CultureInfo.InvariantCulture))%"></span>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Indeterminate { get; set; }
+    [Parameter] public double Percent { get; set; }
+    [Parameter] public string Label { get; set; } = "Loading";
+    [Parameter] public string? Class { get; set; }
+}

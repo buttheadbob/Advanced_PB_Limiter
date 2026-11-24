@@ -237,7 +237,20 @@ namespace Advanced_PB_Limiter.Manager
 
         public static List<TrackedPlayer> GetTrackedPlayerData()
         {
-            return PlayersTracked.Values.ToList();
+            List<TrackedPlayer> players = new(PlayersTracked.Count);
+            CopyTrackedPlayers(players);
+            return players;
+        }
+
+        /// <summary>
+        /// Fills <paramref name="target"/> with the players tracked now, clearing it first. Safe while the game thread
+        /// adds or removes them. The live view reuses one list instead of allocating and copying one per refresh.
+        /// </summary>
+        internal static void CopyTrackedPlayers(List<TrackedPlayer> target)
+        {
+            target.Clear();
+            foreach (KeyValuePair<long, TrackedPlayer> pair in PlayersTracked)
+                target.Add(pair.Value);
         }
 
         /// <summary>Notes that the limiter or an admin turned the block off now, if its owner tracks it, see TrackedPBBlock.MarkStopped. Game thread.</summary>
@@ -628,7 +641,7 @@ namespace Advanced_PB_Limiter.Manager
                             // The server is short of memory, not the script's doing: its last figure stands, and the next pass
                             // tries again.
                             if (block.MemoryScanFailed())
-                                Log.Warn($"The server ran out of memory while the memory check measured [{block.CurrentGridName} >> {block.ProgrammableBlock.ReadName()}]; it keeps its last figure and is measured again on the next pass. Logged once for this block.");
+                                Log.Warn($"The server ran out of memory while the memory check measured [{block.GridName} >> {block.BlockName}]; it keeps its last figure and is measured again on the next pass. Logged once for this block.");
                             continue;
                         }
                         catch (Exception e)
@@ -636,11 +649,11 @@ namespace Advanced_PB_Limiter.Manager
                             // Not a shape the check knows to be unmeasurable, so not held against the script: its last figure
                             // stands, and it never stops the check for the other blocks.
                             if (block.MemoryScanFailed())
-                                Log.Error(e, $"The memory check failed on [{block.CurrentGridName} >> {block.ProgrammableBlock.ReadName()}]; it keeps its last figure and is measured again on the next pass. Logged once for this block.");
+                                Log.Error(e, $"The memory check failed on [{block.GridName} >> {block.BlockName}]; it keeps its last figure and is measured again on the next pass. Logged once for this block.");
                             continue;
                         }
                         if (why is not null && block.MemoryScanFailed())
-                            Log.Warn($"The memory check could not measure [{block.CurrentGridName} >> {block.ProgrammableBlock.ReadName()}] ({why}), so it {(limit > 0 ? "counts as over the memory limit" : "is shown as not measurable")}. Logged once for this block.");
+                            Log.Warn($"The memory check could not measure [{block.GridName} >> {block.BlockName}] ({why}), so it {(limit > 0 ? "counts as over the memory limit" : "is shown as not measurable")}. Logged once for this block.");
                         block.updateMemoryUsage(size, resets, why is not null);
 
                         if (Config.ShowTimingsBurp)

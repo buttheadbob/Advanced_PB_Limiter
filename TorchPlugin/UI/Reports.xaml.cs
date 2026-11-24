@@ -1,26 +1,23 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
-using System.Timers;
 using System.Windows;
-using System.Windows.Data;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Threading;
 using Advanced_PB_Limiter.Manager;
 using Advanced_PB_Limiter.Utils;
-using System.Windows.Media;
 using Advanced_PB_Limiter.Utils.Reports;
 using ExtensionMethods;
 using Sandbox;
 using Sandbox.Game.Entities.Blocks;
 using MessageBox = System.Windows.MessageBox;
-using Timer = System.Timers.Timer;
 using static System.FormattableString;
 // ReSharper disable SpecifyACultureInStringConversionExplicitly
 // ReSharper disable TooWideLocalVariableScope
@@ -29,181 +26,294 @@ namespace Advanced_PB_Limiter.UI
 {
     public partial class Reports
     {
-        // Keyed by identity: every NPC has a SteamId of 0.
-        private static readonly ConcurrentDictionary<long, CustomPlayerReport> PlayerReports = new();
-        private static readonly ConcurrentDictionary<long, CustomBlockReport> BlockReports = new();
-        private static readonly Timer _refreshTimer = new ();
+        // The grids are bound once. Rows are created for new blocks and players, updated in place while they are tracked,
+        // and detached when they leave, so WPF keeps every row container instead of rebuilding both grids on each tick.
+        private readonly ObservableCollection<CustomBlockReport> _liveBlockRows = new();
+        private readonly ObservableCollection<CustomPlayerReport> _livePlayerRows = new();
+        private readonly Dictionary<long, CustomBlockReport> _allBlocks = new();
+        private readonly Dictionary<long, CustomPlayerReport> _allPlayers = new();
+        private readonly HashSet<long> _visibleBlockIds = new();
+        private readonly HashSet<long> _seenBlockIds = new();
+        private readonly HashSet<long> _seenPlayerIds = new();
+        private readonly List<TrackedPlayer> _playerScratch = new();
+        private readonly List<(TrackedPBBlock Block, bool Resting)> _blockScratch = new();
+        private readonly List<long> _staleIds = new();
+
+        // A DispatcherTimer coalesces ticks while the UI is busy, where a System.Timers.Timer posted a refresh for each
+        // tick and a busy window let them pile up.
+        private readonly DispatcherTimer _refreshTimer;
+        // The admin asked for the live view. It stays on while the tab is hidden, but the timer only runs while it is
+        // visible, so a hidden view costs nothing and resumes when the tab is opened again.
+        private bool _liveViewEnabled;
+        private bool _initialized;
+        private int _restingCount;
+        private DateTime _lastUpdatedUtc;
+        private string? _lastRefreshError;
+        private DateTime _lastRefreshErrorAtUtc;
         private const string fileTypes = "Text File (*.txt)|*.txt";
-        private const int ColumnWidth = 30;
+        private const int ReportWidth = 80;
+        private const int StatLabelWidth = 27;
         private const double MinRefreshSeconds = 0.1;
         private const double MaxRefreshSeconds = 3600;
         private static readonly TorchLog Log = new("Advanced_PB_Limiter.UI.Reports");
-        
+
         public Reports()
         {
             InitializeComponent();
             DataContext = this;
-            _refreshTimer.Elapsed += TimedRefresh;
-            ClearGrids();
+
+            PerPBDataGrid.ItemsSource = _liveBlockRows;
+            PerPlayerDataGrid.ItemsSource = _livePlayerRows;
+            DisableLiveViewButton.IsEnabled = false;
+
+            // On the control's own dispatcher, at Background priority: a refresh waits for the UI to be free instead of
+            // queueing another one.
+            _refreshTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+            {
+                Interval = TimeSpan.FromSeconds(5)
+            };
+            _refreshTimer.Tick += TimedRefresh;
+            Loaded += (_, _) => UpdateLiveViewTimer(refreshNow: true);
+            Unloaded += (_, _) => PauseLiveView();
+            IsVisibleChanged += (_, _) => UpdateLiveViewTimer(refreshNow: true);
+
+            _initialized = true;
+            UpdateSummary();
         }
 
-        private void ClearGrids()
-        {
-            PerPBDataGrid.ItemsSource = new ObservableCollection<CustomBlockReport>();
-            PerPlayerDataGrid.ItemsSource = new ObservableCollection<CustomPlayerReport>();
-        }
-
-        /// <summary>Called from the game thread when the world unloads. Stops the live view and drops the stopped world's blocks.</summary>
+        /// <summary>Called from the game thread when the world unloads. Stops the live view and drops the stopped world's rows.</summary>
         internal void OnSessionUnloading()
         {
-            _ = Dispatcher.BeginInvoke(new Action(ClearAfterUnload));
+            if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
+
+            try
+            {
+                _ = Dispatcher.BeginInvoke(new Action(ClearAfterUnload));
+            }
+            catch (InvalidOperationException)
+            {
+                // The dispatcher began shutting down between the check and the call.
+            }
         }
 
         private void ClearAfterUnload()
         {
-            StopLiveView();
-            PlayerReports.Clear();
-            BlockReports.Clear();
-            ClearGrids();
+            ClearRows();
         }
-        
-        private void TimedRefresh(object sender, ElapsedEventArgs e)
+
+        private void ClearRows()
         {
-            _ = Dispatcher.BeginInvoke(new Action(RefreshReportData));
+            StopLiveView();
+
+            foreach (CustomBlockReport row in _allBlocks.Values)
+                row.Detach();
+            foreach (CustomPlayerReport row in _allPlayers.Values)
+                row.Detach();
+
+            _allBlocks.Clear();
+            _allPlayers.Clear();
+            _liveBlockRows.Clear();
+            _livePlayerRows.Clear();
+            _visibleBlockIds.Clear();
+            _seenBlockIds.Clear();
+            _seenPlayerIds.Clear();
+            _blockScratch.Clear();
+            _playerScratch.Clear();
+            _staleIds.Clear();
+            _restingCount = 0;
+            _lastUpdatedUtc = default;
+
+            NoticeBorder.Visibility = Visibility.Collapsed;
+            NoticeText.Text = string.Empty;
+            UpdatedText.Text = "No report read yet.";
+            UpdateSummary();
+        }
+
+        private void TimedRefresh(object? sender, EventArgs e)
+        {
+            RefreshReportData();
         }
 
         /// <summary>
-        /// Fills the grids. Only a report read on the game thread may call a block's IsWorking, so a gather asked for on
-        /// the UI thread is made on the game thread and the grids are filled back on the UI thread.
+        /// Fills and updates the grids. It reads only tracking data, and the block and grid names and state the game
+        /// thread cached in each block (see TrackedPBBlock.RefreshLiveState), so the live view does no per-refresh work
+        /// on the game thread.
         /// </summary>
         private void RefreshReportData()
         {
-            MySandboxGame? game = MySandboxGame.Static;
-            if (game is null || Thread.CurrentThread == game.UpdateThread)
-            {
-                try
-                {
-                    ShowReportRows(GatherReportRows());
-                }
-                catch (Exception e)
-                {
-                    Log.Error(e, "Could not read the PB Limiter report");
-                }
-                return;
-            }
-
             try
             {
-                game.Invoke(() =>
-                {
-                    try
-                    {
-                        ReportRows rows = GatherReportRows();
-                        if (Dispatcher is null) return; // The panel is gone.
-                        _ = Dispatcher.BeginInvoke(new Action(() => ShowReportRows(rows)));
-                    }
-                    catch (Exception e)
-                    {
-                        // The game's update loop does not catch this action, so a report failure must not escape it.
-                        Log.Error(e, "Could not read the PB Limiter report");
-                    }
-                }, "Advanced_PB_Limiter");
+                UpdateReportRows();
             }
             catch (Exception e)
             {
-                Log.Error(e, "Could not schedule the PB Limiter report");
+                NoticeText.Text = "Could not read the report: " + e.Message;
+                NoticeBorder.Visibility = Visibility.Visible;
+
+                // A refresh that fails on every tick must not fill Torch's log. Report each reason once, and again only
+                // after five minutes while it persists.
+                if (!string.Equals(_lastRefreshError, e.Message, StringComparison.Ordinal)
+                    || DateTime.UtcNow - _lastRefreshErrorAtUtc > TimeSpan.FromMinutes(5))
+                {
+                    _lastRefreshError = e.Message;
+                    _lastRefreshErrorAtUtc = DateTime.UtcNow;
+                    Log.Error(e, "Could not read the PB Limiter report");
+                }
             }
         }
 
-        /// <summary>
-        /// Fills the grids before the caller reads them, for the generated report. Runs where it is called on the game
-        /// thread; on the UI thread it waits for the game thread, which is why it is only used from a click.
-        /// </summary>
+        /// <summary>Fills the grids before the caller reads them, for the generated report; a failure is the caller's to report.</summary>
         private void RefreshReportDataNow()
         {
-            MySandboxGame? game = MySandboxGame.Static;
-            if (game is null || Thread.CurrentThread == game.UpdateThread)
-            {
-                ShowReportRows(GatherReportRows());
-                return;
-            }
-
-            ReportRows? rows = null;
-            Exception? error = null;
-            using ManualResetEventSlim done = new(false);
-            game.Invoke(() =>
-            {
-                try
-                {
-                    rows = GatherReportRows();
-                }
-                catch (Exception e)
-                {
-                    error = e;
-                }
-                finally
-                {
-                    done.Set();
-                }
-            }, "Advanced_PB_Limiter");
-
-            if (!done.Wait(TimeSpan.FromSeconds(10)))
-                throw new TimeoutException("The game did not answer in time, so the report could not be read.");
-            if (error is not null)
-                throw new InvalidOperationException(error.Message, error);
-            ShowReportRows(rows!);
+            UpdateReportRows();
         }
 
-        /// <summary>Gathers the rows. Game thread only: it reads live blocks, their grids and their IsWorking.</summary>
-        private static ReportRows GatherReportRows()
+        private void UpdateReportRows()
         {
-            PlayerReports.Clear();
-            BlockReports.Clear();
-            ReportRows rows = new();
+            _seenPlayerIds.Clear();
+            _seenBlockIds.Clear();
+            _restingCount = 0;
 
-            foreach (TrackedPlayer player in TrackingManager.GetTrackedPlayerData())
+            TrackingManager.CopyTrackedPlayers(_playerScratch);
+
+            for (int index = 0; index < _playerScratch.Count; index++)
             {
-                PlayerTotals totals = PlayerTotals.Of(player, (block, resting) =>
+                TrackedPlayer player = _playerScratch[index];
+                _seenPlayerIds.Add(player.PlayerId);
+
+                PlayerTotals totals = PlayerTotals.Of(player, _blockScratch, (block, resting) =>
                 {
-                    CustomBlockReport blockReport = new
-                    (
-                        player.SteamId,
-                        player.PlayerName ?? "Unknown",
-                        block.CurrentGridName,
-                        block.ProgrammableBlock.ReadName(),
-                        block.LastRunTimeMS,
-                        block.RunTimeMSAvg,
-                        block.PeekRunTimeMS,
-                        block.Offences.Count,
-                        block.Recompiles,
-                        block.memoryUsage,
-                        block.MemoryUnmeasured,
-                        block.ProgrammableBlock,
-                        resting: resting
-                    );
-                    BlockReports.TryAdd(block.ProgrammableBlock.EntityId, blockReport);
-                    rows.Blocks.Add(blockReport);
+                    if (!_seenBlockIds.Add(block.EntityId)) return;
+                    if (resting) _restingCount++;
+
+                    if (!_allBlocks.TryGetValue(block.EntityId, out CustomBlockReport? row))
+                    {
+                        row = new CustomBlockReport(player, block, resting);
+                        _allBlocks.Add(block.EntityId, row);
+                    }
+                    else
+                    {
+                        row.Update(player, block, resting);
+                    }
                 });
 
-                CustomPlayerReport playerReport = new(player.SteamId, player.PlayerName ?? "Unknown", totals.Combined, totals.Offences, totals.Blocks, totals.Recompiles, totals.MemoryBytes, totals.MemoryUnmeasured, player);
-                PlayerReports.TryAdd(player.PlayerId, playerReport);
-                rows.Players.Add(playerReport);
+                if (!_allPlayers.TryGetValue(player.PlayerId, out CustomPlayerReport? playerRow))
+                {
+                    playerRow = new CustomPlayerReport(player, totals);
+                    _allPlayers.Add(player.PlayerId, playerRow);
+                    _livePlayerRows.Add(playerRow);
+                }
+                else
+                {
+                    playerRow.Update(player, totals);
+                }
             }
 
-            return rows;
+            RemoveUnseenRows();
+            ApplyLiveVisibility();
+            UpdateSummary();
+
+            _lastUpdatedUtc = DateTime.UtcNow;
+            UpdatedText.Text = "Updated " + _lastUpdatedUtc.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture)
+                               + " · " + _allBlocks.Count.ToString(CultureInfo.InvariantCulture) + " blocks · "
+                               + _allPlayers.Count.ToString(CultureInfo.InvariantCulture) + " players";
+            NoticeBorder.Visibility = Visibility.Collapsed;
+            NoticeText.Text = string.Empty;
         }
 
-        /// <summary>Shows gathered rows. UI thread only.</summary>
-        private void ShowReportRows(ReportRows rows)
+        private void RemoveUnseenRows()
         {
-            PerPlayerDataGrid.ItemsSource = new ObservableCollection<CustomPlayerReport>(rows.Players);
-            PerPBDataGrid.ItemsSource = new ObservableCollection<CustomBlockReport>(rows.Blocks);
+            _staleIds.Clear();
+            foreach (long entityId in _allBlocks.Keys)
+            {
+                if (!_seenBlockIds.Contains(entityId))
+                    _staleIds.Add(entityId);
+            }
+
+            foreach (long entityId in _staleIds)
+            {
+                CustomBlockReport row = _allBlocks[entityId];
+                _allBlocks.Remove(entityId);
+                if (_visibleBlockIds.Remove(entityId))
+                    _liveBlockRows.Remove(row);
+                row.Detach();
+            }
+
+            _staleIds.Clear();
+            foreach (long playerId in _allPlayers.Keys)
+            {
+                if (!_seenPlayerIds.Contains(playerId))
+                    _staleIds.Add(playerId);
+            }
+
+            foreach (long playerId in _staleIds)
+            {
+                CustomPlayerReport row = _allPlayers[playerId];
+                _allPlayers.Remove(playerId);
+                _livePlayerRows.Remove(row);
+                row.Detach();
+            }
         }
 
-        private sealed class ReportRows
+        private void ApplyLiveVisibility()
         {
-            public List<CustomPlayerReport> Players { get; } = new();
-            public List<CustomBlockReport> Blocks { get; } = new();
+            bool showResting = ShowRestingCheckBox.IsChecked == true;
+
+            foreach (CustomBlockReport row in _allBlocks.Values)
+            {
+                bool visible = showResting || !row.Resting;
+
+                if (visible)
+                {
+                    if (_visibleBlockIds.Add(row.EntityId))
+                        _liveBlockRows.Add(row);
+                }
+                else if (_visibleBlockIds.Remove(row.EntityId))
+                {
+                    _liveBlockRows.Remove(row);
+                }
+            }
+        }
+
+        private void UpdateSummary()
+        {
+            int totalBlocks = _allBlocks.Count;
+            int restingBlocks = _restingCount;
+            int activeBlocks = Math.Max(0, totalBlocks - restingBlocks);
+            int totalPlayers = _allPlayers.Count;
+
+            double combinedLast = 0;
+            double combinedAverage = 0;
+            int offences = 0;
+            int recompiles = 0;
+            long memoryBytes = 0;
+            bool memoryUnmeasured = false;
+
+            foreach (CustomPlayerReport player in _allPlayers.Values)
+            {
+                combinedLast += player.Combined.LastRunTimeMS;
+                combinedAverage += player.Combined.RunTimeMSAvg;
+                offences += player.Offences;
+                recompiles += player.Recompiles;
+                memoryBytes += player.MemoryBytes;
+                memoryUnmeasured |= player.MemoryUnmeasured;
+            }
+
+            SetText(TotalBlocksText, totalBlocks.ToString(CultureInfo.InvariantCulture));
+            SetText(ActiveBlocksText, activeBlocks.ToString(CultureInfo.InvariantCulture));
+            SetText(RestingBlocksText, restingBlocks.ToString(CultureInfo.InvariantCulture));
+            SetText(PlayersText, totalPlayers.ToString(CultureInfo.InvariantCulture));
+            SetText(CombinedLastText, combinedLast.ToString("0.0000", CultureInfo.InvariantCulture) + " ms");
+            SetText(CombinedAvgText, combinedAverage.ToString("0.0000", CultureInfo.InvariantCulture) + " ms");
+            SetText(OffencesText, offences.ToString(CultureInfo.InvariantCulture));
+            SetText(RecompilesText, recompiles.ToString(CultureInfo.InvariantCulture));
+            SetText(MemoryValueText, MemoryText.Total(memoryBytes, memoryUnmeasured));
+        }
+
+        private static void SetText(TextBlock block, string text)
+        {
+            if (!string.Equals(block.Text, text, StringComparison.Ordinal))
+                block.Text = text;
         }
 
         private void EnableLiveViewButton_OnClick(object sender, RoutedEventArgs e)
@@ -214,23 +324,25 @@ namespace Advanced_PB_Limiter.UI
                 MessageBox.Show("Game is not online, cannot enable live view.", "Game Offline", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
-            
+
             // A NaN fails both comparisons. Outside this range the timer throws or floods the UI thread.
             // Read as the limits are, a dot for decimals: "1,000" could mean a thousand or one, so a comma is refused.
             if (Limits.TryParse(RefreshRateTextBox.Text, out double refreshRate)
                 && refreshRate >= MinRefreshSeconds && refreshRate <= MaxRefreshSeconds)
             {
-                _refreshTimer.Interval = TimeSpan.FromSeconds(refreshRate).TotalMilliseconds;
-                _refreshTimer.Start();
-                RefreshRateTextBox.Background = new SolidColorBrush(Colors.Transparent);
-                RefreshRateTextBox.Foreground = new SolidColorBrush(Colors.Aqua);
-                EnableLiveViewButton.Background = new SolidColorBrush(Colors.RosyBrown);
-                EnableLiveViewButton.Content = "Live View Active";
+                RefreshRateTextBox.ClearValue(Control.BorderBrushProperty);
+                RefreshRateTextBox.ClearValue(Control.ForegroundProperty);
+
+                _refreshTimer.Interval = TimeSpan.FromSeconds(refreshRate);
+                _liveViewEnabled = true;
+                EnableLiveViewButton.IsEnabled = false;
+                DisableLiveViewButton.IsEnabled = true;
+                UpdateLiveViewTimer(refreshNow: true);
                 return;
             }
-            
-            RefreshRateTextBox.Background = new SolidColorBrush(Colors.Red);
-            RefreshRateTextBox.Foreground = new SolidColorBrush(Colors.Black);
+
+            RefreshRateTextBox.BorderBrush = Brushes.Red;
+            RefreshRateTextBox.Foreground = Brushes.Red;
             RefreshRateTextBox.Focus();
         }
 
@@ -239,11 +351,56 @@ namespace Advanced_PB_Limiter.UI
             StopLiveView();
         }
 
+        /// <summary>Stops and forgets the live view: a later tab switch must not start it again.</summary>
         private void StopLiveView()
         {
+            _liveViewEnabled = false;
             _refreshTimer.Stop();
-            EnableLiveViewButton.Background = new SolidColorBrush(Colors.DarkSlateGray);
-            EnableLiveViewButton.Content = "Enable Live View";
+            LiveStatusText.Text = "Stopped";
+            EnableLiveViewButton.IsEnabled = true;
+            DisableLiveViewButton.IsEnabled = false;
+        }
+
+        /// <summary>
+        /// Runs the live view only while the tab is visible. Called when it is enabled and on load, unload and
+        /// visibility changes, so a hidden tab pauses and the next visit resumes and refreshes at once.
+        /// </summary>
+        private void UpdateLiveViewTimer(bool refreshNow = false)
+        {
+            if (!_liveViewEnabled)
+            {
+                _refreshTimer.Stop();
+                return;
+            }
+
+            if (!IsLoaded || !IsVisible)
+            {
+                PauseLiveView();
+                return;
+            }
+
+            bool wasRunning = _refreshTimer.IsEnabled;
+            if (!wasRunning)
+                _refreshTimer.Start();
+
+            LiveStatusText.Text = "Live";
+
+            if (refreshNow && !wasRunning)
+                RefreshReportData();
+        }
+
+        /// <summary>Stops the timer but keeps the live view wanted, so returning to the tab resumes it.</summary>
+        private void PauseLiveView()
+        {
+            _refreshTimer.Stop();
+            if (!_liveViewEnabled) return;
+            LiveStatusText.Text = "Paused";
+        }
+
+        private void ShowResting_OnChanged(object sender, RoutedEventArgs e)
+        {
+            if (!_initialized) return;
+            ApplyLiveVisibility();
         }
 
         private void ManualUpdateButton_OnClick(object sender, RoutedEventArgs e)
@@ -314,10 +471,10 @@ namespace Advanced_PB_Limiter.UI
             return true;
         }
 
-        private static bool NoDataToSave(string message)
+        private bool NoDataToSave(string message)
         {
             if (ShowRetired()) return true;
-            if (!PlayerReports.IsEmpty && !BlockReports.IsEmpty) return false;
+            if (_allPlayers.Count > 0 && _allBlocks.Count > 0) return false;
             MessageBox.Show(message, "No Data", MessageBoxButton.OK, MessageBoxImage.Error);
             return true;
         }
@@ -347,176 +504,309 @@ namespace Advanced_PB_Limiter.UI
 
         private string GenerateTextReportForSave()
         {
-            // Grab a snapshot of the data to prevent it from changing while we're working with it.
-            KeyValuePair<long, CustomPlayerReport>[] playerReports = PlayerReports.ToArray();
-            KeyValuePair<long, CustomBlockReport>[] blockReports = BlockReports.ToArray();
-            ICollectionView perPBDataGrid = CollectionViewSource.GetDefaultView(PerPBDataGrid.ItemsSource);
-            ICollectionView perPlayerDataGrid = CollectionViewSource.GetDefaultView(PerPlayerDataGrid.ItemsSource);
-            
-            // Quick Stats stuff
+            // Quick stats read the full snapshot, so resting blocks are counted even when the live grid hides them.
             CustomBlockReport? hottestPb = null;
-            Tuple<double, ulong?, string?> hottestPlayer = new (0, null, null); // per tracked PB, playerSteamID, playerName
-            Tuple<double, ulong?, string?> hottestPlayerAvg = new (0, null, null);
-            Tuple<int, ulong?, string?> playerWithMostPBs = new (0, null, null); // amount, playerSteamID, playerName
+            Tuple<double, ulong?, string?> hottestPlayer = new(0, null, null); // per tracked PB, playerSteamID, playerName
+            Tuple<double, ulong?, string?> hottestPlayerAvg = new(0, null, null);
+            Tuple<int, ulong?, string?> playerWithMostPBs = new(0, null, null); // amount, playerSteamID, playerName
             CustomBlockReport? pbWithMostOffences = null;
             CustomBlockReport? pbWithMostRecompiles = null;
-            List<double> ServerTotalMS = new();
-            int ServerTotalOffences = 0;
-            
-            foreach (KeyValuePair<long, CustomPlayerReport> playerReport in playerReports)
+            double serverTotalMS = 0;
+            int serverBlockCount = 0;
+            int serverTotalOffences = 0;
+
+            foreach (CustomPlayerReport playerReport in _allPlayers.Values)
             {
                 // Per tracked block, as chat and Quasar rank them; a player whose blocks all rest has no recent times to compare.
-                CombinedRunTimes combined = playerReport.Value.Combined;
+                CombinedRunTimes combined = playerReport.Combined;
                 if (combined.TrackedBlocks > 0)
                 {
                     if (hottestPlayer.Item2 is null || combined.LastRunTimeMSPerBlock > hottestPlayer.Item1)
-                        hottestPlayer = new Tuple<double, ulong?, string?>(combined.LastRunTimeMSPerBlock, playerReport.Value.SteamId, playerReport.Value.PlayerName);
+                        hottestPlayer = new Tuple<double, ulong?, string?>(combined.LastRunTimeMSPerBlock, playerReport.SteamId, playerReport.PlayerName);
 
                     if (hottestPlayerAvg.Item2 is null || combined.RunTimeMSAvgPerBlock > hottestPlayerAvg.Item1)
-                        hottestPlayerAvg = new Tuple<double, ulong?, string?>(combined.RunTimeMSAvgPerBlock, playerReport.Value.SteamId, playerReport.Value.PlayerName);
+                        hottestPlayerAvg = new Tuple<double, ulong?, string?>(combined.RunTimeMSAvgPerBlock, playerReport.SteamId, playerReport.PlayerName);
                 }
 
-
-                if (playerWithMostPBs.Item2 is null || playerReport.Value.PbCount > playerWithMostPBs.Item1)
-                    playerWithMostPBs = new Tuple<int, ulong?, string?>(playerReport.Value.PbCount, playerReport.Value.SteamId, playerReport.Value.PlayerName);
+                if (playerWithMostPBs.Item2 is null || playerReport.PbCount > playerWithMostPBs.Item1)
+                    playerWithMostPBs = new Tuple<int, ulong?, string?>(playerReport.PbCount, playerReport.SteamId, playerReport.PlayerName);
             }
-            
-            foreach (KeyValuePair<long, CustomBlockReport> blockReport in blockReports)
+
+            int restingBlocks = 0;
+            foreach (CustomBlockReport blockReport in _allBlocks.Values)
             {
+                if (blockReport.Resting) restingBlocks++;
+
                 // A resting block's run times may be an hour old: left out of the hottest block and the server average.
-                if (!blockReport.Value.Resting && (hottestPb is null || blockReport.Value.LastRunTimeMS > hottestPb.LastRunTimeMS))
-                    hottestPb = blockReport.Value;
+                if (!blockReport.Resting && (hottestPb is null || blockReport.LastRunTimeMS > hottestPb.LastRunTimeMS))
+                    hottestPb = blockReport;
 
-                if (pbWithMostOffences is null || blockReport.Value.Offences > pbWithMostOffences.Offences)
-                    pbWithMostOffences = blockReport.Value;
+                if (pbWithMostOffences is null || blockReport.Offences > pbWithMostOffences.Offences)
+                    pbWithMostOffences = blockReport;
 
-                if (pbWithMostRecompiles is null || blockReport.Value.Recompiles > pbWithMostRecompiles.Recompiles)
-                    pbWithMostRecompiles = blockReport.Value;
+                if (pbWithMostRecompiles is null || blockReport.Recompiles > pbWithMostRecompiles.Recompiles)
+                    pbWithMostRecompiles = blockReport;
 
-                if (!blockReport.Value.Resting)
-                    ServerTotalMS.Add(blockReport.Value.LastRunTimeMS);
-                ServerTotalOffences += blockReport.Value.Offences;
+                if (!blockReport.Resting)
+                {
+                    serverTotalMS += blockReport.LastRunTimeMS;
+                    serverBlockCount++;
+                }
+
+                serverTotalOffences += blockReport.Offences;
             }
 
+            double serverAvgMs = serverBlockCount > 0 ? serverTotalMS / serverBlockCount : 0;
 
             StringBuilder sb = new();
+            AppendRule(sb);
             sb.AppendLine("Advanced PB Limiter Report");
+            AppendRule(sb);
             sb.AppendLine(Invariant($"Report generated at {DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss zzz}"));
             sb.AppendLine();
-            sb.AppendLine();
-            sb.AppendLine("> Per Programmable Block");
-            sb.AppendLine("-----------------------");
-            foreach (CustomBlockReport? item in perPBDataGrid) 
+
+            AppendSection(sb, Invariant($"PER PROGRAMMABLE BLOCKS ({_allBlocks.Count} - {_allBlocks.Count - restingBlocks} active, {restingBlocks} resting)"));
+
+            // Visible rows keep the grid's sort, then any resting blocks the grid hides are appended so the report always
+            // lists every tracked block.
+            int blockNumber = 0;
+            HashSet<long> written = new();
+            foreach (CustomBlockReport? item in PerPBDataGrid.Items)
+            {
+                if (item is null || !written.Add(item.EntityId)) continue;
+                WriteBlockReport(sb, item, ++blockNumber);
+            }
+
+            foreach (CustomBlockReport item in _allBlocks.Values)
+            {
+                if (!written.Add(item.EntityId)) continue;
+                WriteBlockReport(sb, item, ++blockNumber);
+            }
+
+            AppendSection(sb, Invariant($"PLAYERS ({_allPlayers.Count})"));
+            int playerNumber = 0;
+            foreach (CustomPlayerReport? item in PerPlayerDataGrid.Items)
             {
                 if (item is null) continue;
-                Column(sb, "Player", item.PlayerName);
-                Column(sb, "SteamID", Invariant($"{item.SteamId}"));
-                Column(sb, "GridName", item.GridName);
-                if (item.BlockName is not null)
-                    Column(sb, "BlockName", item.BlockName);
-                if (item.Resting)
-                    Column(sb, "Resting", "not run lately");
-                Column(sb, "LastRunTimeMS", Invariant($"{item.LastRunTimeMS}"));
-                Column(sb, "AvgMS", Invariant($"{item.AvgMS}"));
-                Column(sb, "Offences", Invariant($"{item.Offences}"));
-                LastColumn(sb, "Recompiles", Invariant($"{item.Recompiles}"));
-                LastColumn(sb, "MemoryUsed", item.MemoryUsed);
+                WritePlayerReport(sb, item, ++playerNumber);
             }
+
+            AppendSection(sb, "QUICK STATS");
+            AppendStat(sb, "Players tracked", Invariant($"{_allPlayers.Count}"));
+            AppendStat(sb, "Programmable blocks",
+                Invariant($"{_allBlocks.Count} ({_allBlocks.Count - restingBlocks} active, {restingBlocks} resting)"));
+            AppendStat(sb, "Total offences", Invariant($"{serverTotalOffences}"));
+            AppendStat(sb, "Server average last run", Invariant($"{serverAvgMs:0.########} ms"));
+            AppendNote(sb, Invariant($"Average of {InvariantText.Count(serverBlockCount, "active block", "active blocks")}. Resting blocks are excluded, and blocks do not all run on the same tick, so treat this as a rough figure."));
+            if (hottestPlayer.Item2 is ulong hottestPlayerId)
+                AppendPlayerStat(sb, "Hottest player", hottestPlayerId, hottestPlayer.Item3, Invariant($"{hottestPlayer.Item1:0.########} ms per tracked PB"));
+            else
+                AppendStat(sb, "Hottest player", "None - no tracked PB has run lately");
+            if (hottestPlayerAvg.Item2 is ulong hottestAveragePlayerId)
+                AppendPlayerStat(sb, "Hottest player average", hottestAveragePlayerId, hottestPlayerAvg.Item3, Invariant($"{hottestPlayerAvg.Item1:0.########} ms per tracked PB"));
+            else
+                AppendStat(sb, "Hottest player average", "None - no tracked PB has run lately");
+            if (playerWithMostPBs.Item2 is ulong busiestPlayerId)
+                AppendPlayerStat(sb, "Player with most PBs", busiestPlayerId, playerWithMostPBs.Item3, InvariantText.Count(playerWithMostPBs.Item1, "PB", "PBs"));
+            else
+                AppendStat(sb, "Player with most PBs", "None");
+            if (hottestPb is not null)
+                AppendBlockStat(sb, "Hottest block", hottestPb, Invariant($"{hottestPb.LastRunTimeMS:0.########} ms"));
+            else
+                AppendStat(sb, "Hottest block", "None - no active block has run lately");
+            if (pbWithMostRecompiles is not null)
+                AppendBlockStat(sb, "Most recompiled block", pbWithMostRecompiles, InvariantText.Count(pbWithMostRecompiles.Recompiles, "recompile", "recompiles"));
+            else
+                AppendStat(sb, "Most recompiled block", "None");
+            if (pbWithMostOffences is not null)
+                AppendBlockStat(sb, "Block with most offences", pbWithMostOffences, InvariantText.Count(pbWithMostOffences.Offences, "offence", "offences"));
+            else
+                AppendStat(sb, "Block with most offences", "None");
+
             sb.AppendLine();
-            sb.AppendLine();
-            sb.AppendLine("> Per Player");
-            sb.AppendLine("-----------------------");
-            foreach (CustomPlayerReport? item in perPlayerDataGrid) 
-            {
-                if (item is null) continue;
-                Column(sb, "Player", item.PlayerName);
-                Column(sb, "SteamID", Invariant($"{item.SteamId}"));
-                Column(sb, "CombinedRunTimeMS", Invariant($"{item.CombinedLastRunTimeMS}"));
-                Column(sb, "CombinedAvgMS", Invariant($"{item.CombinedAvgMS}"));
-                Column(sb, "Offences", Invariant($"{item.Offences}"));
-                Column(sb, "Recompiles", Invariant($"{item.Recompiles}"));
-                LastColumn(sb, "PBs", Invariant($"{item.PbCount}"));
-                LastColumn(sb, "MemoryUsed", item.MemoryUsed);
-            }
-            sb.AppendLine();
-            sb.AppendLine();
-            sb.AppendLine("> Quick Stats");
-            sb.AppendLine("-----------------------");
-            double serverAvgMs = ServerTotalMS.Count > 0 ? ServerTotalMS.Sum() / ServerTotalMS.Count : 0;
-            sb.AppendLine(Invariant($"Server Total Avg MS: {serverAvgMs}     ***NOTE: This is an average of the last run time of the tracked pbs, not those resting.  Not all pbs run on the same tick, keep this in mind!"));
-            sb.AppendLine(hottestPlayer.Item2 is not null
-                ? Invariant($"Hottest Player: {hottestPlayer.Item2} ({hottestPlayer.Item3}) with {hottestPlayer.Item1}ms per tracked PB")
-                : "Hottest Player: none, no tracked PB has run lately");
-            sb.AppendLine(hottestPlayerAvg.Item2 is not null
-                ? Invariant($"Hottest Player Avg: {hottestPlayerAvg.Item2} ({hottestPlayerAvg.Item3}) with {hottestPlayerAvg.Item1}ms per tracked PB")
-                : "Hottest Player Avg: none, no tracked PB has run lately");
-            sb.AppendLine(playerWithMostPBs.Item2 is not null
-                ? Invariant($"Player With Most PBs: {playerWithMostPBs.Item2} ({playerWithMostPBs.Item3}) with {InvariantText.Count(playerWithMostPBs.Item1, "PB", "PBs")}")
-                : "Player With Most PBs: none");
-            sb.AppendLine(Invariant($"Total Players Tracked: {playerReports.Length}"));
-            sb.AppendLine(Invariant($"Total Programmable Blocks: {blockReports.Length}, {blockReports.Count(block => block.Value.Resting)} of them resting"));
-            sb.AppendLine(Invariant($"Total Offences: {ServerTotalOffences}"));
-            sb.AppendLine(Invariant($"Hottest Block: {DescribeBlock(hottestPb)} with {hottestPb?.LastRunTimeMS ?? 0}ms"));
-            sb.AppendLine(Invariant($"Most Recompiled Block: {DescribeBlock(pbWithMostRecompiles)} with {InvariantText.Count(pbWithMostRecompiles?.Recompiles ?? 0, "recompile", "recompiles")}"));
-            sb.AppendLine(Invariant($"Block With Most Offences: {DescribeBlock(pbWithMostOffences)} with {InvariantText.Count(pbWithMostOffences?.Offences ?? 0, "offence", "offences")}"));
-            sb.AppendLine();
-            sb.AppendLine();
-            sb.AppendLine("-----------------------");
-            sb.AppendLine("End Of Report");
-            sb.AppendLine("-----------------------");
-            
+            AppendRule(sb);
+            sb.AppendLine("End of report");
+            AppendRule(sb);
+
             return sb.ToString();
         }
 
-        private static string DescribeBlock(CustomBlockReport? block)
+        /// <summary>A full width rule above and below the report's title and at its end.</summary>
+        private static void AppendRule(StringBuilder sb) => sb.AppendLine(new string('=', ReportWidth));
+
+        /// <summary>A section heading, underlined across the report width, with one blank line after it.</summary>
+        private static void AppendSection(StringBuilder sb, string title)
         {
-            return block is null ? "None" : Invariant($"{block.BlockName} on {block.GridName} owned by {block.PlayerName} ({block.SteamId})");
+            sb.AppendLine(title);
+            sb.AppendLine(new string('-', ReportWidth));
+            sb.AppendLine();
         }
 
-        /// <summary>One column of a report row, centred in <see cref="ColumnWidth"/>, then the separator.</summary>
-        private static void Column(StringBuilder sb, string label, string value)
+        /// <summary>One labelled value under an entry, aligned with the other values in the same entry.</summary>
+        private static void AppendField(StringBuilder sb, string label, string value)
         {
-            string pad = ColumnPadding(label, value);
-            sb.Append(pad).Append(label).Append(": ").Append(value).Append(pad).Append("||");
+            string prefix = "    " + label.PadRight(13) + "  ";
+            string indent = new(' ', prefix.Length);
+            if (value.Length == 0)
+            {
+                sb.AppendLine(prefix);
+                return;
+            }
+
+            bool first = true;
+            foreach (string line in Wrap(value, Math.Max(16, ReportWidth - prefix.Length)))
+            {
+                sb.Append(first ? prefix : indent).AppendLine(line);
+                first = false;
+            }
         }
 
-        /// <summary>The last column of a report row: centred, then the end of the line.</summary>
-        private static void LastColumn(StringBuilder sb, string label, string value)
+        /// <summary>The numbered heading of a block or player entry, with a long name wrapped under it.</summary>
+        private static void AppendEntryTitle(StringBuilder sb, int number, string name)
         {
-            sb.Append(ColumnPadding(label, value)).Append(label).Append(": ").AppendLine(value);
+            bool first = true;
+            foreach (string line in Wrap(Invariant($"[{number}] {name}"), ReportWidth - 4))
+            {
+                sb.Append(first ? "" : "    ").AppendLine(line);
+                first = false;
+            }
         }
 
-        private static string ColumnPadding(string label, string value)
+        /// <summary>A labelled value in the quick stats, wrapped with the value's continuation lines aligned under it.</summary>
+        private static void AppendStat(StringBuilder sb, string label, string value)
         {
-            return new string(' ', Math.Max(0, (ColumnWidth - (label.Length + 2 + value.Length)) / 2));
+            string prefix = label.PadRight(StatLabelWidth) + "  ";
+            string indent = new(' ', prefix.Length);
+            int width = Math.Max(24, ReportWidth - prefix.Length);
+            bool first = true;
+            foreach (string line in Wrap(value, width))
+            {
+                sb.Append(first ? prefix : indent).AppendLine(line);
+                first = false;
+            }
+        }
+
+        /// <summary>An explanatory paragraph under a stat, wrapped to the report width.</summary>
+        private static void AppendNote(StringBuilder sb, string note)
+        {
+            foreach (string line in Wrap(note, ReportWidth - 4))
+                sb.Append("    ").AppendLine(line);
+        }
+
+        /// <summary>A quick stat naming a block: the name on the label line, then its grid, owner and figure.</summary>
+        private static void AppendBlockStat(StringBuilder sb, string label, CustomBlockReport block, string metric)
+        {
+            AppendStat(sb, label, block.BlockName ?? "(unnamed block)");
+            AppendContinuation(sb, block.GridName);
+            AppendContinuation(sb, Invariant($"{block.PlayerName} ({block.SteamId})"));
+            AppendContinuation(sb, metric);
+        }
+
+        /// <summary>A quick stat naming a player: the name on the label line, then the Steam ID and figure.</summary>
+        private static void AppendPlayerStat(StringBuilder sb, string label, ulong steamId, string? playerName, string metric)
+        {
+            AppendStat(sb, label, playerName ?? "Unknown");
+            AppendContinuation(sb, Invariant($"{steamId}"));
+            AppendContinuation(sb, metric);
+        }
+
+        /// <summary>A line continuing a stat's value, aligned under the first value line and wrapped to the report width.</summary>
+        private static void AppendContinuation(StringBuilder sb, string value)
+        {
+            string indent = new(' ', StatLabelWidth + 2);
+            foreach (string line in Wrap(value, ReportWidth - indent.Length))
+                sb.Append(indent).AppendLine(line);
+        }
+
+        /// <summary>Breaks text into lines no longer than width, at a space where one is available.</summary>
+        private static IEnumerable<string> Wrap(string value, int width)
+        {
+            while (value.Length > width)
+            {
+                int breakAt = value.LastIndexOf(' ', width);
+                if (breakAt <= 0) breakAt = width;
+                yield return value.Substring(0, breakAt).TrimEnd();
+                value = value.Substring(breakAt).TrimStart();
+            }
+
+            if (value.Length > 0) yield return value;
+        }
+
+        private static void WriteBlockReport(StringBuilder sb, CustomBlockReport item, int number)
+        {
+            AppendEntryTitle(sb, number, item.BlockName ?? "(unnamed block)");
+            AppendField(sb, "Player", item.PlayerName);
+            AppendField(sb, "Steam ID", Invariant($"{item.SteamId}"));
+            AppendField(sb, "Grid", item.GridName);
+            AppendField(sb, "Status", item.Resting ? "Resting (not run lately)" : "Active");
+            AppendField(sb, "Last run", Invariant($"{item.LastRunTimeMS:0.######}") + " ms");
+            AppendField(sb, "Average", Invariant($"{item.AvgMS:0.######}") + " ms");
+            AppendField(sb, "Offences", Invariant($"{item.Offences}"));
+            AppendField(sb, "Recompiles", Invariant($"{item.Recompiles}"));
+            AppendField(sb, "Memory", item.MemoryUsed);
+            sb.AppendLine();
+        }
+
+        private static void WritePlayerReport(StringBuilder sb, CustomPlayerReport item, int number)
+        {
+            AppendEntryTitle(sb, number, item.PlayerName);
+            AppendField(sb, "Steam ID", Invariant($"{item.SteamId}"));
+            AppendField(sb, "Blocks", InvariantText.Count(item.PbCount, "block", "blocks"));
+            AppendField(sb, "Combined last", Invariant($"{item.CombinedLastRunTimeMS:0.####}") + " ms");
+            AppendField(sb, "Combined avg", Invariant($"{item.CombinedAvgMS:0.####}") + " ms");
+            AppendField(sb, "Offences", Invariant($"{item.Offences}"));
+            AppendField(sb, "Recompiles", Invariant($"{item.Recompiles}"));
+            AppendField(sb, "Memory", item.MemoryUsed);
+            sb.AppendLine();
         }
 
         private void TurnOff_PB(object sender, RoutedEventArgs e)
         {
-            if (sender is not System.Windows.Controls.Button clickedbutton) return;
+            if (sender is not Button clickedbutton) return;
             if (clickedbutton.Tag is not MyProgrammableBlock pb) return;
-            MySandboxGame.Static.Invoke(() =>
+            MySandboxGame? game = MySandboxGame.Static;
+            if (game is null) return; // The world and its game have stopped.
+            try
             {
-                pb.Enabled = false;
-                TrackingManager.MarkStopped(pb);
-            }, "Advanced PB Limiter");
-            Log.Info($"Request to turn off the programmable block [{pb.ReadName()}] from the plugin UI.");
+                game.Invoke(() =>
+                {
+                    if (pb.Closed || pb.MarkedForClose || !pb.Enabled) return;
+                    pb.Enabled = false;
+                    TrackingManager.MarkStopped(pb);
+                    Log.Info($"Request to turn off the programmable block [{pb.ReadName()}] from the plugin UI.");
+                }, "Advanced PB Limiter");
+            }
+            catch (Exception error)
+            {
+                // A click must not take the Torch window down, including while the world unloads.
+                Log.Error(error, "Could not turn off the programmable block from the plugin UI");
+            }
         }
 
         private void TurnOff_AllPB(object sender, RoutedEventArgs e)
         {
-            if (sender is not System.Windows.Controls.Button clickedbuttonAll) return;
+            if (sender is not Button clickedbuttonAll) return;
             if (clickedbuttonAll.Tag is not TrackedPlayer player) return;
-            MySandboxGame.Static.Invoke(() =>
+            MySandboxGame? game = MySandboxGame.Static;
+            if (game is null) return;
+            try
             {
-                foreach (TrackedPBBlock? pb in player.GetAllPBBlocks())
+                game.Invoke(() =>
                 {
-                    if (pb?.ProgrammableBlock is null) continue;
-                    pb.ProgrammableBlock.Enabled = false;
-                    pb.MarkStopped();
-                }
-            }, "Advanced PB Limiter");
-            Log.Info($"Request to turn off ALL the programmable blocks for [{player.PlayerName}] from the plugin UI.");
+                    foreach (TrackedPBBlock? pb in player.GetAllPBBlocks())
+                    {
+                        if (pb?.ProgrammableBlock is null) continue;
+                        if (pb.ProgrammableBlock.Closed || pb.ProgrammableBlock.MarkedForClose || !pb.ProgrammableBlock.Enabled) continue;
+                        pb.ProgrammableBlock.Enabled = false;
+                        pb.MarkStopped();
+                    }
+                }, "Advanced PB Limiter");
+                Log.Info($"Request to turn off ALL the programmable blocks for [{player.PlayerName}] from the plugin UI.");
+            }
+            catch (Exception error)
+            {
+                Log.Error(error, "Could not turn off the player's programmable blocks from the plugin UI");
+            }
         }
     }
 }

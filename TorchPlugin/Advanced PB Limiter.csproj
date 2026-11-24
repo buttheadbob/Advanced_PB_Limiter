@@ -41,46 +41,47 @@
     <StartupObject />
   </PropertyGroup>
   <ItemGroup>
+    <!-- GameBinariesDir and TorchBinariesDir come from Directory.Build.props / Directory.Build.props.user. -->
     <Reference Include="mscorlib" />
     <Reference Include="netstandard">
       <Private>False</Private>
     </Reference>
     <Reference Include="NLog">
-      <HintPath>..\TorchBinaries\NLog.dll</HintPath>
+      <HintPath>$(TorchBinariesDir)NLog.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
     <Reference Include="Sandbox.Common, Version=1.0.0.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\GameBinaries\Sandbox.Common.dll</HintPath>
+      <HintPath>$(GameBinariesDir)Sandbox.Common.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Sandbox.Game, Version=0.1.1.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\GameBinaries\Sandbox.Game.dll</HintPath>
+      <HintPath>$(GameBinariesDir)Sandbox.Game.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Sandbox.Graphics, Version=0.1.1.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\GameBinaries\Sandbox.Graphics.dll</HintPath>
+      <HintPath>$(GameBinariesDir)Sandbox.Graphics.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="SpaceEngineers.Game, Version=1.0.0.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\GameBinaries\SpaceEngineers.Game.dll</HintPath>
+      <HintPath>$(GameBinariesDir)SpaceEngineers.Game.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="SpaceEngineers.ObjectBuilders, Version=1.0.0.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\GameBinaries\SpaceEngineers.ObjectBuilders.dll</HintPath>
+      <HintPath>$(GameBinariesDir)SpaceEngineers.ObjectBuilders.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <!-- Span comes from the copy the game ships, so the plugin never loads a second one. -->
     <Reference Include="System.Memory">
-      <HintPath>..\GameBinaries\System.Memory.dll</HintPath>
+      <HintPath>$(GameBinariesDir)System.Memory.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="System.Xaml" />
@@ -89,37 +90,37 @@
     <Reference Include="System.Xml.Linq" />
     <Reference Include="Torch, Version=1.3.1.97, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\TorchBinaries\Torch.dll</HintPath>
+      <HintPath>$(TorchBinariesDir)Torch.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Torch.API, Version=1.3.1.97, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\TorchBinaries\Torch.API.dll</HintPath>
+      <HintPath>$(TorchBinariesDir)Torch.API.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="VRage, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\GameBinaries\VRage.dll</HintPath>
+      <HintPath>$(GameBinariesDir)VRage.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="VRage.Game, Version=1.0.0.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\GameBinaries\VRage.Game.dll</HintPath>
+      <HintPath>$(GameBinariesDir)VRage.Game.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="VRage.Input, Version=1.0.0.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\GameBinaries\VRage.Input.dll</HintPath>
+      <HintPath>$(GameBinariesDir)VRage.Input.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="VRage.Library, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\GameBinaries\VRage.Library.dll</HintPath>
+      <HintPath>$(GameBinariesDir)VRage.Library.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="VRage.Math, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\GameBinaries\VRage.Math.dll</HintPath>
+      <HintPath>$(GameBinariesDir)VRage.Math.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="WindowsBase" />
@@ -159,6 +160,7 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
+    <Page Include="UI\PblStyles.xaml" />
     <Page Include="UI\BasicSettings.xaml" />
     <Page Include="UI\PrivilegedUsers.xaml" />
     <Page Include="UI\Reports.xaml" />

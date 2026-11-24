@@ -9,7 +9,8 @@ namespace Advanced_PB_Limiter.MagnetarHost;
 /// <summary>
 /// Entry points for the Quasar companion plugin. Quasar builds the companion and it cannot reference this assembly, so
 /// it finds this class by name and calls it through reflection. Only strings and numbers cross over.
-/// Everything except <see cref="IsOnline"/> must be called on the game thread.
+/// <see cref="IsOnline"/>, <see cref="GetReportJson"/> and <see cref="ReportSnapshotOnAnyThread"/> may be called from any
+/// thread: they read only flags and the data the game thread cached. Everything else must be called on the game thread.
 /// </summary>
 // ReSharper disable UnusedMember.Global
 public static class QuasarBridge
@@ -22,7 +23,14 @@ public static class QuasarBridge
     /// <summary>Only reads a flag, so the companion can ask without waiting for the game thread during a world load.</summary>
     public static bool IsOnline() => LimiterCore.GameOnline;
 
+    /// <summary>Any thread: the snapshot reads tracking data and the block and grid names the game thread cached.</summary>
     public static string GetReportJson() => JsonConvert.SerializeObject(ReportManager.BuildSnapshot(), Json);
+
+    /// <summary>
+    /// True when <see cref="GetReportJson"/> may be called from any thread. A companion talking to an older server plugin,
+    /// which has no such method, must ask it on the game thread: there the names and working state it reads are live.
+    /// </summary>
+    public static bool ReportSnapshotOnAnyThread() => true;
 
     public static int TurnOffBlock(long entityId) => TrackingManager.TurnOffBlock(entityId);
 

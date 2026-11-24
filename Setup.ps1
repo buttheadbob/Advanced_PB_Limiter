@@ -1,46 +1,103 @@
 # One time setup for a fresh clone, run from PowerShell (see README).
-#  - Torch plugin: junctions to the Dedicated Server and Torch binaries
-#  - Magnetar plugin: Directory.Build.props (local paths), copied from the template
+# Writes Directory.Build.props.user (gitignored) with the local game, Torch, Magnetar and Quasar paths. The projects
+# read the paths from that file; no junctions or other links are made.
+param(
+    [string]$GameBinaries,
+    [string]$TorchBinaries
+)
 $ErrorActionPreference = 'Stop'
 Push-Location $PSScriptRoot
 $exitCode = 0
 try {
-    if (-not (Test-Path 'Directory.Build.props')) {
-        Copy-Item 'Directory.Build.props.template' 'Directory.Build.props'
-        Write-Output 'Created Directory.Build.props.'
-        Write-Output 'Edit it if the auto-detected Dedicated Server / Magnetar paths are wrong.'
+    # A property from the user file, then the committed defaults. Empty values are skipped. Parsed as XML, so a path
+    # with &amp; keeps its meaning.
+    function Get-PropValue([string]$name) {
+        foreach ($file in @('Directory.Build.props.user', 'Directory.Build.props')) {
+            if (-not (Test-Path -LiteralPath $file)) { continue }
+            try {
+                [xml]$document = Get-Content -LiteralPath $file -Raw -ErrorAction Stop
+                $node = $document.SelectSingleNode("/Project/PropertyGroup/$name[not(@Condition)]")
+                if ($node -and $node.InnerText.Trim()) { return $node.InnerText.Trim() }
+            }
+            catch {
+                Write-Warning "Could not read $file as XML: $($_.Exception.Message)"
+            }
+        }
+        return ''
     }
 
-    $links = [ordered]@{
-        GameBinaries  = 'Folder containing SpaceEngineersDedicated.exe (inside Torch: the DedicatedServer64 folder)'
-        TorchBinaries = 'Folder containing Torch.Server.exe'
+    function Read-Folder([string]$prompt, [string]$value) {
+        $shown = if ($value) { " [$value]" } else { '' }
+        $answer = (Read-Host "$prompt$shown").Trim('"', ' ')
+        if ([string]::IsNullOrWhiteSpace($answer)) { $answer = $value }
+        if ([string]::IsNullOrWhiteSpace($answer)) { throw "No folder given for: $prompt" }
+        if (-not (Test-Path -LiteralPath $answer -PathType Container)) { throw "Not a folder: '$answer'" }
+        return (Get-Item -LiteralPath $answer).FullName
     }
 
-    foreach ($link in $links.Keys) {
-        $answer = (Read-Host $links[$link]).Trim('"', ' ')
-        if ([string]::IsNullOrWhiteSpace($answer) -or -not (Test-Path -LiteralPath $answer -PathType Container)) {
-            throw "Not a folder: '$answer'. $link was left as it was."
-        }
-        # A full path, so a relative answer or one with [ ] in it links the folder that was meant.
-        $target = (Get-Item -LiteralPath $answer).FullName
+    function XmlText([string]$value) { return [System.Security.SecurityElement]::Escape($value) }
 
-        # Only a junction is replaced, never a real folder, and the folder it points to is left alone.
-        $existing = Get-Item -LiteralPath $link -Force -ErrorAction SilentlyContinue
-        if ($existing) {
-            if ($existing.LinkType -ne 'Junction') { throw "$link exists and is not a junction. Move it away first." }
-            $existing.Delete()
-        }
-        # Not through cmd, where & ^ and %NAME% in a folder name change the path. Windows PowerShell reads -Target as a
-        # wildcard pattern, so [ ] are escaped there.
-        $linkTarget = if ($PSVersionTable.PSVersion.Major -lt 6) { [WildcardPattern]::Escape($target) } else { $target }
-        $null = New-Item -ItemType Junction -Path $link -Target $linkTarget
-        $made = [string](Get-Item -LiteralPath $link -Force).Target
-        if ($made.TrimEnd('\') -ne $target.TrimEnd('\')) {
-            throw "The junction $link points to '$made', not '$target'."
-        }
-        Write-Output "$link -> $target"
+    if ($GameBinaries) {
+        if (-not (Test-Path -LiteralPath $GameBinaries -PathType Container)) { throw "Not a folder: '$GameBinaries'" }
+        $GameBinaries = (Get-Item -LiteralPath $GameBinaries).FullName
+    }
+    if ($TorchBinaries) {
+        if (-not (Test-Path -LiteralPath $TorchBinaries -PathType Container)) { throw "Not a folder: '$TorchBinaries'" }
+        $TorchBinaries = (Get-Item -LiteralPath $TorchBinaries).FullName
     }
 
+    # Existing values first, so a rerun keeps them as the default answers.
+    $game = Get-PropValue 'GameBinaries'
+    if (-not $game) { $game = Get-PropValue 'DS64' }
+    if (-not $game) { $game = Get-PropValue 'Dedicated64' }
+    $torch = Get-PropValue 'TorchBinaries'
+
+    if (-not $GameBinaries) {
+        $GameBinaries = Read-Folder 'Folder containing Sandbox.Game.dll (the DedicatedServer64 folder)' $game
+    }
+    if (-not $TorchBinaries) {
+        $TorchBinaries = Read-Folder 'Folder containing Torch.Server.exe' $torch
+    }
+
+    # The game binaries are usually the Dedicated Server folder. An explicit Dedicated64 is kept.
+    $dedicated = Get-PropValue 'Dedicated64'
+    if (-not $dedicated) { $dedicated = $GameBinaries }
+
+    $magnetar = Get-PropValue 'Magnetar'
+    $magnetarBin = Get-PropValue 'MagnetarBin'
+    if (-not $magnetarBin -and -not $magnetar) {
+        # A Magnetar checkout beside this one, as the author keeps it.
+        $local = [System.IO.Path]::Combine((Split-Path $PSScriptRoot -Parent), 'magnetar', 'PluginSdk', 'bin', 'Release', 'netstandard2.0')
+        if (Test-Path -LiteralPath (Join-Path $local 'PluginSdk.dll')) {
+            $magnetarBin = (Get-Item -LiteralPath $local).FullName
+        }
+    }
+    $quasar = Get-PropValue 'Quasar'
+    $quasarAbstractions = Get-PropValue 'QuasarPluginAbstractionsAssembly'
+    $magnetarProtocol = Get-PropValue 'MagnetarProtocolAssembly'
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add('<Project>')
+    $lines.Add('  <!-- Local machine paths. Ignored by Git (*.user); Setup.ps1 writes this file. -->')
+    $lines.Add('  <PropertyGroup>')
+    $lines.Add('    <Dedicated64>' + (XmlText $dedicated) + '</Dedicated64>')
+    $lines.Add('    <GameBinaries>' + (XmlText $GameBinaries) + '</GameBinaries>')
+    $lines.Add('    <TorchBinaries>' + (XmlText $TorchBinaries) + '</TorchBinaries>')
+    if ($magnetar) { $lines.Add('    <Magnetar>' + (XmlText $magnetar) + '</Magnetar>') }
+    if ($magnetarBin) { $lines.Add('    <MagnetarBin>' + (XmlText $magnetarBin) + '</MagnetarBin>') }
+    if ($quasar) { $lines.Add('    <Quasar>' + (XmlText $quasar) + '</Quasar>') }
+    if ($quasarAbstractions) { $lines.Add('    <QuasarPluginAbstractionsAssembly>' + (XmlText $quasarAbstractions) + '</QuasarPluginAbstractionsAssembly>') }
+    if ($magnetarProtocol) { $lines.Add('    <MagnetarProtocolAssembly>' + (XmlText $magnetarProtocol) + '</MagnetarProtocolAssembly>') }
+    $lines.Add('  </PropertyGroup>')
+    $lines.Add('</Project>')
+
+    Set-Content -LiteralPath 'Directory.Build.props.user' -Value $lines -Encoding utf8
+    Write-Output 'Wrote Directory.Build.props.user.'
+    Write-Output "  Dedicated64:   $dedicated"
+    Write-Output "  GameBinaries:  $GameBinaries"
+    Write-Output "  TorchBinaries: $TorchBinaries"
+    if ($magnetarBin) { Write-Output "  MagnetarBin:   $magnetarBin" }
+    Write-Output 'No GameBinaries or TorchBinaries links are used. If an older checkout still has them, remove the links, not the folders they point to.'
     Write-Output 'Done! You can now open "Advanced PB Limiter.sln".'
 }
 catch {

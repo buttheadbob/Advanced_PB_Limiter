@@ -1,0 +1,90 @@
+@if (Values is { Count: > 0 })
+{
+    <svg class="pbl-sparkline pbl-sparkline-@Tone" viewBox="0 0 @ViewWidth @ViewHeight" preserveAspectRatio="none"
+         role="img" aria-label="@Label">
+        @if (Fill)
+        {
+            <defs>
+                <linearGradient id="@GradientId" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="currentColor" stop-opacity="0.28" />
+                    <stop offset="100%" stop-color="currentColor" stop-opacity="0" />
+                </linearGradient>
+            </defs>
+            <polygon points="@AreaPoints" fill="url(#@GradientId)" />
+        }
+        <polyline points="@LinePoints" fill="none" stroke="currentColor" stroke-width="2"
+                  vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<double>? Values { get; set; }
+    [Parameter] public string Tone { get; set; } = "primary";
+    [Parameter] public string Label { get; set; } = "Trend";
+    [Parameter] public bool Fill { get; set; } = true;
+    [Parameter] public double ViewWidth { get; set; } = 120d;
+    [Parameter] public double ViewHeight { get; set; } = 32d;
+
+    private string LinePoints { get; set; } = "";
+    private string AreaPoints { get; set; } = "";
+    private string GradientId { get; } = "pbl-spark-" + Guid.NewGuid().ToString("N");
+
+    protected override void OnParametersSet()
+    {
+        Build();
+    }
+
+    private void Build()
+    {
+        if (Values is not { Count: > 0 })
+        {
+            LinePoints = AreaPoints = "";
+            return;
+        }
+
+        double min = double.MaxValue;
+        double max = double.MinValue;
+        foreach (double value in Values)
+        {
+            if (!double.IsFinite(value)) continue;
+            min = Math.Min(min, value);
+            max = Math.Max(max, value);
+        }
+
+        if (min == double.MaxValue)
+        {
+            LinePoints = AreaPoints = "";
+            return;
+        }
+
+        if (max - min < 0.0000001d)
+        {
+            max = min + 1d;
+        }
+
+        const double pad = 2d;
+        double width = Math.Max(1d, ViewWidth - (pad * 2d));
+        double height = Math.Max(1d, ViewHeight - (pad * 2d));
+        int count = Values.Count;
+        double step = count > 1 ? width / (count - 1) : 0d;
+
+        System.Text.StringBuilder line = new(count * 16);
+        for (int index = 0; index < count; index++)
+        {
+            double value = double.IsFinite(Values[index]) ? Values[index] : min;
+            double x = pad + (step * index);
+            double y = pad + height - (((value - min) / (max - min)) * height);
+            if (index > 0) line.Append(' ');
+            line.Append(x.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture))
+                .Append(',')
+                .Append(y.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        LinePoints = line.ToString();
+        AreaPoints = pad.ToString(System.Globalization.CultureInfo.InvariantCulture) + ","
+                     + (ViewHeight - pad).ToString(System.Globalization.CultureInfo.InvariantCulture) + " "
+                     + LinePoints + " "
+                     + (ViewWidth - pad).ToString(System.Globalization.CultureInfo.InvariantCulture) + ","
+                     + (ViewHeight - pad).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+}

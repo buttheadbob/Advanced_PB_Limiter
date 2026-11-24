@@ -1,0 +1,25 @@
+<div class="pbl-tabs" role="tablist" aria-label="@Label">
+    @foreach (PblTab tab in Tabs)
+    {
+        bool active = string.Equals(tab.Key, ActiveKey, StringComparison.Ordinal);
+        <button type="button" role="tab" aria-selected="@active" class="pbl-tab @(active ? "active" : "")"
+                @onclick="() => Select(tab.Key)">
+            <PblIcon Name="@tab.Icon" />
+            <span>@tab.Label</span>
+            @if (tab.Count is { } count)
+            {
+                <span class="pbl-tab-count">@count</span>
+            }
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<PblTab> Tabs { get; set; } = Array.Empty<PblTab>();
+    [Parameter] public string ActiveKey { get; set; } = "";
+    [Parameter] public EventCallback<string> ActiveKeyChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "Views";
+
+    private Task Select(string key) =>
+        string.Equals(key, ActiveKey, StringComparison.Ordinal) ? Task.CompletedTask : ActiveKeyChanged.InvokeAsync(key);
+}

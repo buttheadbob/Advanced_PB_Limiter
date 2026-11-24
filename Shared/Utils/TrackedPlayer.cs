@@ -3,6 +3,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using Advanced_PB_Limiter.Manager;
 using ExtensionMethods;
 using Sandbox.Game.Entities.Blocks;
@@ -36,8 +37,11 @@ namespace Advanced_PB_Limiter.Utils
         public long LastDataUpdateTick { get; private set; }
         public List<long> CombinedOffences { get; } = new();
 
+        // Written on the game thread by RefreshPrivilegedPlayer, read by reports on other threads.
+        private PrivilegedPlayer? _privileged;
+
         /// <summary>Looked up once in a while rather than on every run, see <see cref="RefreshPrivilegedPlayer"/>.</summary>
-        public PrivilegedPlayer? Privileged { get; private set; }
+        public PrivilegedPlayer? Privileged => Volatile.Read(ref _privileged);
 
         public TrackedPlayer(long playerId)
         {
@@ -52,7 +56,7 @@ namespace Advanced_PB_Limiter.Utils
 
         public void RefreshPrivilegedPlayer()
         {
-            Privileged = Config.TryGetPrivilegedPlayer(SteamId, out PrivilegedPlayer? privilegedPlayer) ? privilegedPlayer : null;
+            Volatile.Write(ref _privileged, Config.TryGetPrivilegedPlayer(SteamId, out PrivilegedPlayer? privilegedPlayer) ? privilegedPlayer : null);
         }
 
         /// <summary>No block tracked or waiting to be tracked again. Game thread.</summary>
@@ -108,6 +112,10 @@ namespace Advanced_PB_Limiter.Utils
             {
                 if (_resting.TryGetValue(entityId, out TrackedPBBlock? resting))
                 {
+                    // It has not run for a while, so this is the one full read of its names and state until it is active
+                    // again; the cleanup pass only reads the cheap flags of resting blocks.
+                    if (!resting.ProgrammableBlock.Closed && !resting.ProgrammableBlock.MarkedForClose)
+                        resting.RefreshLiveState();
                     PBBlocks.TryAdd(entityId, resting);
                     _resting.TryRemove(entityId, out _);
                     return resting;
@@ -120,7 +128,7 @@ namespace Advanced_PB_Limiter.Utils
             if (handedOver is not null)
                 return handedOver;
 
-            PBBlocks.TryAdd(entityId, new TrackedPBBlock(block.CubeGrid.DisplayName, block));
+            PBBlocks.TryAdd(entityId, new TrackedPBBlock(block));
             return null;
         }
 
@@ -186,7 +194,29 @@ namespace Advanced_PB_Limiter.Utils
         /// As <see cref="GetAllPBBlocks()"/>, each block with whether it was resting when the copy was taken. Reports add run
         /// times over the tracked ones only, as the combined limits do, and mark the resting ones.
         /// </summary>
-        public List<(TrackedPBBlock Block, bool Resting)> GetAllPBBlocksWithState() => CopyAll(static (block, resting) => (block, resting));
+        public List<(TrackedPBBlock Block, bool Resting)> GetAllPBBlocksWithState()
+        {
+            List<(TrackedPBBlock Block, bool Resting)> all = new(PBBlocks.Count + _resting.Count);
+            CopyAllPBBlocksWithState(all);
+            return all;
+        }
+
+        /// <summary>
+        /// Fills <paramref name="target"/> with one copy of the tracked blocks, then the resting ones, under the lock the
+        /// moves hold. The list is cleared first. Reports that gather repeatedly reuse their list instead of allocating
+        /// one per player per refresh.
+        /// </summary>
+        internal void CopyAllPBBlocksWithState(List<(TrackedPBBlock Block, bool Resting)> target)
+        {
+            target.Clear();
+            lock (_moves)
+            {
+                foreach (KeyValuePair<long, TrackedPBBlock> pair in PBBlocks)
+                    target.Add((pair.Value, false));
+                foreach (KeyValuePair<long, TrackedPBBlock> pair in _resting)
+                    target.Add((pair.Value, true));
+            }
+        }
 
         /// <summary>One copy of the tracked blocks, then the resting ones, taken under the lock the moves hold.</summary>
         private List<T> CopyAll<T>(Func<TrackedPBBlock, bool, T> item)
@@ -203,14 +233,23 @@ namespace Advanced_PB_Limiter.Utils
         }
 
         /// <summary>
-        /// Whether a block's run times count in this player's combined run times, for the combined limits and every report
-        /// alike: not resting, whose last run may be long ago; running, or run since the last combined check and not turned
-        /// off by the limiter or an admin after that run, as a dead or punished block keeps its last run time until it leaves
-        /// tracking and uses nothing, while a script that turns its own block off after each run and is run again still
-        /// uses it; and past its startup time, whose runs are ignored until it ends.
+        /// Whether a block's run times count in this player's combined run times, for the combined limits: not resting,
+        /// whose last run may be long ago; running, or run since the last combined check and not turned off by the limiter
+        /// or an admin after that run, as a dead or punished block keeps its last run time until it leaves tracking and
+        /// uses nothing, while a script that turns its own block off after each run and is run again still uses it; and
+        /// past its startup time, whose runs are ignored until it ends. Game thread only: it reads the live block state.
+        /// Reports use <see cref="CountsInCombinedForReport"/>.
         /// </summary>
         public bool CountsInCombined(TrackedPBBlock block, bool resting) =>
             !resting && (block.IsRunning || block.RanSinceCombinedCheck) && !block.IsUnderGracePeriod(Privileged);
+
+        /// <summary>
+        /// As <see cref="CountsInCombined"/>, from any thread: it uses the working state the game thread cached in
+        /// the block, for reports, which no longer gather on the game thread. The combined limits themselves keep
+        /// using the live state, through <see cref="CountsInCombined"/>.
+        /// </summary>
+        public bool CountsInCombinedForReport(TrackedPBBlock block, bool resting) =>
+            !resting && (block.IsRunningCached || block.RanSinceCombinedCheck) && !block.IsUnderGracePeriod(Privileged);
 
         /// <summary>The combined run times the combined limits check: the tracked blocks that count, see <see cref="CountsInCombined"/>.</summary>
         public CombinedRunTimes Combined()
@@ -234,6 +273,10 @@ namespace Advanced_PB_Limiter.Utils
                 TrackedPBBlock tracked = kvp.Value;
                 MyProgrammableBlock block = tracked.ProgrammableBlock;
                 bool closed = block.Closed || block.MarkedForClose;
+                // The names and working state reports show are cached here, so they stay fresh without the reports
+                // reading the block themselves.
+                if (!closed)
+                    tracked.RefreshLiveState();
                 if (!closed && block.OwnerId != PlayerId)
                 {
                     TrackingManager.HandOver(this, kvp.Key, tracked);
@@ -257,6 +300,10 @@ namespace Advanced_PB_Limiter.Utils
                 MyProgrammableBlock block = kvp.Value.ProgrammableBlock;
                 bool expired = keepMinutes > 0 && kvp.Value.LastUpdateTick.TicksTillNow_TimeSpan().TotalMinutes > keepMinutes;
                 bool closed = block.Closed || block.MarkedForClose;
+                // A resting block's names stay from its last run; only the cheap on/off flags are kept fresh, so this
+                // pass does not read every idle block's names every few seconds. It refreshes fully when it runs again.
+                if (!closed)
+                    kvp.Value.RefreshEnabledState();
                 if (!expired && !closed && block.OwnerId == PlayerId) continue;
                 if (!expired && !closed)
                 {
@@ -314,7 +361,7 @@ namespace Advanced_PB_Limiter.Utils
             }
 
             if (Config.DebugReporting)
-                Log.Info($"Cleared the history of [{pbBlock.ReadName()}] after a recompile.");
+                Log.Info($"Cleared the history of [{trackedPBBlock.BlockName}] after a recompile.");
             return true;
         }
     }
