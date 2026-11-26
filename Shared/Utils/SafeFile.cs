@@ -17,10 +17,10 @@ namespace Advanced_PB_Limiter.Utils
     /// <summary>
     /// Replaces a file through a complete copy written beside it, so a crash or kill at any point leaves the old file, the
     /// new file, or a complete copy that <see cref="RecoverAsync"/> puts back. Writes and recoveries of the same file run
-    /// one at a time: within this copy of the assembly through a gate per file, and across processes through a lock on
-    /// &lt;file&gt;.lock beside it, which the OS releases when the holder exits. On Windows that lock also keeps two copies of
-    /// the assembly in one process apart (an old and a new one after a Torch reload); on Linux it is a POSIX record lock,
-    /// which belongs to the whole process. The lock is held across awaits, so it is not a thread-affine mutex.
+    /// one at a time: within this copy of the assembly through a gate per file, and across processes, and copies of the
+    /// assembly in one process (an old and a new one after a Torch reload), through &lt;file&gt;.lock beside it, opened for
+    /// one holder at a time, which the OS lets go when the holder closes it or exits. The lock is held across awaits, so it
+    /// is not a thread-affine mutex.
     /// </summary>
     public static class SafeFile
     {
@@ -72,40 +72,37 @@ namespace Advanced_PB_Limiter.Utils
         // One gate per file, keyed by its full path (case-insensitive on Windows), in this copy of the assembly.
         private static readonly ConcurrentDictionary<string, SemaphoreSlim> Gates = new(StringComparer.Ordinal);
 
+        // Whether a folder can hold a lock file, and folders already reported, by full path: each is checked and said once.
+        private static readonly ConcurrentDictionary<string, bool> FolderHolds = new(StringComparer.Ordinal);
+        private static readonly ConcurrentDictionary<string, byte> Reported = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Where the host's log takes a warning from this class: a folder where no lock file can be made, said once per
+        /// folder. The plugin sets it as it loads; null says nothing.
+        /// </summary>
+        public static Action<string>? Warning { get; set; }
+
         /// <summary>
         /// Holds the lock of <paramref name="path"/> until disposed, for a caller that reads and writes it as one step with
         /// <see cref="WriteHeldAsync"/> and <see cref="RecoverHeldAsync"/>. Not taken again by the same caller: those don't take it.
-        /// Where no lock file can be made beside the file (a read-only folder, a file system that does not lock), only the
-        /// gate in this process is held. Throws IOException when another process holds the lock file longer than
+        /// Where no lock file can be made beside the file (a read-only folder, no access), only the gate in this process is
+        /// held, and <see cref="Warning"/> says so once for that folder; a folder that is not there yet holds no file to
+        /// protect, and is not reported. Throws IOException when another process holds the lock file longer than
         /// <see cref="LockWaitSeconds"/>.
         /// </summary>
         public static async Task<IDisposable> HoldAsync(string path)
         {
             SemaphoreSlim gate = Gates.GetOrAdd(GateKey(path), _ => new SemaphoreSlim(1, 1));
             await gate.WaitAsync().ConfigureAwait(false);
+            LockHold hold = new(gate);
             try
             {
-                FileStream? locked = await LockFileAsync(path + ".lock").ConfigureAwait(false);
-                return new Release(() =>
-                {
-                    if (locked is not null)
-                    {
-                        try
-                        {
-                            locked.Unlock(0, 1);
-                        }
-                        catch (IOException)
-                        {
-                            // Closing the handle releases it in any case.
-                        }
-                        locked.Dispose();
-                    }
-                    gate.Release();
-                });
+                await hold.OpenLockFileAsync(path + ".lock").ConfigureAwait(false);
+                return hold;
             }
             catch
             {
-                gate.Release();
+                hold.Dispose();
                 throw;
             }
         }
@@ -116,60 +113,100 @@ namespace Advanced_PB_Limiter.Utils
             return OnWindows ? key.ToUpperInvariant() : key;
         }
 
-        /// <summary>
-        /// Locks the first byte of <paramref name="lockPath"/>, creating it if needed, and returns the open file; null when
-        /// no lock file can be made or locked there. Retries only while another holder has it, up to <see cref="LockWaitSeconds"/>.
-        /// </summary>
-        private static async Task<FileStream?> LockFileAsync(string lockPath)
+        /// <summary>The gate of one file in this process, and the lock file beside it once open; both are let go on Dispose.</summary>
+        private sealed class LockHold : IDisposable
         {
-            DateTime giveUp = DateTime.UtcNow.AddSeconds(LockWaitSeconds);
-            while (true)
+            private readonly SemaphoreSlim _gate;
+            private FileStream? _lockFile;
+            private int _released;
+
+            public LockHold(SemaphoreSlim gate) => _gate = gate;
+
+            /// <summary>
+            /// Opens <paramref name="lockPath"/> for this holder alone, creating it if needed. The OS refuses any other open of
+            /// it until this one closes, also from this process: a share mode on Windows, an flock elsewhere, which works where
+            /// byte-range locks do not, as on a Windows folder mounted into a Linux container. Retries only while another
+            /// holder has it, up to <see cref="LockWaitSeconds"/>. On Linux a file that is held and a folder that is read-only
+            /// fail alike, so the first failure checks the folder with a file under a new name, which no one else can hold.
+            /// </summary>
+            public async Task OpenLockFileAsync(string lockPath)
             {
-                FileStream? stream = null;
-                try
+                string folder = Path.GetDirectoryName(Path.GetFullPath(lockPath)) ?? "";
+                DateTime giveUp = DateTime.UtcNow.AddSeconds(LockWaitSeconds);
+                bool folderChecked = false;
+                while (true)
                 {
-                    stream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite, 1, FileOptions.None);
-                    stream.Lock(0, 1);
-                    return stream;
+                    try
+                    {
+                        FileStream opened = new(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.None);
+                        _lockFile?.Dispose();
+                        _lockFile = opened;
+                        return;
+                    }
+                    catch (DirectoryNotFoundException)
+                    {
+                        // No folder yet, so no file in it for anyone to write: a fresh install, before the first save makes it.
+                        return;
+                    }
+                    catch (Exception e) when (e is UnauthorizedAccessException or NotSupportedException)
+                    {
+                        Report(folder, $"No lock file can be made at {lockPath} ({e.Message})");
+                        return;
+                    }
+                    catch (IOException e)
+                    {
+                        if (!folderChecked)
+                        {
+                            folderChecked = true;
+                            if (!CanHoldFiles(folder))
+                            {
+                                Report(folder, $"No lock file can be made at {lockPath} ({e.Message})");
+                                return;
+                            }
+                        }
+                        if (DateTime.UtcNow >= giveUp)
+                            throw new IOException($"{lockPath} stayed held by another process for {LockWaitSeconds.ToString(CultureInfo.InvariantCulture)} seconds ({e.Message}). "
+                                                  + "Only this plugin uses it: if no other copy of the plugin runs on this file, delete the .lock file.", e);
+                        // Another holder has it, an antivirus scan say: the OS lets go when that holder closes it.
+                        await Task.Delay(50).ConfigureAwait(false);
+                    }
                 }
-                catch (Exception e) when (e is UnauthorizedAccessException or NotSupportedException or PlatformNotSupportedException
-                                              or DirectoryNotFoundException or FileNotFoundException or PathTooLongException)
-                {
-                    // Not a holder: the lock file can't be made or locked here. The gate in this process still applies.
-                    await DisposeAsync(stream).ConfigureAwait(false);
-                    return null;
-                }
-                catch (IOException e)
-                {
-                    // Another holder has it: the OS releases it when that holder closes it or its process ends.
-                    await DisposeAsync(stream).ConfigureAwait(false);
-                    if (DateTime.UtcNow >= giveUp)
-                        throw new IOException($"{lockPath} stayed locked by another process for {LockWaitSeconds.ToString(CultureInfo.InvariantCulture)} seconds ({e.Message}). "
-                                              + "If no other copy of the plugin uses this file, delete the .lock file.", e);
-                    await Task.Delay(50).ConfigureAwait(false);
-                }
+            }
+
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref _released, 1) != 0) return;
+                _lockFile?.Dispose();
+                _lockFile = null;
+                _gate.Release();
             }
         }
 
-        /// <summary>Runs its action once, on the first Dispose.</summary>
-        private sealed class Release : IDisposable
+        /// <summary>
+        /// True when a file can be made and held in <paramref name="folder"/>: one made there under a new name, which no other
+        /// process can be holding, is opened for this process alone and removed. Checked once per folder.
+        /// </summary>
+        private static bool CanHoldFiles(string folder)
         {
-            private Action? _release;
-
-            public Release(Action release) => _release = release;
-
-            public void Dispose() => Interlocked.Exchange(ref _release, null)?.Invoke();
+            return FolderHolds.GetOrAdd(folder, path =>
+            {
+                string probe = Path.Combine(path, ".apbl-lock-check-" + Guid.NewGuid().ToString("N") + ".tmp");
+                try
+                {
+                    using FileStream stream = new(probe, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose);
+                    return true;
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException)
+                {
+                    return false;
+                }
+            });
         }
 
-        private static Task DisposeAsync(Stream? stream)
+        private static void Report(string folder, string reason)
         {
-            if (stream is null) return Task.CompletedTask;
-#if NETCOREAPP
-            return stream.DisposeAsync().AsTask();
-#else
-            stream.Dispose();
-            return Task.CompletedTask;
-#endif
+            if (!Reported.TryAdd(folder, 0)) return;
+            Warning?.Invoke(reason + ". Writes of files in " + folder + " are not locked against other processes; within this process they still run one at a time.");
         }
 
         /// <summary>

@@ -302,6 +302,7 @@
             ReportSnapshotView snapshot = await SdkClient.RequestAsync<ReportSnapshotView>(JS, UiOperations.Snapshot,
                 new ReadSnapshotRequest { ServerId = server.ServerId }, timeout.Token);
             if (!snapshot.Installed) return new ServerReport(server.DisplayName, null, "Advanced PB Limiter is not loaded");
+            if (snapshot.Inactive is { Length: > 0 } inactive) return new ServerReport(server.DisplayName, null, inactive);
             if (!snapshot.Online) return new ServerReport(server.DisplayName, null, "the world is still loading");
             return new ServerReport(server.DisplayName, snapshot, null);
         }

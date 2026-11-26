@@ -68,6 +68,7 @@ public sealed class ProfileStore : IDisposable
     {
         _path = path;
         _log = log;
+        SafeFile.Warning = message => log.LogWarning("{Message}", message);
         Loaded = LoadAsync();
     }
 

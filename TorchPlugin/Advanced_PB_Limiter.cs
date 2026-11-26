@@ -35,7 +35,7 @@ namespace Advanced_PB_Limiter
         public Advanced_PB_LimiterConfig? Config => _config?.Data;
 
         // The config file is read beside Torch's start, on a pool thread, and its settings copied into the live config
-        // instance, which the tab and the limiter hold from Init, when read. Until then nothing is enforced and nothing is
+        // instance, which the tab and the limiter hold from Init, when read. Until then no run is tracked or punished and nothing is
         // saved: the session-loaded step, the limiter's Update and commands that change settings wait for it. The
         // session-loaded step itself runs only on the game thread, from the session event or the first Update after the
         // config is ready, so it runs exactly once per session.
@@ -92,6 +92,7 @@ namespace Advanced_PB_Limiter
             }
             _initialized = true;
             base.Init(torch);
+            SafeFile.Warning = message => Log.Warn(message);
 
             string configFile = Path.Combine(StoragePath, CONFIG_FILE_NAME);
             _config = ConfigFile.Defaults(configFile);
@@ -149,7 +150,7 @@ namespace Advanced_PB_Limiter
                 ConfigFile loaded = await ConfigFile.LoadAsync(configFile).ConfigureAwait(false);
                 if (loaded.IsNew)
                     Log.Info("Using the default config.");
-                else if (!LimiterCore.Retired)
+                else
                     await KeepOlderDefaultsAsync(configFile, loaded).ConfigureAwait(false);
 
                 lock (_stateLock)
@@ -297,7 +298,8 @@ namespace Advanced_PB_Limiter
         /// Instant kills and the memory limit always used Destroy before they had a setting. A file saved before then has no
         /// element for them, which XmlSerializer reads as the new TurnOff default, so it is set back to Destroy and saved.
         /// Only a config read from the file is checked, so a new config starts at TurnOff. Runs on the loaded instance before
-        /// it is adopted; a save that fails here is taken over by the live instance's autosave.
+        /// it is adopted; a save that fails here is taken over by the live instance's autosave. A retired limiter saves
+        /// nothing, so the values are only shown then, and saved by the next start that runs.
         /// </summary>
         private static async Task KeepOlderDefaultsAsync(string configFile, ConfigFile config)
         {
@@ -316,14 +318,23 @@ namespace Advanced_PB_Limiter
                     changed = true;
                 }
 
-                if (!changed) return;
+                if (!changed || LimiterCore.Retired) return;
+            }
+            catch (Exception e)
+            {
+                Log.Error(e, "Could not check the config for the instant kill and memory punishments, they use the values read");
+                return;
+            }
+
+            try
+            {
                 // This save calls off the autosave the changes above armed, so the file is written once.
                 await config.SaveAsync().ConfigureAwait(false);
                 Log.Info("This config was saved before the instant kill and memory punishments had a setting: they stay at Destroy, as before. New configs start at TurnOff.");
             }
             catch (Exception e)
             {
-                Log.Error(e, "Could not check the config for the instant kill and memory punishments, they use the values read");
+                Log.Warn(e, "The instant kill and memory punishments stay at Destroy, as before they had a setting, but the config could not be saved; the autosave tries again every 30 seconds");
             }
         }
 

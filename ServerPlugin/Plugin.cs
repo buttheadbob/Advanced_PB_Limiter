@@ -47,7 +47,7 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
     private bool _active;
 
     // The config file is read beside the world load, on a pool thread, and its settings copied into the live config instance
-    // when read. Until then nothing is enforced and no setting changes: the session-loaded step, the limiter's Update,
+    // when read. Until then no run is tracked or punished and no setting changes: the session-loaded step, the limiter's Update,
     // commands that change settings and profiles all wait for it. The session-loaded step itself runs only on the game
     // thread, from the session event or the first Update after the config is ready, so it runs exactly once per session.
     private readonly object _stateLock = new();
@@ -60,6 +60,9 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
 
     /// <summary>Why the limiter is inactive until the server restarts, or null: a Quasar cluster node, or a game it does not match.</summary>
     internal static string? InactiveReason { get; private set; }
+
+    /// <summary>True on a Quasar cluster node, which never runs the limiter; false after a game mismatch, which an update ends.</summary>
+    internal static bool InactiveForGood { get; private set; }
 
     // Quasar finds the config through this public PluginConfig-typed property and renders its editor.
     public LimiterConfig PluginConfig => _config;
@@ -84,7 +87,8 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
         _changeSaved = null;
         return Task.FromResult(changeSaved ?? SaveConfig());
     }
-    string? IPbLimiterHost.ConfigChangeRefusal => IsReady ? ManagedNodeRefusal("a command") : StillLoading;
+    // A managed cluster node never gets here: Init returns before registering the commands.
+    string? IPbLimiterHost.ConfigChangeRefusal => IsReady ? null : StillLoading;
     void IPbLimiterHost.LogTrace(string message) => Log.Debug(message);
     void IPbLimiterHost.LogInfo(string message) => Log.Info(message);
     void IPbLimiterHost.LogWarn(string message) => Log.Warning(message);
@@ -102,6 +106,8 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
     {
         Log.Info("Loading");
         InactiveReason = null;
+        InactiveForGood = false;
+        SafeFile.Warning = message => Log.Warning(message);
 
         string configPath = Path.Combine(MyFileSystem.UserDataPath, Name, Name + ".cfg");
         // The first Magnetar build kept the config in the user data root. A missing file loads as defaults with no error,
@@ -115,6 +121,7 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
         if (PluginCluster.IsClusterProcess || ManagedPluginConfiguration.Required)
         {
             InactiveReason = "Advanced PB Limiter is not supported on a Quasar cluster: a programmable block's run history and punishments do not follow its grid from one node to another. It is inactive on this node.";
+            InactiveForGood = true;
             Log.Warning(InactiveReason);
             if (ManagedPluginConfiguration.Required)
             {
@@ -438,8 +445,6 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
     {
         if (Volatile.Read(ref _ready) == 0)
             throw new InvalidOperationException("Advanced PB Limiter is still loading its config; the profile is sent again.");
-        if (ProfileRefusal is not null)
-            throw new InvalidOperationException(ProfileRefusal);
 
         List<KeyValuePair<PropertyInfo, object>> values;
         List<string> damage;
@@ -503,18 +508,6 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
         else
             Log.Warning(InstantPunishmentFile.LogLine(settings));
     }
-
-    /// <summary>
-    /// Why this server takes no profiles, or null. A node of a managed cluster runs the cluster's canonical configuration,
-    /// which Quasar activates for the whole cluster and refuses to change on one node; PluginSdk refuses any save that
-    /// differs from it. Such a refusal is final, so Quasar stops sending the profile.
-    /// </summary>
-    internal static string? ProfileRefusal => ManagedNodeRefusal("a profile");
-
-    /// <summary>Why <paramref name="what"/> may not change this server's settings, or null when it may: see ProfileRefusal.</summary>
-    private static string? ManagedNodeRefusal(string what) => ManagedPluginConfiguration.Required
-        ? "This server is a node of a managed cluster: its settings come from the cluster's plugin configuration, which Quasar activates for the whole cluster. Change them there; " + what + " can't change one node."
-        : null;
 
     // Every setting of the config, read once: what a copy for a profile's trial save takes over.
     private static readonly PropertyInfo[] ConfigProperties = typeof(LimiterConfig)

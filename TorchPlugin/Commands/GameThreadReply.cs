@@ -5,7 +5,7 @@ using Torch.Commands;
 
 namespace Advanced_PB_Limiter.Commands
 {
-    /// <summary>Replies for the reports built on another thread. Torch sends chat from the caller's thread, so they go to the game thread.</summary>
+    /// <summary>Replies sent after the command returned: reports built on another thread, and setting changes once saved. Torch sends chat from the caller's thread, so they go to the game thread.</summary>
     internal static class GameThreadReply
     {
         private static readonly LimiterLog Log = new("Game Thread Reply");
@@ -29,7 +29,7 @@ namespace Advanced_PB_Limiter.Commands
                 {
                     // The reply runs in the game's update loop, where an exception is not caught: a session that ended
                     // while the report was building must not take the server down.
-                    Log.Error(e, "Could not send the PB Limiter report reply");
+                    Log.Error(e, "Could not send the PB Limiter reply");
                 }
             };
         }
@@ -42,7 +42,7 @@ namespace Advanced_PB_Limiter.Commands
             }
             catch (Exception e)
             {
-                Log.Error(e, "Could not send the PB Limiter report reply");
+                Log.Error(e, "Could not send the PB Limiter reply");
             }
         }
     }

@@ -32,7 +32,10 @@ namespace Advanced_PB_Limiter.Settings
         private static readonly XmlSerializer Serializer = new(typeof(Advanced_PB_LimiterConfig));
 
         private readonly string _path;
-        private readonly SemaphoreSlim _saveLock = new(1, 1);
+        // Saves run one at a time, in order: each waits for the one before it. Nothing to dispose, so a save queued while
+        // Dispose runs still runs, rather than failing on a disposed lock.
+        private readonly object _saveQueueLock = new();
+        private Task _lastSave = Task.CompletedTask;
         private readonly object _timerLock = new();
         private readonly Timer _autosave;
         private string? _saveRefused;
@@ -40,8 +43,8 @@ namespace Advanced_PB_Limiter.Settings
         private bool _disposed;
         private bool _swapFailureLogged;
 
-        // The reason the last failed save was logged for, by the autosave or by whoever called SaveAsync, under the save
-        // lock: a retry that fails the same way logs nothing, and the save that works after it says so.
+        // The reason the last failed save was logged for, by the autosave or by whoever called SaveAsync, one save at a
+        // time: a retry that fails the same way logs nothing, and the save that works after it says so.
         private string? _autosaveFailure;
 
         public Advanced_PB_LimiterConfig Data { get; }
@@ -240,7 +243,7 @@ namespace Advanced_PB_Limiter.Settings
         }
 
         /// <summary>
-        /// The save, under the save lock, which also makes a save wait for one already writing. With
+        /// The save, after any save queued before it, so a save waits for one already writing. With
         /// <paramref name="onlyIfPending"/>, for the autosave and the last save in Dispose, it writes only when a change still
         /// waits once the lock is held, and a refused save is skipped rather than thrown.
         /// </summary>
@@ -252,9 +255,17 @@ namespace Advanced_PB_Limiter.Settings
                 throw new InvalidOperationException("Not saved until Torch restarts: " + _saveRefused + ".");
             }
 
-            await _saveLock.WaitAsync().ConfigureAwait(false);
+            TaskCompletionSource<bool> done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task previous;
+            lock (_saveQueueLock)
+            {
+                previous = _lastSave;
+                _lastSave = done.Task;
+            }
             try
             {
+                // Never faults: every save completes its own task in the finally below.
+                await previous.ConfigureAwait(false);
                 lock (_timerLock)
                 {
                     if (onlyIfPending && !_pending) return;
@@ -291,7 +302,7 @@ namespace Advanced_PB_Limiter.Settings
             }
             finally
             {
-                _saveLock.Release();
+                done.SetResult(true);
             }
         }
 
@@ -397,14 +408,7 @@ namespace Advanced_PB_Limiter.Settings
                 _autosave.Dispose();
             }
 
-            try
-            {
-                SaveLastChangeAsync().GetAwaiter().GetResult();
-            }
-            finally
-            {
-                _saveLock.Dispose();
-            }
+            SaveLastChangeAsync().GetAwaiter().GetResult();
         }
 
         private async Task SaveLastChangeAsync()

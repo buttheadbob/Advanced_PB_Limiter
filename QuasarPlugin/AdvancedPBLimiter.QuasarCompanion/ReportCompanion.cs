@@ -85,8 +85,10 @@ namespace AdvancedPBLimiter.QuasarCompanion
 
                     case ReportOperations.ProfileApply:
                         var profile = Read<ProfileApplyRequest>(request);
-                        // A limiter that is inactive for good never applies it: refused, so Quasar stops sending it.
-                        response.PayloadJson = InactiveOf(FindBridge()) is { } inactive
+                        // A limiter that is inactive for good, on a cluster node, never applies it: refused, so Quasar stops
+                        // sending it. One inactive until it is updated fails below, in OnLoadedWorld, and Quasar sends it again.
+                        var target = FindBridge();
+                        response.PayloadJson = InactiveOf(target) is { } inactive && InactiveForGood(target)
                             ? JsonConvert.SerializeObject(new ProfileData { Refused = inactive }, Json)
                             : await OnLoadedWorld(bridge => ApplyOnce(bridge, profile), DeadlineOf(profile.TimeoutMs, profile.ExpiresUnixMs), cancellationToken).ConfigureAwait(false);
                         break;
@@ -291,6 +293,13 @@ namespace AdvancedPBLimiter.QuasarCompanion
         {
             MethodInfo? reason = bridge?.GetMethod("InactiveReason", BindingFlags.Public | BindingFlags.Static);
             return reason?.Invoke(null, null) as string;
+        }
+
+        /// <summary>True when the limiter will never apply a profile on this server; a limiter before 1.3.4.5 never says.</summary>
+        private static bool InactiveForGood(Type? bridge)
+        {
+            MethodInfo? forGood = bridge?.GetMethod("InactiveForGood", BindingFlags.Public | BindingFlags.Static);
+            return forGood?.Invoke(null, null) is true;
         }
 
         private static object? Invoke(Type bridge, string method, params object[] args)

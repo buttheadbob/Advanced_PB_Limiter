@@ -1,4 +1,5 @@
 ﻿using System;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using Advanced_PB_Limiter.Commands;
@@ -19,6 +20,8 @@ namespace Advanced_PB_Limiter.UI
             InitializeComponent();
             DataContext = Config;
             FillPunishments();
+            // The box is not bound: it follows the setting, which changes when the file is read after the tab was built.
+            Config.PropertyChanged += OnConfigChanged;
         }
 
         private void FillPunishments()
@@ -26,7 +29,19 @@ namespace Advanced_PB_Limiter.UI
             // The items are in the order of the enum, so the selected index is the punishment.
             foreach (string punishment in Enum.GetNames(typeof(Enums.Punishment)))
                 PunishmentComboBox.Items.Add(new ComboBoxItem { Content = punishment });
+            ShowPunishment();
+        }
 
+        // Raised on whichever thread changed the setting, the config read's pool thread among them.
+        private void OnConfigChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(Advanced_PB_LimiterConfig.Punishment)) return;
+            _ = Dispatcher.BeginInvoke(new Action(ShowPunishment));
+        }
+
+        // Selecting the item the setting already holds sets nothing, so this arms no save.
+        private void ShowPunishment()
+        {
             PunishmentComboBox.SelectedIndex = (int)Config.Punishment;
             PunishmentLabel.Text = $"Punishment type: [Active:{Config.Punishment.ToString()}]";
         }

@@ -19,7 +19,7 @@ public sealed class PbLimiterCommands : CommandModule
 {
     private static readonly LimiterLog Log = new("PB Limiter Commands");
 
-    // The player reports are built on another thread and replies belong on the game thread.
+    // Reports built on another thread, and setting changes answered once saved, reply later: replies belong on the game thread.
     private Action<string> RespondOnGameThread()
     {
         CommandContext context = Context;
@@ -40,7 +40,7 @@ public sealed class PbLimiterCommands : CommandModule
             {
                 // The reply runs in the game's update loop, where an exception is not caught: a session that ended
                 // while the report was building must not take the server down.
-                Log.Error(e, "Could not send the PB Limiter report reply");
+                Log.Error(e, "Could not send the PB Limiter reply");
             }
         };
     }
@@ -53,7 +53,7 @@ public sealed class PbLimiterCommands : CommandModule
         }
         catch (Exception e)
         {
-            Log.Error(e, "Could not send the PB Limiter report reply");
+            Log.Error(e, "Could not send the PB Limiter reply");
         }
     }
 
