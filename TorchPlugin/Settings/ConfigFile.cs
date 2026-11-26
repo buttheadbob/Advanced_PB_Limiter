@@ -131,21 +131,16 @@ namespace Advanced_PB_Limiter.Settings
         /// Reads the file, or starts from the defaults when there is none or it can't be read. A save that was interrupted
         /// is dealt with first, see <see cref="SafeFile.RecoverAsync"/>. A file that is not a config is moved aside; a file
         /// that can't be opened, held by another program say, is left alone and nothing is saved over it until a restart.
-        /// A missing file with a copy beside it, from its own interrupted save or the Damage rewrite, that could not be put
-        /// back yet is not replaced by the defaults either: saved, they would be the config the next start sees, and that
-        /// copy would only be kept aside.
+        /// A missing or cut-short file with a copy beside it, from its own interrupted save or the Damage rewrite, that could
+        /// not be put back yet is not replaced by the defaults either: saved, they would be the config the next start sees,
+        /// and that copy would only be kept aside. The next start restores the copy.
         /// </summary>
         public static async Task<ConfigFile> LoadAsync(string path)
         {
             // RecoverInterruptedSaveAsync has run already: the plugin calls it first, before the Damage check reads the file.
             if (!File.Exists(path))
             {
-                // A copy left by this file's own save or by the Damage rewrite, that could not be put back or even read yet.
-                // Only a copy that may still restore it: one cut short can never, and would hold saves back at every start.
-                string copy = TempPath(path);
-                if (!await SafeFile.MayRestoreAsync(copy, SafeFile.IsWholeXml).ConfigureAwait(false))
-                    copy = InstantPunishmentFile.CopyPath(path);
-                if (!await SafeFile.MayRestoreAsync(copy, SafeFile.IsWholeXml).ConfigureAwait(false))
+                if (await WaitingCopyAsync(path).ConfigureAwait(false) is not { } copy)
                     return await CreateNewAsync(path).ConfigureAwait(false);
                 Log.Error("The config " + path + " is missing and the copy at " + copy + " could not be put back. Advanced PB Limiter runs on the defaults and saves nothing until Torch restarts, when the copy is restored.");
                 return new ConfigFile(path, new Advanced_PB_LimiterConfig(), true, "the config is missing, and its copy at " + copy + " is restored when Torch restarts");
@@ -163,8 +158,29 @@ namespace Advanced_PB_Limiter.Settings
             }
             catch (Exception e) when (e is InvalidOperationException or InvalidDataException or XmlException)
             {
+                // Cut short beside a complete copy (a rename and then a write in place that both failed, on a full disk say):
+                // the next start moves it aside and restores the copy, as long as nothing is saved over it first.
+                if (await WaitingCopyAsync(path).ConfigureAwait(false) is { } copy)
+                {
+                    Log.Error(e, "The config " + path + " could not be read and the copy at " + copy + " could not be put back. Advanced PB Limiter runs on the defaults and saves nothing until Torch restarts, when the copy is restored.");
+                    return new ConfigFile(path, new Advanced_PB_LimiterConfig(), true, "the config could not be read, and its copy at " + copy + " is restored when Torch restarts");
+                }
                 return await MoveAsideAsync(path, e).ConfigureAwait(false);
             }
+        }
+
+        /// <summary>
+        /// The copy left by this file's own save or by the Damage rewrite that may still restore it, or null. Only a copy
+        /// that may: one cut short never can, and would hold saves back at every start.
+        /// </summary>
+        private static async Task<string?> WaitingCopyAsync(string path)
+        {
+            foreach (string copy in new[] { TempPath(path), InstantPunishmentFile.CopyPath(path) })
+            {
+                if (await SafeFile.MayRestoreAsync(copy, SafeFile.IsWholeXml).ConfigureAwait(false))
+                    return copy;
+            }
+            return null;
         }
 
         /// <summary>

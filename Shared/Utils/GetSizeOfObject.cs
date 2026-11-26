@@ -483,7 +483,8 @@ namespace Advanced_PB_Limiter.Utils
         /// never resolved: compiled code that names the field resolves it too. The offset is the runtime's own: on .NET 10
         /// from RuntimeFieldHandle.GetInstanceFieldOffset, on .NET Framework from the field's FieldDesc, checked to be of
         /// the kind expected. The owner check is skipped for generic types, whose FieldDesc may name a canonical
-        /// instantiation; the self-check below covers the known generic reference and value-field cases. All of it is set
+        /// instantiation; the self-check below reads the reference fields of generic classes instantiated over value types,
+        /// and a reference inside one's value-type field. All of it is set
         /// up and checked once against Reflection on known types; where any of that fails, <see cref="Works"/> is false,
         /// <see cref="Failure"/> says why when it threw, and nothing is read.
         /// </summary>
@@ -538,8 +539,8 @@ namespace Advanced_PB_Limiter.Utils
 
             /// <summary>
             /// The field's offset from the start of its holder's data. Throws InvalidOperationException when the runtime's
-            /// figure does not look like this field's. Generic types skip the owner check; the self-check covers the known
-            /// reference and value-field cases.
+            /// figure does not look like this field's. Generic types skip the owner check; the self-check reads the reference
+            /// fields of generic classes over value types, and a reference inside one's value-type field.
             /// </summary>
             internal static int OffsetOf(FieldInfo field, bool reference)
             {
@@ -635,8 +636,6 @@ namespace Advanced_PB_Limiter.Utils
                        && Matches(readAt, instanceFieldOffset, byteHolder)
                        && Matches(readAt, instanceFieldOffset, guidHolder)
                        && Matches(readAt, instanceFieldOffset, refHolder)
-                       && EqualityComparer<byte>.Default.Equals(byteHolder.Value, default)
-                       && EqualityComparer<Guid>.Default.Equals(guidHolder.Value, Guid.Empty)
                        && NestedGeneric(readAt, instanceFieldOffset, refHolder, nested)
                        && Nested(readAt, instanceFieldOffset, Tuple.Create(1, pair), second);
             }

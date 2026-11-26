@@ -548,13 +548,15 @@ public sealed class ProfileStore : IDisposable
     public Task<StoreResult> ServersSeenAsync(IEnumerable<QuasarCompanionServer> servers)
     {
         DateTime now = DateTime.UtcNow;
-        List<QuasarCompanionServer> seen = servers.ToList();
+        // Quasar cluster nodes run no limiter, so they never take a profile: they are not recorded.
+        List<QuasarCompanionServer> seen = servers.Where(server => string.IsNullOrEmpty(server.ClusterId)).ToList();
         foreach (QuasarCompanionServer server in seen)
             _seenNow[server.ServerId] = now;
         List<KeyValuePair<string, DateTime>> gone = _seenNow.Where(kvp => !seen.Exists(s => string.Equals(s.ServerId, kvp.Key, StringComparison.Ordinal))).ToList();
         // Asked on every page refresh and queue pass: the store is copied only when there is something to change.
         State current = _state;
-        if (gone.Count == 0 && !seen.Exists(server => IsNews(current, server, now)) && Replaced(current, seen).Count == 0)
+        if (gone.Count == 0 && !seen.Exists(server => IsNews(current, server, now)) && Replaced(current, seen).Count == 0
+            && !current.KnownServers.Exists(IsClusterNode))
             return Task.FromResult(new StoreResult(false, true));
 
         return RecordServersAsync(seen, now, gone);
@@ -564,10 +566,22 @@ public sealed class ProfileStore : IDisposable
     private async Task<StoreResult> RecordServersAsync(List<QuasarCompanionServer> seen, DateTime now, List<KeyValuePair<string, DateTime>> gone)
     {
         List<Dropped> dropped = new();
+        int clusterNodes = 0;
         StoreResult result = await ChangeAsync(draft =>
         {
             // No longer connected: the last time it was seen is kept.
             bool changed = KeepLastSeen(draft, gone);
+
+            // A cluster node an earlier version recorded goes, with anything waiting for it, which it would never apply.
+            HashSet<string> nodes = draft.Read.KnownServers.Where(IsClusterNode).Select(node => node.ServerId).ToHashSet(StringComparer.Ordinal);
+            if (nodes.Count > 0)
+            {
+                draft.Write.KnownServers.RemoveAll(known => nodes.Contains(known.ServerId));
+                draft.Write.Pending.RemoveAll(pending => nodes.Contains(pending.ServerId));
+                clusterNodes = nodes.Count;
+                changed = true;
+            }
+
             foreach (QuasarCompanionServer server in seen)
             {
                 KnownServer? known = draft.Read.KnownServers.Find(s => string.Equals(s.ServerId, server.ServerId, StringComparison.Ordinal));
@@ -613,8 +627,12 @@ public sealed class ProfileStore : IDisposable
         foreach (KeyValuePair<string, DateTime> offline in gone)
             ((ICollection<KeyValuePair<string, DateTime>>)_seenNow).Remove(offline);
         LogDropped(dropped, result);
+        if (clusterNodes > 0 && result.Changed)
+            _log.LogInformation("Dropped {Count} Quasar cluster node(s) from the PB Limiter servers, with any profile waiting for them: the limiter does not run on cluster nodes", clusterNodes);
         return result;
     }
+
+    private static bool IsClusterNode(KnownServer server) => !string.IsNullOrEmpty(server.ClusterId);
 
     /// <summary>Known cluster nodes no longer connected whose slot a connected node with another ServerId now holds.</summary>
     private static List<(KnownServer Old, QuasarCompanionServer Node)> Replaced(State state, List<QuasarCompanionServer> connected)

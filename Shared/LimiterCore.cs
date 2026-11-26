@@ -168,7 +168,9 @@ namespace Advanced_PB_Limiter
         private static long _tick;
 
         /// <summary>
-        /// Call from the host's Init, after its config is loaded and before anything is patched.
+        /// Call from the host's Init, before anything is patched. It may run before the config file is read: the limiter keeps
+        /// the instance <see cref="IPbLimiterHost.Config"/> gives here, so the host copies the file's settings into that same
+        /// instance and never replaces it.
         /// Throws when the game no longer has a member the limiter needs. The host must then stay inactive.
         /// </summary>
         public static void Init(IPbLimiterHost host)

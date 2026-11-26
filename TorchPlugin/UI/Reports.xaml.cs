@@ -180,31 +180,37 @@ namespace Advanced_PB_Limiter.UI
             _seenBlockIds.Clear();
             _restingCount = 0;
 
-            TrackingManager.CopyTrackedPlayers(_playerScratch);
-
-            for (int index = 0; index < _playerScratch.Count; index++)
+            try
             {
-                TrackedPlayer player = _playerScratch[index];
-                _seenPlayerIds.Add(player.PlayerId);
+                TrackingManager.CopyTrackedPlayers(_playerScratch);
 
-                _currentPlayer = player;
-                PlayerTotals totals = PlayerTotals.Of(player, _blockScratch, _addBlock);
+                for (int index = 0; index < _playerScratch.Count; index++)
+                {
+                    TrackedPlayer player = _playerScratch[index];
+                    _seenPlayerIds.Add(player.PlayerId);
 
-                if (!_allPlayers.TryGetValue(player.PlayerId, out CustomPlayerReport? playerRow))
-                {
-                    playerRow = new CustomPlayerReport(player, totals);
-                    _allPlayers.Add(player.PlayerId, playerRow);
-                    _livePlayerRows.Add(playerRow);
-                }
-                else
-                {
-                    playerRow.Update(player, totals);
+                    _currentPlayer = player;
+                    PlayerTotals totals = PlayerTotals.Of(player, _blockScratch, _addBlock);
+
+                    if (!_allPlayers.TryGetValue(player.PlayerId, out CustomPlayerReport? playerRow))
+                    {
+                        playerRow = new CustomPlayerReport(player, totals);
+                        _allPlayers.Add(player.PlayerId, playerRow);
+                        _livePlayerRows.Add(playerRow);
+                    }
+                    else
+                    {
+                        playerRow.Update(player, totals);
+                    }
                 }
             }
-            // Nothing of the world is kept between refreshes: the rows hold what they show.
-            _currentPlayer = null;
-            _playerScratch.Clear();
-            _blockScratch.Clear();
+            finally
+            {
+                // Nothing of the world is kept between refreshes, also when one fails: the rows hold what they show.
+                _currentPlayer = null;
+                _playerScratch.Clear();
+                _blockScratch.Clear();
+            }
 
             RemoveUnseenRows();
             ApplyLiveVisibility();

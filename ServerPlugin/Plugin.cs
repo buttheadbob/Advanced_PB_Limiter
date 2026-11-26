@@ -618,11 +618,11 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
             if (result.Recovered is not null)
                 Log.Warning(result.Recovered);
             // A copy that could not even be read, held by another program say, is left for the next start: while the
-            // config is missing beside it, nothing is saved either, and the log says so, as nothing else would.
-            if (!copyWaiting && await MissingWithCopyAsync(path).ConfigureAwait(false))
+            // config is missing or cut short beside it, nothing is saved either, and the log says so, as nothing else would.
+            if (!copyWaiting && await CopyWaitsAsync(path).ConfigureAwait(false))
             {
                 copyWaiting = true;
-                Log.Error($"The config {path} is missing and its copy at {InstantPunishmentFile.CopyPath(path)} could not be read, held by another program say. "
+                Log.Error($"The config {path} is missing or cut short and its copy at {InstantPunishmentFile.CopyPath(path)} could not be put back yet. "
                           + "The server runs on the defaults and saves nothing until the next start, which restores the copy.");
             }
             return (result.Changed, copyWaiting);
@@ -630,16 +630,21 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
         catch (Exception e)
         {
             Log.Error("Could not check the config for an instant punishment of Damage; the config is read as it now is, the error says what that is", e);
-            // A config still missing with its complete copy beside it is restored from that copy at the next start, as long
-            // as nothing is saved first: the defaults saved now would be the config that start sees, and the copy only kept.
-            copyWaiting = await MissingWithCopyAsync(path).ConfigureAwait(false);
+            // A config still missing or cut short with its complete copy beside it is restored from that copy at the next
+            // start, as long as nothing is saved first: the defaults saved now would be the config that start sees, and the
+            // copy only kept. A rename and then a write in place that both failed, on a full disk say, leave it cut short.
+            copyWaiting = await CopyWaitsAsync(path).ConfigureAwait(false);
             return (new List<string>(), copyWaiting);
         }
     }
 
-    /// <summary>The config is missing and a copy beside it may still restore it: nothing may be saved until it has.</summary>
-    private static async Task<bool> MissingWithCopyAsync(string path) =>
-        !File.Exists(path) && await SafeFile.MayRestoreAsync(InstantPunishmentFile.CopyPath(path), SafeFile.IsWholeXml).ConfigureAwait(false);
+    /// <summary>
+    /// The config is missing or cut short, and the copy beside it may still restore it: nothing may be saved until it has.
+    /// The next start restores it, also over a config cut short, which it moves aside first.
+    /// </summary>
+    private static async Task<bool> CopyWaitsAsync(string path) =>
+        !await SafeFile.IsWholeAsync(path, SafeFile.IsWholeXml).ConfigureAwait(false)
+        && await SafeFile.MayRestoreAsync(InstantPunishmentFile.CopyPath(path), SafeFile.IsWholeXml).ConfigureAwait(false);
 
     /// <summary>
     /// The configs set aside as unreadable, by file name: every &lt;name&gt;*.unreadable beside it, which is what the warning

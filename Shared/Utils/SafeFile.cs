@@ -171,9 +171,14 @@ namespace Advanced_PB_Limiter.Utils
                 }
             }
 
-            // Called once per hold, when no lock file is open yet.
-            private void Open(string lockPath) =>
-                _lockFile = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.None);
+            // Called once per hold, so no lock file is open yet; one would be closed first, so this holder owns exactly one.
+            // Synchronous on purpose: it runs inside the async retry loop, where closing a stream would otherwise block it.
+            private void Open(string lockPath)
+            {
+                FileStream opened = new(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.None);
+                _lockFile?.Dispose();
+                _lockFile = opened;
+            }
 
             public void Dispose()
             {
@@ -508,7 +513,7 @@ namespace Advanced_PB_Limiter.Utils
         /// False when the file is missing or not whole. A file that exists but can't be read now, held by another program
         /// say, counts as whole: it was not cut short by a write of ours, which would have left it readable.
         /// </summary>
-        private static async Task<bool> IsWholeAsync(string path, Func<byte[], bool> isComplete)
+        public static async Task<bool> IsWholeAsync(string path, Func<byte[], bool> isComplete)
         {
             if (!File.Exists(path)) return false;
             try
