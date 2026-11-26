@@ -1,0 +1,9 @@
+<Project>
+    <!-- The platforms the platform-compatibility analyzer (CA1416) checks against. The dedicated server, Torch, Magnetar
+         and Quasar run on Windows and Linux only, so an API that macOS lacks is not flagged. Here and not in
+         Directory.Build.props, because the SDK adds its default list again after the project file. -->
+    <ItemGroup>
+        <SupportedPlatform Remove="@(SupportedPlatform)" />
+        <SupportedPlatform Include="Windows;Linux" />
+    </ItemGroup>
+</Project>

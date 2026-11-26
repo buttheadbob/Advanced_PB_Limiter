@@ -157,7 +157,7 @@ internal static class QuasarUiOperations
         Enabled = snapshot.Enabled,
         Version = snapshot.Version,
         Truncated = snapshot.Truncated,
-        Players = snapshot.Players.Select(player => new PlayerRowView
+        Players = snapshot.Players.ConvertAll(player => new PlayerRowView
         {
             IdentityId = player.IdentityId.ToString(CultureInfo.InvariantCulture),
             SteamId = player.SteamId.ToString(CultureInfo.InvariantCulture),
@@ -171,8 +171,8 @@ internal static class QuasarUiOperations
             Recompiles = player.Recompiles,
             MemoryBytes = player.MemoryBytes,
             MemoryUnmeasured = player.MemoryUnmeasured
-        }).ToList(),
-        Blocks = snapshot.Blocks.Select(block => new BlockRowView
+        }),
+        Blocks = snapshot.Blocks.ConvertAll(block => new BlockRowView
         {
             EntityId = block.EntityId.ToString(CultureInfo.InvariantCulture),
             OwnerIdentityId = block.OwnerIdentityId.ToString(CultureInfo.InvariantCulture),
@@ -188,7 +188,7 @@ internal static class QuasarUiOperations
             MemoryBytes = block.MemoryBytes,
             MemoryUnmeasured = block.MemoryUnmeasured,
             Resting = block.Resting
-        }).ToList()
+        })
     };
 
     private static async Task<TurnOffResult> TurnOffBlockAsync(QuasarOperationContext caller, TurnOffBlockUiRequest request, CancellationToken token)
@@ -278,7 +278,7 @@ internal static class QuasarUiOperations
         await store.RecordSeenAsync(reports.GetServers());
         List<string> keys = request.ServerKeys is { Count: > 0 }
             ? request.ServerKeys
-            : (request.ServerIds ?? new List<string>()).Select(id => ServerPickKeys.For("", "", id)).ToList();
+            : (request.ServerIds ?? new List<string>()).ConvertAll(id => ServerPickKeys.For("", "", id));
         List<KnownServer> servers = store.ResolveKnown(keys);
         if (servers.Count == 0)
             return Unchanged($"{profile.Name.SafeName()} was not queued: the chosen servers were forgotten.", store, reports);
@@ -332,7 +332,7 @@ internal static class QuasarUiOperations
         KnownServer? known = store.GetKnownServers().Find(s => s.ServerId == serverId);
         string name = (known?.DisplayName ?? serverId).SafeName();
 
-        if (reports.GetServers().Any(s => s.ServerId == serverId))
+        if (reports.GetServers().Exists(s => s.ServerId == serverId))
             return Unchanged($"{name} is connected again, so it was not forgotten.", store, reports);
 
         token.ThrowIfCancellationRequested();
@@ -363,15 +363,15 @@ internal static class QuasarUiOperations
     {
         CanSave = store.CanSave,
         // The settings themselves stay in the worker: they are large, and no page reads them from this poll.
-        Profiles = store.GetProfiles().Select(profile => new SavedProfileRow
+        Profiles = store.GetProfiles().ConvertAll(profile => new SavedProfileRow
         {
             Name = profile.Name,
             SavedFrom = profile.SavedFrom,
             SavedUtc = profile.SavedUtc,
             Settings = profile.Settings,
             PrivilegedPlayers = profile.PrivilegedPlayers
-        }).ToList(),
-        Pending = store.GetPending().Select(pending => new PendingApplyRow
+        }),
+        Pending = store.GetPending().ConvertAll(pending => new PendingApplyRow
         {
             Id = pending.Id,
             ServerId = pending.ServerId,
@@ -384,10 +384,10 @@ internal static class QuasarUiOperations
             Sending = pending.Sending,
             Refused = pending.Refused,
             MayBeApplied = pending.MayBeApplied
-        }).ToList(),
+        }),
         Applied = store.GetApplied(),
         KnownServers = store.GetKnownServers(),
-        ConnectedServers = ServerInfos(store, connected).Where(s => s.Connected).ToList()
+        ConnectedServers = ServerInfos(store, connected).FindAll(s => s.Connected)
     };
 
     private static List<ServerInfo> ServerInfos(ProfileStore store, List<QuasarCompanionServer> connected)

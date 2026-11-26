@@ -2,7 +2,7 @@
 
 ## This is a full replacement for the current PB Limiter by HaE.
 
-**Current release: 1.3.4.4.** See [CHANGELOG.md](CHANGELOG.md) for the changes in this and earlier releases.
+**Current release: 1.3.4.5.** See [CHANGELOG.md](CHANGELOG.md) for the changes in this and earlier releases.
 
 ### Requirements
 - **Torch:** a Torch server.

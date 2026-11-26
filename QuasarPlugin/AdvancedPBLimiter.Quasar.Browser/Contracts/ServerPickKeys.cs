@@ -24,15 +24,15 @@ namespace Advanced_PB_Limiter.QuasarContracts
             if (key is not { Length: > 0 } || !key.StartsWith("cluster:", StringComparison.Ordinal)) return false;
             int split = key.IndexOf('|', "cluster:".Length);
             if (split < 0) return false;
-            clusterId = Uri.UnescapeDataString(key.Substring("cluster:".Length, split - "cluster:".Length));
-            clusterSlot = Uri.UnescapeDataString(key.Substring(split + 1));
+            clusterId = Uri.UnescapeDataString(key.AsSpan("cluster:".Length, split - "cluster:".Length));
+            clusterSlot = Uri.UnescapeDataString(key.AsSpan(split + 1));
             return clusterId.Length != 0 && clusterSlot.Length != 0;
         }
 
         public static string ServerIdOf(string? key)
         {
             return key is { Length: > 0 } && key.StartsWith("server:", StringComparison.Ordinal)
-                ? Uri.UnescapeDataString(key.Substring("server:".Length))
+                ? Uri.UnescapeDataString(key.AsSpan("server:".Length))
                 : "";
         }
     }

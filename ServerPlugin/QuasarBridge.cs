@@ -91,5 +91,10 @@ public static class QuasarBridge
         return JsonConvert.SerializeObject(new ProfileData { Settings = settings, PrivilegedPlayers = plugin.PrivilegedPlayerCount }, Json);
     }
 
-    private static Plugin LoadedPlugin() => Plugin.Instance ?? throw new InvalidOperationException("Advanced PB Limiter is not loaded on this server.");
+    private static Plugin LoadedPlugin()
+    {
+        Plugin plugin = Plugin.Instance ?? throw new InvalidOperationException("Advanced PB Limiter is not loaded on this server.");
+        if (!plugin.IsReady) throw new InvalidOperationException("Advanced PB Limiter is still loading its config; try again.");
+        return plugin;
+    }
 }

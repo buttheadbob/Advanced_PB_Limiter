@@ -2,11 +2,13 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
 
@@ -14,9 +16,10 @@ namespace Advanced_PB_Limiter.Utils
 {
     /// <summary>
     /// Replaces a file through a complete copy written beside it, so a crash or kill at any point leaves the old file, the
-    /// new file, or a complete copy that <see cref="Recover"/> puts back. Writes and recoveries of the same file run one at
-    /// a time, also across copies of the plugin's assembly in one process (an old and a new one after a Torch reload, say),
-    /// as the lock is a named mutex rather than a static field each copy has its own of.
+    /// new file, or a complete copy that <see cref="RecoverAsync"/> puts back. Writes and recoveries of the same file run
+    /// one at a time, also across copies of the plugin's assembly in one process (an old and a new one after a Torch reload,
+    /// say), through a lock file the runtime releases when the holder exits. The lock is held across awaits, so it is not a
+    /// thread-affine mutex.
     /// </summary>
     public static class SafeFile
     {
@@ -32,75 +35,152 @@ namespace Advanced_PB_Limiter.Utils
             KeepFailed
         }
 
-        // Windows is the only system with this separator; Magnetar compiles this file without the .NET version symbols.
+        /// <summary>The outcome of <see cref="WriteAsync"/>: the swap error when the file was written in place, else null, and the name a kept copy got.</summary>
+        public readonly struct WriteResult
+        {
+            public Exception? SwapError { get; }
+            public string? Kept { get; }
+
+            public WriteResult(Exception? swapError, string? kept)
+            {
+                SwapError = swapError;
+                Kept = kept;
+            }
+        }
+
+        /// <summary>The outcome of <see cref="RecoverAsync"/>, with the name a kept copy got, or why it could not be kept.</summary>
+        public readonly struct RecoverResult
+        {
+            public Recovery Recovery { get; }
+            public string? Kept { get; }
+
+            public RecoverResult(Recovery recovery, string? kept)
+            {
+                Recovery = recovery;
+                Kept = kept;
+            }
+        }
+
+        // Windows is the only system with this separator. Case-insensitive paths only there.
         private static readonly bool OnWindows = Path.DirectorySeparatorChar == '\\';
 
         /// <summary>
         /// Holds the lock of <paramref name="path"/> until disposed, for a caller that reads and writes it as one step with
-        /// <see cref="WriteHeld"/> and <see cref="RecoverHeld"/>. Not taken again by the same caller: those don't take it.
+        /// <see cref="WriteHeldAsync"/> and <see cref="RecoverHeldAsync"/>. Not taken again by the same caller: those don't take it.
         /// </summary>
-        public static IDisposable Hold(string path)
+        public static async Task<IDisposable> HoldAsync(string path)
+        {
+            string name = LockName(path);
+            string lockPath = LockPath(name);
+            while (true)
+            {
+                FileStream? stream = null;
+                try
+                {
+                    stream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite, 1, FileOptions.None);
+                    stream.Lock(0, 1);
+                    return new Held(stream, null);
+                }
+                catch (IOException)
+                {
+                    // Another holder has it; the OS drops the lock when that process or thread ends.
+                    stream?.Dispose();
+                    await Task.Delay(50).ConfigureAwait(false);
+                }
+                catch (Exception e) when (e is UnauthorizedAccessException or NotSupportedException or PlatformNotSupportedException or DirectoryNotFoundException)
+                {
+                    // A read-only temp folder, or a file system that does not lock; see HoldFallbackAsync.
+                    stream?.Dispose();
+                    return await HoldFallbackAsync(name).ConfigureAwait(false);
+                }
+            }
+        }
+
+        /// <summary>
+        /// A lock file name can't hold a path, so it holds a hash of it (64-bit FNV-1a over UTF-8). Two paths with the
+        /// same hash only wait for each other.
+        /// </summary>
+        private static string LockName(string path)
         {
             string key = Path.GetFullPath(path);
             if (OnWindows) key = key.ToUpperInvariant();
-            // A mutex name can't hold a path, so it holds a hash of it (64-bit FNV-1a over UTF-8). Two paths with the same
-            // hash only wait for each other.
             ulong hash = 14695981039346656037UL;
             foreach (byte b in Encoding.UTF8.GetBytes(key))
                 hash = unchecked((hash ^ b) * 1099511628211UL);
-            return new Held("apbl-safefile-" + hash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+            return "apbl-safefile-" + hash.ToString("x16", CultureInfo.InvariantCulture);
         }
 
-        // Where a named mutex can't be made (on Linux .NET keeps them under $HOME, which may be missing or read-only), a
-        // lock per name in this copy of the assembly is used instead: it still keeps this plugin's own writes apart.
-        private static readonly Dictionary<string, object> FallbackLocks = new(StringComparer.Ordinal);
+        private static string LockPath(string name) => Path.Combine(Path.GetTempPath(), name + ".lock");
+
+        // Where a lock file can't be made (a read-only temp folder, or a file system that does not lock), a gate per name in
+        // this copy of the assembly is used instead: it still keeps this plugin's own writes apart.
+        private sealed class LockGate
+        {
+            public bool Busy;
+        }
+
+        private static readonly Dictionary<string, LockGate> FallbackGates = new(StringComparer.Ordinal);
+
+        private static LockGate Gate(string name)
+        {
+            lock (FallbackGates)
+            {
+                if (!FallbackGates.TryGetValue(name, out LockGate? gate))
+                    FallbackGates[name] = gate = new LockGate();
+                return gate;
+            }
+        }
+
+        private static async Task<IDisposable> HoldFallbackAsync(string name)
+        {
+            LockGate gate = Gate(name);
+            while (true)
+            {
+                lock (gate)
+                {
+                    if (!gate.Busy)
+                    {
+                        gate.Busy = true;
+                        return new Held(null, gate);
+                    }
+                }
+                await Task.Delay(50).ConfigureAwait(false);
+            }
+        }
 
         private sealed class Held : IDisposable
         {
-            private readonly Mutex? _mutex;
-            private readonly object? _fallback;
+            private readonly FileStream? _stream;
+            private readonly LockGate? _gate;
 
-            public Held(string name)
+            public Held(FileStream? stream, LockGate? gate)
             {
-                try
-                {
-                    _mutex = new Mutex(false, name);
-                }
-                catch (Exception e) when (e is IOException or UnauthorizedAccessException or WaitHandleCannotBeOpenedException or PlatformNotSupportedException)
-                {
-                    lock (FallbackLocks)
-                    {
-                        if (!FallbackLocks.TryGetValue(name, out _fallback))
-                            FallbackLocks[name] = _fallback = new object();
-                    }
-                    Monitor.Enter(_fallback);
-                    return;
-                }
-
-                try
-                {
-                    _mutex.WaitOne();
-                }
-                catch (AbandonedMutexException)
-                {
-                    // A thread that held it ended without letting go; this one holds it now, and the file is checked as usual.
-                }
-                catch
-                {
-                    _mutex.Dispose();
-                    throw;
-                }
+                _stream = stream;
+                _gate = gate;
             }
 
             public void Dispose()
             {
-                if (_fallback is not null)
+                if (_stream is not null)
                 {
-                    Monitor.Exit(_fallback);
-                    return;
+                    try
+                    {
+                        _stream.Unlock(0, 1);
+                    }
+                    catch (IOException)
+                    {
+                        // The handle closing releases it in any case.
+                    }
+                    _stream.Dispose();
                 }
-                _mutex!.ReleaseMutex();
-                _mutex.Dispose();
+                if (_gate is not null)
+                {
+                    lock (_gate)
+                    {
+                        _gate.Busy = false;
+                        Monitor.PulseAll(_gate);
+                    }
+                }
             }
         }
 
@@ -108,27 +188,27 @@ namespace Advanced_PB_Limiter.Utils
         /// Writes <paramref name="content"/> to <paramref name="temp"/>, flushed to disk, then swaps it in for
         /// <paramref name="path"/> with one rename. Where the swap fails, for example a file mounted on its own into a
         /// container or held open by another program, the file is written in place and the copy is kept until that write
-        /// is done, so a write cut short is repaired by <see cref="Recover"/>. Where the copy can't be written, a full disk
-        /// say, the file is left as it is. While the file itself is missing or not whole, a complete copy an earlier write
-        /// left at <paramref name="temp"/> that differs from <paramref name="content"/> may be the only complete copy, so it
-        /// is first moved to a name of its own, <paramref name="kept"/>; if it can't be moved, nothing is written. Beside a
-        /// whole file such a copy is an earlier write that never landed, and <paramref name="content"/> replaces it. Throws IOException or
-        /// UnauthorizedAccessException when nothing could be written. Returns the swap error when the file was written in
-        /// place, otherwise null.
+        /// is done, so a write cut short is repaired by <see cref="RecoverAsync"/>. Where the copy can't be written, a full
+        /// disk say, the file is left as it is. While the file itself is missing or not whole, a complete copy an earlier
+        /// write left at <paramref name="temp"/> that differs from <paramref name="content"/> may be the only complete copy,
+        /// so it is first moved to a name of its own, <see cref="WriteResult.Kept"/>; if it can't be moved, nothing is
+        /// written. Beside a whole file such a copy is an earlier write that never landed, and <paramref name="content"/>
+        /// replaces it. Throws IOException or UnauthorizedAccessException when nothing could be written. Returns the swap
+        /// error when the file was written in place, otherwise null.
         /// </summary>
-        public static Exception? Write(string path, string temp, MemoryStream content, Func<byte[], bool> isComplete, out string? kept)
+        public static async Task<WriteResult> WriteAsync(string path, string temp, MemoryStream content, Func<byte[], bool> isComplete)
         {
-            using (Hold(path))
-                return WriteHeld(path, temp, content, isComplete, out kept);
+            using (IDisposable hold = await HoldAsync(path).ConfigureAwait(false))
+                return await WriteHeldAsync(path, temp, content, isComplete).ConfigureAwait(false);
         }
 
-        /// <summary>As <see cref="Write"/>, for a caller already in <see cref="Hold"/>.</summary>
-        public static Exception? WriteHeld(string path, string temp, MemoryStream content, Func<byte[], bool> isComplete, out string? kept)
+        /// <summary>As <see cref="WriteAsync"/>, for a caller already in <see cref="HoldAsync"/>.</summary>
+        public static async Task<WriteResult> WriteHeldAsync(string path, string temp, MemoryStream content, Func<byte[], bool> isComplete)
         {
-            kept = null;
-            if (File.Exists(temp) && !IsWhole(path, isComplete))
+            string? kept = null;
+            if (File.Exists(temp) && !await IsWholeAsync(path, isComplete).ConfigureAwait(false))
             {
-                byte[] earlier = File.ReadAllBytes(temp);
+                byte[] earlier = await ReadAllBytesAsync(temp).ConfigureAwait(false);
                 if (isComplete(earlier) && !earlier.SequenceEqual(content.ToArray()))
                     kept = KeptFile.Keep(temp, ".kept");
             }
@@ -136,7 +216,7 @@ namespace Advanced_PB_Limiter.Utils
 
             try
             {
-                WriteFile(temp, content, FileShare.None);
+                await WriteFileAsync(temp, content, FileShare.None).ConfigureAwait(false);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
@@ -149,7 +229,7 @@ namespace Advanced_PB_Limiter.Utils
             try
             {
                 Replace(temp, path);
-                return null;
+                return new WriteResult(null, kept);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
@@ -158,14 +238,14 @@ namespace Advanced_PB_Limiter.Utils
 
             try
             {
-                WriteFile(path, content, FileShare.Read);
+                await WriteFileAsync(path, content, FileShare.Read).ConfigureAwait(false);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
                 throw new IOException($"{path} could not be swapped into place ({swapError.Message}) or written in place ({e.Message}). A complete copy is kept at {temp}.{keptNote}", e);
             }
             DeleteIfPresent(temp);
-            return swapError;
+            return new WriteResult(swapError, kept);
         }
 
         /// <summary>
@@ -200,39 +280,40 @@ namespace Advanced_PB_Limiter.Utils
         /// Deals with a copy a write left beside the file, before the file is read. A copy that is not complete is removed.
         /// A complete copy puts back a file that is missing or was cut short, by moving the copy into place, or writing it in
         /// place when that fails; the copy is removed only once the file is complete again. A complete copy that differs
-        /// from a complete file is moved to a name the next write does not use, <paramref name="kept"/>: it may hold the
-        /// admin's newest settings. If it can't be moved, the result is KeepFailed and <paramref name="kept"/> says why. A
-        /// copy that can't be read now is left for the next start. A file that is there but not whole is moved aside before
-        /// the copy replaces it, and <paramref name="kept"/> then names where. <paramref name="isComplete"/> tells a whole
-        /// file from one cut short. Throws only when a file that is missing or cut short could not be restored; the file is
-        /// then put back as it was where it can be, the copy is kept for the next start, and the message says which.
+        /// from a complete file is moved to a name the next write does not use, <see cref="RecoverResult.Kept"/>: it may hold
+        /// the admin's newest settings. If it can't be moved, the result is KeepFailed and <see cref="RecoverResult.Kept"/>
+        /// says why. A copy that can't be read now is left for the next start. A file that is there but not whole is moved
+        /// aside before the copy replaces it, and <see cref="RecoverResult.Kept"/> then names where.
+        /// <paramref name="isComplete"/> tells a whole file from one cut short. Throws only when a file that is missing or cut
+        /// short could not be restored; the file is then put back as it was where it can be, the copy is kept for the next
+        /// start, and the message says which.
         /// </summary>
-        public static Recovery Recover(string path, string temp, Func<byte[], bool> isComplete, out string? kept)
+        public static async Task<RecoverResult> RecoverAsync(string path, string temp, Func<byte[], bool> isComplete)
         {
-            using (Hold(path))
-                return RecoverHeld(path, temp, isComplete, out kept);
+            using (IDisposable hold = await HoldAsync(path).ConfigureAwait(false))
+                return await RecoverHeldAsync(path, temp, isComplete).ConfigureAwait(false);
         }
 
-        /// <summary>As <see cref="Recover"/>, for a caller already in <see cref="Hold"/>.</summary>
-        public static Recovery RecoverHeld(string path, string temp, Func<byte[], bool> isComplete, out string? kept)
+        /// <summary>As <see cref="RecoverAsync"/>, for a caller already in <see cref="HoldAsync"/>.</summary>
+        public static async Task<RecoverResult> RecoverHeldAsync(string path, string temp, Func<byte[], bool> isComplete)
         {
-            kept = null;
-            if (!File.Exists(temp)) return Recovery.None;
+            string? kept = null;
+            if (!File.Exists(temp)) return new RecoverResult(Recovery.None, null);
             byte[] copy;
             byte[]? current;
             try
             {
-                copy = File.ReadAllBytes(temp);
-                current = File.Exists(path) ? File.ReadAllBytes(path) : null;
+                copy = await ReadAllBytesAsync(temp).ConfigureAwait(false);
+                current = File.Exists(path) ? await ReadAllBytesAsync(path).ConfigureAwait(false) : null;
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
-                return Recovery.None; // Held by another program, say; both are left for the next start.
+                return new RecoverResult(Recovery.None, null); // Held by another program, say; both are left for the next start.
             }
             if (!isComplete(copy))
             {
                 DeleteIfPresent(temp);
-                return Recovery.None;
+                return new RecoverResult(Recovery.None, null);
             }
 
             if (current is not null && isComplete(current))
@@ -240,17 +321,17 @@ namespace Advanced_PB_Limiter.Utils
                 if (current.SequenceEqual(copy))
                 {
                     DeleteIfPresent(temp);
-                    return Recovery.None;
+                    return new RecoverResult(Recovery.None, null);
                 }
                 try
                 {
                     kept = KeptFile.Keep(temp, ".kept");
-                    return Recovery.CopyKept;
+                    return new RecoverResult(Recovery.CopyKept, kept);
                 }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException)
                 {
                     kept = e.Message; // The file itself is complete and is read as it is.
-                    return Recovery.KeepFailed;
+                    return new RecoverResult(Recovery.KeepFailed, kept);
                 }
             }
 
@@ -276,7 +357,7 @@ namespace Advanced_PB_Limiter.Utils
                 try
                 {
                     using (MemoryStream complete = new(copy, false))
-                        WriteFile(path, complete, FileShare.Read);
+                        await WriteFileAsync(path, complete, FileShare.Read).ConfigureAwait(false);
                 }
                 catch (Exception writeError) when (writeError is IOException or UnauthorizedAccessException)
                 {
@@ -288,18 +369,18 @@ namespace Advanced_PB_Limiter.Utils
                 }
                 DeleteIfPresent(temp);
             }
-            return Recovery.Restored;
+            return new RecoverResult(Recovery.Restored, kept);
         }
 
         /// <summary>
         /// True when the copy beside a missing file may still restore it at the next start: it is complete, or it can't be read
         /// now (held by another program, say) and so may be. A copy that is there but cut short can never restore anything.
         /// </summary>
-        public static bool MayRestore(string copy, Func<byte[], bool> isComplete)
+        public static async Task<bool> MayRestoreAsync(string copy, Func<byte[], bool> isComplete)
         {
             try
             {
-                return isComplete(File.ReadAllBytes(copy));
+                return isComplete(await ReadAllBytesAsync(copy).ConfigureAwait(false));
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
@@ -336,12 +417,12 @@ namespace Advanced_PB_Limiter.Utils
         /// Removes a leftover copy when it holds exactly what is about to be written: it was the same write, interrupted, so
         /// it holds nothing the admin could lose. True when it is gone.
         /// </summary>
-        public static bool DropIfSame(string copyPath, byte[] content)
+        public static async Task<bool> DropIfSameAsync(string copyPath, byte[] content)
         {
             byte[] copy;
             try
             {
-                copy = File.ReadAllBytes(copyPath);
+                copy = await ReadAllBytesAsync(copyPath).ConfigureAwait(false);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
@@ -352,7 +433,8 @@ namespace Advanced_PB_Limiter.Utils
             return !File.Exists(copyPath);
         }
 
-        /// <summary>The log line for a <see cref="Recover"/> result, or null when there is nothing to say.</summary>
+
+        /// <summary>The log line for a <see cref="RecoverAsync"/> result, or null when there is nothing to say.</summary>
         public static string? Describe(Recovery recovery, string path, string temp, string? kept)
         {
             return recovery switch
@@ -400,12 +482,12 @@ namespace Advanced_PB_Limiter.Utils
         /// False when the file is missing or not whole. A file that exists but can't be read now, held by another program
         /// say, counts as whole: it was not cut short by a write of ours, which would have left it readable.
         /// </summary>
-        private static bool IsWhole(string path, Func<byte[], bool> isComplete)
+        private static async Task<bool> IsWholeAsync(string path, Func<byte[], bool> isComplete)
         {
             if (!File.Exists(path)) return false;
             try
             {
-                return isComplete(File.ReadAllBytes(path));
+                return isComplete(await ReadAllBytesAsync(path).ConfigureAwait(false));
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
@@ -413,10 +495,28 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
 
-        private static void WriteFile(string path, MemoryStream content, FileShare share)
+        /// <summary>The bytes of a file, for <see cref="InstantPunishmentFile"/>, which reads and writes it as one step.</summary>
+        internal static async Task<byte[]> ReadAllBytesAsync(string path)
         {
-            using FileStream stream = new(path, FileMode.Create, FileAccess.Write, share);
-            content.WriteTo(stream);
+#if NETCOREAPP
+            return await File.ReadAllBytesAsync(path).ConfigureAwait(false);
+#else
+            using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous);
+            using MemoryStream memory = new();
+            await stream.CopyToAsync(memory).ConfigureAwait(false);
+            return memory.ToArray();
+#endif
+        }
+
+        private static async Task WriteFileAsync(string path, MemoryStream content, FileShare share)
+        {
+            content.Position = 0;
+#if NETCOREAPP
+            await using FileStream stream = new(path, FileMode.Create, FileAccess.Write, share, 4096, FileOptions.Asynchronous);
+#else
+            using FileStream stream = new(path, FileMode.Create, FileAccess.Write, share, 4096, FileOptions.Asynchronous);
+#endif
+            await content.CopyToAsync(stream).ConfigureAwait(false);
             stream.Flush(true);
         }
 

@@ -81,15 +81,36 @@ public sealed class ProfileStore : IDisposable
     public event Action? Changed;
 
     private int _disposed;
+    private int _activeChanges;
+    private int _fieldsDisposed;
+    private int _cancelCompleted;
 
     public void Dispose()
     {
         // Once: Quasar may dispose it more than once as it stops.
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        // Cancelling wakes a change waiting for the writer. The writer and the source are left to the garbage collector:
-        // a change already under way may still be waiting on or holding the semaphore, and disposing either under it is
-        // not safe. Neither holds a handle here, as the writer's wait handle is never asked for.
-        _stopping.Cancel();
+        // Cancelling wakes a change waiting for the writer. The fields are disposed only once Cancel has returned and
+        // the last change under way has left: disposing a source from its own cancellation notification, or disposing
+        // the writer under a waiting change, is not safe.
+        try
+        {
+            _stopping.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        Volatile.Write(ref _cancelCompleted, 1);
+        if (Volatile.Read(ref _activeChanges) == 0)
+            Dispose(true);
+    }
+
+    private void Dispose(bool disposing)
+    {
+        if (!disposing) return;
+        if (Volatile.Read(ref _cancelCompleted) == 0) return;
+        if (Interlocked.Exchange(ref _fieldsDisposed, 1) != 0) return;
+        _writer.Dispose();
+        _stopping.Dispose();
     }
 
     // Each returns a copy, sorted for display the same way on every host, that the caller may keep.
@@ -796,41 +817,51 @@ public sealed class ProfileStore : IDisposable
     /// </summary>
     private async Task<StoreResult> ChangeAsync(Func<Draft, bool> change, bool persist = true)
     {
-        bool published = false;
-        bool written = false;
+        if (Volatile.Read(ref _disposed) != 0) return new StoreResult(false, true);
+        Interlocked.Increment(ref _activeChanges);
         try
         {
-            bool saved = true;
-            await _writer.WaitAsync(_stopping.Token).ConfigureAwait(false);
+            bool published = false;
+            bool written = false;
             try
             {
-                // Made under the writer, so it works on the newest state and no other change is published meanwhile.
-                // A change that wrote nothing changed nothing, whatever it returned.
-                Draft draft = new(_state);
-                State? next = change(draft) ? draft.Result : null;
-                if (next != null)
+                bool saved = true;
+                await _writer.WaitAsync(_stopping.Token).ConfigureAwait(false);
+                try
                 {
-                    _state = next;
-                    published = true;
-                    if (persist)
-                        saved = _canSave && Write(JsonSerializer.SerializeToUtf8Bytes(next, Json));
-                    written = saved;
+                    // Made under the writer, so it works on the newest state and no other change is published meanwhile.
+                    // A change that wrote nothing changed nothing, whatever it returned.
+                    Draft draft = new(_state);
+                    State? next = change(draft) ? draft.Result : null;
+                    if (next != null)
+                    {
+                        _state = next;
+                        published = true;
+                        if (persist)
+                            saved = _canSave && await WriteAsync(JsonSerializer.SerializeToUtf8Bytes(next, Json)).ConfigureAwait(false);
+                        written = saved;
+                    }
                 }
-            }
-            finally
-            {
-                _writer.Release();
-            }
+                finally
+                {
+                    _writer.Release();
+                }
 
-            if (published)
-                RaiseChanged();
-            return new StoreResult(published, saved);
+                if (published)
+                    RaiseChanged();
+                return new StoreResult(published, saved);
+            }
+            catch (Exception e) when (e is ObjectDisposedException or OperationCanceledException)
+            {
+                // Stopped part way, or before it could start: a change already made, and saved, stays made, and is reported so.
+                _log.LogWarning(e, "A PB Limiter profile change came while Quasar was stopping the store, it may not be saved");
+                return new StoreResult(published, written);
+            }
         }
-        catch (Exception e) when (e is ObjectDisposedException or OperationCanceledException)
+        finally
         {
-            // Stopped part way, or before it could start: a change already made, and saved, stays made, and is reported so.
-            _log.LogWarning(e, "A PB Limiter profile change came while Quasar was stopping the store, it may not be saved");
-            return new StoreResult(published, written);
+            if (Interlocked.Decrement(ref _activeChanges) == 0 && Volatile.Read(ref _disposed) != 0)
+                Dispose(true);
         }
     }
 
@@ -840,7 +871,7 @@ public sealed class ProfileStore : IDisposable
         bool canSave = false;
         try
         {
-            RecoverInterruptedSave();
+            await RecoverInterruptedSaveAsync().ConfigureAwait(false);
             if (File.Exists(_path))
                 loaded = Normalise(Parse(await File.ReadAllBytesAsync(_path, CancellationToken.None).ConfigureAwait(false))); // Never cut short, see _stopping.
             canSave = true;
@@ -864,16 +895,16 @@ public sealed class ProfileStore : IDisposable
     }
 
     /// <summary>
-    /// Puts back a complete copy an interrupted save left beside the profiles (<see cref="SafeFile.Recover"/>), before
+    /// Puts back a complete copy an interrupted save left beside the profiles (<see cref="SafeFile.RecoverAsync"/>), before
     /// the file is read, so a crash between writing the copy and moving it into place cannot lose the last change.
     /// </summary>
-    private void RecoverInterruptedSave()
+    private async Task RecoverInterruptedSaveAsync()
     {
         string temporary = _path + ".tmp";
         try
         {
-            SafeFile.Recovery recovery = SafeFile.Recover(_path, temporary, IsWholeJson, out string? kept);
-            string? line = SafeFile.Describe(recovery, _path, temporary, kept);
+            SafeFile.RecoverResult recovery = await SafeFile.RecoverAsync(_path, temporary, IsWholeJson).ConfigureAwait(false);
+            string? line = SafeFile.Describe(recovery.Recovery, _path, temporary, recovery.Kept);
             if (line is not null)
                 _log.LogWarning("{Recovery}", line);
         }
@@ -926,8 +957,8 @@ public sealed class ProfileStore : IDisposable
 
     // Through SafeFile: a complete copy swapped in with one rename, written in place only where the swap fails, and one
     // save of the file at a time, also with another Quasar worker during a restart. A complete copy an earlier write left
-    // beside a missing or cut-short file is put back by RecoverInterruptedSave.
-    private bool Write(byte[] json)
+    // beside a missing or cut-short file is put back by RecoverInterruptedSaveAsync.
+    private async Task<bool> WriteAsync(byte[] json)
     {
         string temporary = _path + ".tmp";
         try
@@ -937,12 +968,12 @@ public sealed class ProfileStore : IDisposable
                 Directory.CreateDirectory(folder);
 
             using MemoryStream content = new(json, false);
-            Exception? swapError = SafeFile.Write(_path, temporary, content, IsWholeJson, out string? kept);
-            if (kept is not null)
-                _log.LogWarning("A complete copy of the PB Limiter profiles an earlier save left at {File} was kept as {Kept} before this save, in case it holds profiles you want.", temporary, kept);
-            if (swapError is not null)
+            SafeFile.WriteResult write = await SafeFile.WriteAsync(_path, temporary, content, IsWholeJson).ConfigureAwait(false);
+            if (write.Kept is not null)
+                _log.LogWarning("A complete copy of the PB Limiter profiles an earlier save left at {File} was kept as {Kept} before this save, in case it holds profiles you want.", temporary, write.Kept);
+            if (write.SwapError is not null)
                 // For example a file mounted on its own into a container, or held open by another program.
-                _log.LogWarning(swapError, "The PB Limiter profiles could not be swapped into place, so they are written in place");
+                _log.LogWarning(write.SwapError, "The PB Limiter profiles could not be swapped into place, so they are written in place");
             return true;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)

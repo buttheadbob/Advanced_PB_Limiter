@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject IJSRuntime JS
+@inject ILogger<PageTabs> Log
 
 <div class="pbl-page">
     <header class="pbl-page-heading">
@@ -56,8 +57,9 @@
         {
             _canEdit = await SdkClient.AllowedAsync(JS, "CanEditConfigs", _closing.Token);
         }
-        catch (Exception)
+        catch (Exception e)
         {
+            Log.LogWarning(e, "Could not check the PB Limiter edit permission");
             _canEdit = false;
         }
     }

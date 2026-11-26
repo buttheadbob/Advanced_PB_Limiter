@@ -193,6 +193,7 @@
         }
         catch (Exception e)
         {
+            Log.LogDebug(e, "Could not read the PB Limiter server list");
             if (PageShared.ReportReadFailures.IsNew("report-servers", e.Message))
                 Log.LogWarning(e, "Could not read the PB Limiter server list");
             _error = "Could not read the server list: " + PageShared.ShortError(e);
@@ -310,6 +311,7 @@
         }
         catch (Exception e)
         {
+            Log.LogDebug(e, "Could not read the PB Limiter report of {Server}", server.DisplayName);
             if (PageShared.ReportReadFailures.IsNew(server.ServerId, e.Message))
                 Log.LogWarning(e, "Could not read the PB Limiter report of {Server}", server.DisplayName);
             return new ServerReport(server.DisplayName, null, CompanionErrors.InSentence(PageShared.ShortError(e)) + CompanionErrors.RestartHint(e));

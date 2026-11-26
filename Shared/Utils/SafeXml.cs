@@ -14,7 +14,5 @@ namespace Advanced_PB_Limiter.Utils
         private static readonly XmlReaderSettings Settings = new() { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null };
 
         public static XmlReader Reader(Stream stream) => XmlReader.Create(stream, Settings);
-
-        public static XmlReader Reader(string path) => XmlReader.Create(path, Settings);
     }
 }

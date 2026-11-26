@@ -499,8 +499,9 @@
         {
             _prefs = await ImportAsync("prefs.js");
         }
-        catch (Exception)
+        catch (Exception e)
         {
+            Log.LogDebug(e, "Could not load the PB Limiter UI preferences");
             _prefs = null;
         }
 
@@ -512,6 +513,7 @@
         }
         catch (Exception e)
         {
+            Log.LogDebug(e, "Could not read the PB Limiter server list");
             _error = "Could not read the server list: " + PageShared.ShortError(e);
         }
 
@@ -521,8 +523,9 @@
         {
             _canControl = await CanControlAsync();
         }
-        catch
+        catch (Exception e)
         {
+            Log.LogWarning(e, "Could not check the PB Limiter control permission");
             _canControl = false;
         }
     }
@@ -535,8 +538,9 @@
         {
             _visibility = await ImportAsync("visibility.js");
         }
-        catch (Exception)
+        catch (Exception e)
         {
+            Log.LogDebug(e, "Could not load the PB Limiter visibility helper");
             _visibility = null;
         }
 
@@ -557,8 +561,9 @@
                     {
                         visible = await _visibility.InvokeAsync<bool>("isVisible");
                     }
-                    catch
+                    catch (Exception e)
                     {
+                        Log.LogDebug(e, "Could not read the PB Limiter page visibility");
                         visible = true;
                     }
                 }
@@ -576,6 +581,7 @@
                     }
                     catch (Exception e)
                     {
+                        Log.LogDebug(e, "Could not read the PB Limiter server list");
                         if (PageShared.ReportReadFailures.IsNew("servers", e.Message))
                             Log.LogWarning(e, "Could not read the PB Limiter server list");
                     }
@@ -609,6 +615,7 @@
                 }
                 catch (Exception e)
                 {
+                    Log.LogDebug(e, "Could not read the PB Limiter server list");
                     if (_snapshot is null)
                         _error = "Could not read the server list: " + PageShared.ShortError(e);
                     if (PageShared.ReportReadFailures.IsNew("servers", e.Message))
@@ -666,6 +673,7 @@
             }
             catch (Exception e)
             {
+                Log.LogDebug(e, "Could not read the PB Limiter report of {Server}", ServerName(serverId));
                 if (PageShared.ReportReadFailures.IsNew(serverId, e.Message))
                     Log.LogWarning(e, "Could not read the PB Limiter report of {Server}", ServerName(serverId));
 
@@ -897,6 +905,7 @@
         }
         catch (Exception e)
         {
+            Log.LogWarning(e, "Could not check your permission to control PB Limiter servers");
             _turnOffError = "Could not check your permission: " + e.Message;
             ToastService.Show(_turnOffError, ToastTone.Danger);
             return;
@@ -968,6 +977,7 @@
         }
         catch (Exception e)
         {
+            Log.LogWarning(e, "Could not copy to the clipboard");
             ToastService.Show("Could not copy: " + e.Message, ToastTone.Danger);
         }
     }
@@ -986,6 +996,7 @@
         }
         catch (Exception e)
         {
+            Log.LogWarning(e, "Could not save the PB Limiter CSV");
             ToastService.Show("Could not save the CSV: " + e.Message, ToastTone.Danger);
         }
     }
@@ -1011,9 +1022,9 @@
                 _refreshSeconds = preferences.RefreshSeconds;
             _serverKey = preferences.ServerKey;
         }
-        catch (Exception)
+        catch (Exception e)
         {
-            // A stale or hand-edited preference must never stop the page.
+            Log.LogDebug(e, "Could not read the PB Limiter UI preferences");
         }
     }
 
@@ -1028,9 +1039,9 @@
             preferences.RefreshSeconds = _refreshSeconds;
             await _prefs.InvokeVoidAsync("save", "ui.v1", JsonSerializer.Serialize(preferences, JsonOptions));
         }
-        catch (Exception)
+        catch (Exception e)
         {
-            // Storage is optional.
+            Log.LogDebug(e, "Could not save the PB Limiter UI preferences");
         }
     }
 

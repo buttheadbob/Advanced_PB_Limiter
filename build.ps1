@@ -4,7 +4,8 @@
 #   .\build.ps1 torch                        Torch only      -> Build\Advanced PB Limiter.zip
 #   .\build.ps1 magnetar                     Magnetar only   -> ServerPlugin\bin\<config>\net48 and net10.0
 #   .\build.ps1 quasar                       Quasar plugin and its companion only (needs a quasar checkout in ..\quasar,
-#                                            or -QuasarAbstractions pointing at a Quasar 1.7 Quasar.Plugin.Abstractions.dll)
+#                                            or -QuasarAbstractions pointing at a Quasar 1.7
+#                                            Quasar.Plugin.Abstractions.dll)
 #   .\build.ps1 all debug                    all of them, Debug
 #   .\build.ps1 magnetar release nodeploy    do not copy into %AppData%\Magnetar\...\Local
 #
@@ -35,6 +36,7 @@ function Get-BuildProp([string]$name) {
         }
         catch {
             # A malformed props file is reported by the build itself; here it only means no value was found.
+            Write-Verbose "Could not read $file"
         }
     }
     return ''
@@ -63,10 +65,16 @@ try {
             $torchBinaries = Get-BuildProp 'TorchBinaries'
 
             if (-not $gameBinaries -or -not (Test-Path -LiteralPath (Join-Path $gameBinaries 'Sandbox.Game.dll'))) {
-                $torchProblem = 'ERROR: GameBinaries (or DS64/Dedicated64) is missing or has no Sandbox.Game.dll. Run Setup.ps1 or set it in Directory.Build.props.user.'
+                $torchProblem = @(
+                    'ERROR: GameBinaries (or DS64/Dedicated64) is missing or has no '
+                    'Sandbox.Game.dll. Run Setup.ps1 or set it in Directory.Build.props.user.'
+                ) -join ''
             }
             elseif (-not $torchBinaries -or -not (Test-Path -LiteralPath (Join-Path $torchBinaries 'Torch.dll'))) {
-                $torchProblem = 'ERROR: TorchBinaries is missing or has no Torch.dll. Run Setup.ps1 or set it in Directory.Build.props.user.'
+                $torchProblem = @(
+                    'ERROR: TorchBinaries is missing or has no Torch.dll. '
+                    'Run Setup.ps1 or set it in Directory.Build.props.user.'
+                ) -join ''
             }
             else {
                 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -92,24 +100,33 @@ try {
         if (-not $magnetar -and $onWindows -and $env:APPDATA) { $magnetar = Join-Path $env:APPDATA 'Magnetar' }
         if (-not $magnetar -and -not $onWindows -and $HOME) { $magnetar = Join-Path $HOME '.local/share/Magnetar' }
         if ($magnetar) {
-            foreach ($file in @(
-                [System.IO.Path]::Combine($magnetar, 'Libraries', 'MagnetarLegacy', 'PluginSdk.dll'),
-                [System.IO.Path]::Combine($magnetar, 'Libraries', 'MagnetarInterim', 'PluginSdk.dll'),
+            $pluginSdkFiles = @(
+                [System.IO.Path]::Combine($magnetar, 'Libraries', 'MagnetarLegacy', 'PluginSdk.dll')
+                [System.IO.Path]::Combine($magnetar, 'Libraries', 'MagnetarInterim', 'PluginSdk.dll')
                 [System.IO.Path]::Combine($magnetar, 'Bin', 'PluginSdk.dll')
-            )) {
+            )
+            foreach ($file in $pluginSdkFiles) {
                 if (Test-Path -LiteralPath $file) { $magnetarBin = Split-Path $file -Parent; break }
             }
         }
         if (-not $magnetarBin) {
-            $local = [System.IO.Path]::Combine((Split-Path $PSScriptRoot -Parent), 'magnetar', 'PluginSdk', 'bin', 'Release', 'netstandard2.0')
+            $local = [System.IO.Path]::Combine(
+                (Split-Path $PSScriptRoot -Parent),
+                'magnetar', 'PluginSdk', 'bin', 'Release', 'netstandard2.0')
             if (Test-Path -LiteralPath (Join-Path $local 'PluginSdk.dll')) { $magnetarBin = $local }
         }
     }
     if ($magnetarBin -and -not (Test-Path -LiteralPath (Join-Path $magnetarBin 'PluginSdk.dll'))) {
-        $magnetarProblem = "ERROR: PluginSdk.dll not found in MagnetarBin: $magnetarBin. Fix Directory.Build.props.user."
+        $magnetarProblem = @(
+            'ERROR: PluginSdk.dll not found in MagnetarBin: '
+            ($magnetarBin + '. Fix Directory.Build.props.user.')
+        ) -join ''
     }
     elseif (-not $magnetarBin) {
-        $magnetarProblem = 'ERROR: Magnetar PluginSdk not found. Run Setup.ps1 or set MagnetarBin in Directory.Build.props.user.'
+        $magnetarProblem = @(
+            'ERROR: Magnetar PluginSdk not found. Run Setup.ps1 or set '
+            'MagnetarBin in Directory.Build.props.user.'
+        ) -join ''
     }
     $quasarProblem = $null
     $quasarAbstractionsArg = $null

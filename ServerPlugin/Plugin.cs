@@ -5,6 +5,8 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using Advanced_PB_Limiter.MagnetarHost.Patches;
 using Advanced_PB_Limiter.QuasarContracts;
 using Advanced_PB_Limiter.Utils;
@@ -44,6 +46,17 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
     private string _configPath = "";
     private bool _active;
 
+    // The live config is on its defaults until the file is read, and the limiter enforces those meanwhile. The host loads
+    // the world as soon as Init returns, so the read runs beside it and swaps the settings into the same config instance.
+    private readonly object _stateLock = new();
+    private int _ready;
+    private bool _disposed;
+    private bool _clusterInactive;
+    private bool _sessionLoaded;
+    private bool _sessionLoadRaised;
+
+    internal bool IsReady => Volatile.Read(ref _ready) != 0;
+
     // Quasar finds the config through this public PluginConfig-typed property and renders its editor.
     public LimiterConfig PluginConfig => _config;
 
@@ -54,6 +67,12 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
     // change set a value the config already had, which raises no event.
     bool IPbLimiterHost.ChangeConfig(Action change)
     {
+        if (Volatile.Read(ref _ready) == 0)
+        {
+            // The commands are registered only once the file is read, so this is a caller that found the plugin early.
+            Log.Warning("A setting change came before the config had loaded; it was not applied");
+            return false;
+        }
         _changeSaved = null;
         change();
         bool? changeSaved = _changeSaved;
@@ -75,121 +94,41 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
     public void Init(object gameInstance)
     {
         Log.Info("Loading");
-        string configPath = Path.Combine(MyFileSystem.UserDataPath, Name, Name + ".cfg");
 
-        // A Quasar cluster runs one world across several server processes. A grid moves between them, and its programmable
-        // blocks' run history, offences and punishments, kept per process, do not follow it. A cluster node also loads the
-        // world before IPlugin.Init, so the session hook below would never fire. Nothing is started: no patches, commands
-        // or session handlers, and no local file is read or written.
+        string configPath = Path.Combine(MyFileSystem.UserDataPath, Name, Name + ".cfg");
+        // The first Magnetar build kept the config in the user data root. A missing file loads as defaults with no error,
+        // so without this an update would silently drop the server's limits and privileged players.
+        string legacyPath = Path.Combine(MyFileSystem.UserDataPath, Name + ".cfg");
+
+        // A Quasar cluster runs one world across several server processes. A grid's programmable block moves between
+        // them, so its run history, offences and punishments (kept per process) do not follow it; the cluster also loads
+        // the world before IPlugin.Init and its canonical config refuses local saves. Refuse to run rather than enforce
+        // partially.
         if (PluginCluster.IsClusterProcess || ManagedPluginConfiguration.Required)
         {
-            Log.Warning("Advanced PB Limiter is not supported on a Quasar cluster: a programmable block's run history and punishments do not follow its grid "
-                        + "from one node to another. The plugin is inactive.");
-            // Magnetar checks this plugin's PluginConfig against the cluster's canonical config, so that is loaded, in memory only.
+            _clusterInactive = true;
+            Log.Warning("Advanced PB Limiter is not supported on a Quasar cluster: a programmable block's run history and punishments do not follow its grid from one node to another, and the cluster's configuration is managed centrally. The plugin is inactive.");
             if (ManagedPluginConfiguration.Required)
             {
+                // Magnetar validates PluginConfig as soon as Init returns: load the canonical config in memory only, so
+                // the plugin is accepted as inactive. No local file is read and nothing is saved.
                 try
                 {
                     _config = ConfigStorage.LoadXml<LimiterConfig>(configPath);
                 }
                 catch (Exception e)
                 {
-                    Log.Error("Could not read the cluster's canonical config", e);
+                    Log.Error("Could not read the cluster's canonical config; the plugin stays inactive", e);
                 }
             }
             return;
         }
 
-        Instance = this;
         _configPath = configPath;
 
-        // The first Magnetar build kept the config in the user data root. A missing file loads as defaults with no error,
-        // so without this an update would silently drop the server's limits and privileged players.
-        string legacyPath = Path.Combine(MyFileSystem.UserDataPath, Name + ".cfg");
-
-        // Before anything decides which file to read: this also restores a config an interrupted rewrite left missing.
-        List<string> damage = ReplaceDamage(_configPath, out bool copyWaiting);
-
-        // A config set aside as unreadable is still the newer one, so the old file is not read in its place, nor while a copy
-        // of the newer one waits to be restored. An old file set aside while a copy of it waited (see copyWaiting below)
-        // comes back from that copy in its Damage step.
-        // A node of a managed cluster reads the cluster's configuration, never these files.
-        bool fromLegacy = !ManagedPluginConfiguration.Required && !File.Exists(_configPath) && !copyWaiting
-                          && (File.Exists(legacyPath) || File.Exists(InstantPunishmentFile.CopyPath(legacyPath)));
-        List<string> setAside = fromLegacy ? FindSetAside(_configPath) : new List<string>();
-        if (setAside.Count > 0)
-        {
-            fromLegacy = false;
-            Log.Warning($"Not importing the old config {legacyPath}: the newer config could not be read and was set aside in {Path.GetDirectoryName(_configPath)} as {string.Join(", ", setAside)}. "
-                        + $"Fix it and move it back to {_configPath}. To import the old config instead, remove every {Path.GetFileName(_configPath)}*.unreadable file and restart "
-                        + "before any setting is changed: a change saves the defaults as the new config, which is then read from then on.");
-        }
-        // An old config set aside as unreadable at an earlier start, with no config since: said at every start until one is
-        // saved, as the server runs on the defaults meanwhile and nothing else would say so.
-        if (!ManagedPluginConfiguration.Required && !fromLegacy && !copyWaiting && !File.Exists(_configPath))
-        {
-            List<string> oldSetAside = FindSetAside(legacyPath);
-            if (oldSetAside.Count > 0)
-                Log.Warning($"There is no config, and the old one could not be read and was set aside in {Path.GetDirectoryName(legacyPath)} as {string.Join(", ", oldSetAside)}. "
-                            + $"The server runs on the defaults. Fix it and move it back to {legacyPath} to import it at the next start, or set the limits again: "
-                            + "a change saves the settings as they are as the new config.");
-        }
-
-        if (fromLegacy)
-        {
-            damage = ReplaceDamage(legacyPath, out copyWaiting);
-            // Only a copy of the old config was there, and its Damage step found it cut short and removed it: there is no
-            // old config to import, so the defaults are not saved as if one had been moved.
-            if (!copyWaiting && !File.Exists(legacyPath))
-                fromLegacy = false;
-        }
-        bool loaded = false;
-        string path = fromLegacy ? legacyPath : _configPath;
-
-        try
-        {
-            _config = ConfigStorage.LoadXml<LimiterConfig>(path);
-            loaded = true;
-
-            // JSON is read by InstantPunishmentJsonConverter, which logs this itself as it reads.
-            if (damage.Count > 0)
-                Log.Warning(InstantPunishmentFile.LogLine(damage));
-        }
-        catch (Exception e) when (SafeFile.IsReadFailure(e))
-        {
-            // The file could not be opened or read, held by another program say, also when XmlSerializer wraps an I/O error
-            // met part way through: nothing says it is broken, so it is left where it is, and the defaults the server runs
-            // on are never saved over it.
-            Log.Error($"Could not open the config {path}, using defaults; changes are not saved until the server restarts", e);
-            _config = new LimiterConfig();
-            _saveBlocked = "The config was not saved: the file that could not be opened is still in its place";
-        }
-        catch (Exception e)
-        {
-            Log.Error("Could not read the config, using defaults", e);
-            _config = new LimiterConfig();
-            SetAside(path);
-        }
-
-        // The log line from the Damage step says that copy is used at the next start, which holds only if nothing is saved
-        // first, and only once the config is out of its way: set aside above. A config that could not be moved stays, and so
-        // would the copy, start after start, so the admin is told to move it.
-        if (copyWaiting)
-        {
-            _saveBlocked = $"The config was not saved: a copy from an interrupted write waits at {InstantPunishmentFile.CopyPath(path)} to become the config";
-            if (File.Exists(path))
-                Log.Error($"The copy at {InstantPunishmentFile.CopyPath(path)} can't become the config by itself: the config is still in its place. "
-                          + $"Stop the server and move {InstantPunishmentFile.CopyPath(path)} to {path} to use the copy, or delete the copy to keep the config. Changes are not saved until then.");
-        }
-
-        // Only a config that was read is saved in the new place, so a broken old file is never replaced by defaults.
-        if (fromLegacy && loaded && SaveConfig())
-            Log.Info($"Moved the config from {legacyPath} to {_configPath}. The old file is no longer read and can be deleted.");
-
-        RebuildPrivilegedLookup();
-        // Edits made in Quasar arrive through the config's setters: persist them.
-        _config.PropertyChanged += OnConfigChanged;
-
+        // The limiter runs on the config defaults, which enforce the limits, until the file is read: the host loads the
+        // world as soon as Init returns, so the read runs beside it and the settings are copied into the same config
+        // instance. Patches applied now check LimiterCore.Active, so the limiter is never off while the file is read.
         try
         {
             LimiterCore.Init(this);
@@ -215,22 +154,178 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
         MySession.OnUnloading += OnSessionUnloading;
         _active = true;
 
-        ServerCommands.Register(Assembly.GetExecutingAssembly());
-        Log.Info("Loaded (Magnetar)");
+        _ = InitializeAsync(legacyPath);
     }
 
-    public void Update() => LimiterCore.Update();
+    public void Update()
+    {
+        if (_clusterInactive || Volatile.Read(ref _ready) == 0) return;
+        LimiterCore.Update();
+    }
 
     public void Dispose()
     {
-        RemovePatches();
-        _config.PropertyChanged -= OnConfigChanged;
-        Instance = null;
+        lock (_stateLock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _sessionLoaded = false;
+            _sessionLoadRaised = false;
+            _config.PropertyChanged -= OnConfigChanged;
+            if (ReferenceEquals(Instance, this)) Instance = null;
+        }
 
-        if (!_active) return;
+        RemovePatches();
+
+        if (_clusterInactive || !_active) return;
+        _active = false;
         MySession.AfterLoading -= OnSessionLoaded;
         MySession.OnUnloading -= OnSessionUnloading;
         LimiterCore.OnSessionUnloading();
+    }
+
+    /// <summary>
+    /// Reads the config beside the running defaults and copies it into the live instance once it is ready. A cluster is
+    /// refused in <see cref="Init"/> before this runs.
+    /// </summary>
+    private async Task InitializeAsync(string legacyPath)
+    {
+        try
+        {
+            (List<string> damage, bool copyWaiting) = await ReplaceDamageAsync(_configPath).ConfigureAwait(false);
+
+            // A config set aside as unreadable is still the newer one, so the old file is not read in its place, nor while a copy
+            // of the newer one waits to be restored. An old file set aside while a copy of it waited (see copyWaiting below)
+            // comes back from that copy in its Damage step.
+            bool fromLegacy = !File.Exists(_configPath) && !copyWaiting
+                              && (File.Exists(legacyPath) || File.Exists(InstantPunishmentFile.CopyPath(legacyPath)));
+            List<string> setAside = fromLegacy ? FindSetAside(_configPath) : new List<string>();
+            if (setAside.Count > 0)
+            {
+                fromLegacy = false;
+                Log.Warning($"Not importing the old config {legacyPath}: the newer config could not be read and was set aside in {Path.GetDirectoryName(_configPath)} as {string.Join(", ", setAside)}. "
+                            + $"Fix it and move it back to {_configPath}. To import the old config instead, remove every {Path.GetFileName(_configPath)}*.unreadable file and restart "
+                            + "before any setting is changed: a change saves the defaults as the new config, which is then read from then on.");
+            }
+            // An old config set aside as unreadable at an earlier start, with no config since: said at every start until one is
+            // saved, as the server runs on the defaults meanwhile and nothing else would say so.
+            if (!fromLegacy && !copyWaiting && !File.Exists(_configPath))
+            {
+                List<string> oldSetAside = FindSetAside(legacyPath);
+                if (oldSetAside.Count > 0)
+                    Log.Warning($"There is no config, and the old one could not be read and was set aside in {Path.GetDirectoryName(legacyPath)} as {string.Join(", ", oldSetAside)}. "
+                                + $"The server runs on the defaults. Fix it and move it back to {legacyPath} to import it at the next start, or set the limits again: "
+                                + "a change saves the settings as they are as the new config.");
+            }
+
+            if (fromLegacy)
+            {
+                (damage, copyWaiting) = await ReplaceDamageAsync(legacyPath).ConfigureAwait(false);
+                // Only a copy of the old config was there, and its Damage step found it cut short and removed it: there is no
+                // old config to import, so the defaults are not saved as if one had been moved.
+                if (!copyWaiting && !File.Exists(legacyPath))
+                    fromLegacy = false;
+            }
+            string path = fromLegacy ? legacyPath : _configPath;
+
+            LimiterConfig loaded = new();
+            bool loadedOk = false;
+            try
+            {
+                loaded = ConfigStorage.LoadXml<LimiterConfig>(path);
+                loadedOk = true;
+            }
+            catch (Exception e) when (SafeFile.IsReadFailure(e))
+            {
+                // The file could not be opened or read, held by another program say, also when XmlSerializer wraps an I/O error
+                // met part way through: nothing says it is broken, so it is left where it is, and the defaults the server runs
+                // on are never saved over it.
+                Log.Error($"Could not open the config {path}, using defaults; changes are not saved until the server restarts", e);
+                _saveBlocked = "The config was not saved: the file that could not be opened is still in its place";
+            }
+            catch (Exception e)
+            {
+                Log.Error("Could not read the config, using defaults", e);
+                SetAside(path);
+            }
+
+            CompleteStart(path, loaded, damage, copyWaiting, fromLegacy, loadedOk);
+        }
+        catch (Exception e)
+        {
+            // Any failure is logged; the limiter keeps enforcing the defaults it started on.
+            Log.Error("Could not finish loading the config; the limiter runs on its defaults", e);
+        }
+    }
+
+    /// <summary>
+    /// Copies the config that was read into the live instance and lets the limiter use it. Called on a pool thread; the
+    /// host's Update, session events and commands are gated until <see cref="_ready"/> is set here.
+    /// </summary>
+    private void CompleteStart(string path, LimiterConfig loaded, List<string> damage, bool copyWaiting, bool fromLegacy, bool loadedOk)
+    {
+        string? copyWaitingError = null;
+        lock (_stateLock)
+        {
+            if (_disposed) return;
+            CopyInto(_config, loaded);
+            _config.PropertyChanged += OnConfigChanged;
+
+            // The log line from the Damage step says that copy is used at the next start, which holds only if nothing is saved
+            // first, and only once the config is out of its way: set aside above. A config that could not be moved stays, and so
+            // would the copy, start after start, so the admin is told to move it.
+            if (copyWaiting)
+            {
+                _saveBlocked = $"The config was not saved: a copy from an interrupted write waits at {InstantPunishmentFile.CopyPath(path)} to become the config";
+                if (File.Exists(path))
+                    copyWaitingError = $"The copy at {InstantPunishmentFile.CopyPath(path)} can't become the config by itself: the config is still in its place. "
+                                       + $"Stop the server and move {InstantPunishmentFile.CopyPath(path)} to {path} to use the copy, or delete the copy to keep the config. Changes are not saved until then.";
+            }
+        }
+        if (copyWaitingError is not null) Log.Error(copyWaitingError);
+
+        // JSON is read by InstantPunishmentJsonConverter, which logs this itself as it reads.
+        if (damage.Count > 0 && loadedOk)
+            Log.Warning(InstantPunishmentFile.LogLine(damage));
+
+        // Only a config that was read is saved in the new place, so a broken old file is never replaced by defaults.
+        if (fromLegacy && loadedOk && SaveConfig())
+            Log.Info($"Moved the config from {path} to {_configPath}. The old file is no longer read and can be deleted.");
+
+        RebuildPrivilegedLookup();
+
+        bool runLoaded;
+        lock (_stateLock)
+        {
+            if (_disposed)
+            {
+                _config.PropertyChanged -= OnConfigChanged;
+                return;
+            }
+            _ready = 1;
+            Instance = this;
+            runLoaded = _sessionLoaded && !_sessionLoadRaised;
+            if (runLoaded) _sessionLoadRaised = true;
+        }
+
+        try
+        {
+            ServerCommands.Register(Assembly.GetExecutingAssembly());
+        }
+        catch (Exception e)
+        {
+            Log.Error("The commands could not be registered; the limiter itself keeps running", e);
+        }
+
+        Log.Info("Loaded (Magnetar)");
+        if (runLoaded) RaiseSessionLoaded();
+    }
+
+    /// <summary>Copies every setting into the live config instance, which patches and Magnetar's editor hold.</summary>
+    private static void CopyInto(LimiterConfig target, LimiterConfig source)
+    {
+        foreach (PropertyInfo property in ConfigProperties)
+            property.SetValue(target, property.GetValue(source));
     }
 
     /// <summary>Only this plugin's own patches: UnpatchAll() would remove other plugins' and the loader's as well.</summary>
@@ -263,16 +358,39 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
         }
     }
 
-    private static void OnSessionLoaded()
+    /// <summary>
+    /// The world loaded. The config may still be on its way: it is raised once it is ready, then. Under the state lock so
+    /// a load finishing at the same moment raises it exactly once.
+    /// </summary>
+    private void OnSessionLoaded()
+    {
+        bool run;
+        lock (_stateLock)
+        {
+            if (_disposed || _sessionLoaded) return;
+            _sessionLoaded = true;
+            run = Volatile.Read(ref _ready) != 0 && !_sessionLoadRaised;
+            if (run) _sessionLoadRaised = true;
+        }
+        if (run) RaiseSessionLoaded();
+    }
+
+    private void OnSessionUnloading()
+    {
+        lock (_stateLock)
+        {
+            if (_disposed) return;
+            _sessionLoaded = false;
+            _sessionLoadRaised = false;
+        }
+        Log.Info("Session Unloading!");
+        LimiterCore.OnSessionUnloading();
+    }
+
+    private static void RaiseSessionLoaded()
     {
         Log.Info("Session Loaded!");
         LimiterCore.OnSessionLoaded();
-    }
-
-    private static void OnSessionUnloading()
-    {
-        Log.Info("Session Unloading!");
-        LimiterCore.OnSessionUnloading();
     }
 
     private void OnConfigChanged(object? sender, PropertyChangedEventArgs e)
@@ -302,6 +420,8 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
     /// </summary>
     internal int ApplyProfile(string settingsJson)
     {
+        if (Volatile.Read(ref _ready) == 0)
+            throw new InvalidOperationException("Advanced PB Limiter is still loading its config; the profile is sent again.");
         if (ProfileRefusal is not null)
             throw new InvalidOperationException(ProfileRefusal);
 
@@ -460,42 +580,42 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
     }
 
     /// <summary>
-    /// Rewrites an old Damage in the config file and returns the settings changed. A Quasar-managed server reads JSON, not
-    /// this file, so it is left as it is. A failure here is not the config's fault (a full disk, a file held open), so the
-    /// config is then read as it is, and set aside only if that fails.
+    /// Rewrites an old Damage in the config file and returns the settings changed. A failure here is not the config's
+    /// fault (a full disk, a file held open), so the config is then read as it is, and set aside only if that fails.
     /// </summary>
-    private static List<string> ReplaceDamage(string path, out bool copyWaiting)
+    private static async Task<(List<string> Damage, bool CopyWaiting)> ReplaceDamageAsync(string path)
     {
-        copyWaiting = false;
-        if (ManagedPluginConfiguration.Required) return new List<string>();
+        bool copyWaiting = false;
+        if (ManagedPluginConfiguration.Required) return (new List<string>(), false);
         try
         {
-            List<string> damage = InstantPunishmentFile.ReplaceDamage(path, out string? recovered, out copyWaiting);
-            if (recovered is not null)
-                Log.Warning(recovered);
+            InstantPunishmentFile.ReplaceDamageResult result = await InstantPunishmentFile.ReplaceDamageAsync(path, moveConfigAside: false).ConfigureAwait(false);
+            copyWaiting = result.CopyWaiting;
+            if (result.Recovered is not null)
+                Log.Warning(result.Recovered);
             // A copy that could not even be read, held by another program say, is left for the next start: while the
             // config is missing beside it, nothing is saved either, and the log says so, as nothing else would.
-            if (!copyWaiting && MissingWithCopy(path))
+            if (!copyWaiting && await MissingWithCopyAsync(path).ConfigureAwait(false))
             {
                 copyWaiting = true;
                 Log.Error($"The config {path} is missing and its copy at {InstantPunishmentFile.CopyPath(path)} could not be read, held by another program say. "
                           + "The server runs on the defaults and saves nothing until the next start, which restores the copy.");
             }
-            return damage;
+            return (result.Changed, copyWaiting);
         }
         catch (Exception e)
         {
             Log.Error("Could not check the config for an instant punishment of Damage; the config is read as it now is, the error says what that is", e);
             // A config still missing with its complete copy beside it is restored from that copy at the next start, as long
             // as nothing is saved first: the defaults saved now would be the config that start sees, and the copy only kept.
-            copyWaiting = MissingWithCopy(path);
-            return new List<string>();
+            copyWaiting = await MissingWithCopyAsync(path).ConfigureAwait(false);
+            return (new List<string>(), copyWaiting);
         }
     }
 
     /// <summary>The config is missing and a copy beside it may still restore it: nothing may be saved until it has.</summary>
-    private static bool MissingWithCopy(string path) =>
-        !File.Exists(path) && SafeFile.MayRestore(InstantPunishmentFile.CopyPath(path), SafeFile.IsWholeXml);
+    private static async Task<bool> MissingWithCopyAsync(string path) =>
+        !File.Exists(path) && await SafeFile.MayRestoreAsync(InstantPunishmentFile.CopyPath(path), SafeFile.IsWholeXml).ConfigureAwait(false);
 
     /// <summary>
     /// The configs set aside as unreadable, by file name: every &lt;name&gt;*.unreadable beside it, which is what the warning

@@ -67,7 +67,9 @@ try {
     $magnetarBin = Get-PropValue 'MagnetarBin'
     if (-not $magnetarBin -and -not $magnetar) {
         # A Magnetar checkout beside this one, as the author keeps it.
-        $local = [System.IO.Path]::Combine((Split-Path $PSScriptRoot -Parent), 'magnetar', 'PluginSdk', 'bin', 'Release', 'netstandard2.0')
+        $local = [System.IO.Path]::Combine(
+            (Split-Path $PSScriptRoot -Parent),
+            'magnetar', 'PluginSdk', 'bin', 'Release', 'netstandard2.0')
         if (Test-Path -LiteralPath (Join-Path $local 'PluginSdk.dll')) {
             $magnetarBin = (Get-Item -LiteralPath $local).FullName
         }
@@ -86,8 +88,14 @@ try {
     if ($magnetar) { $lines.Add('    <Magnetar>' + (XmlText $magnetar) + '</Magnetar>') }
     if ($magnetarBin) { $lines.Add('    <MagnetarBin>' + (XmlText $magnetarBin) + '</MagnetarBin>') }
     if ($quasar) { $lines.Add('    <Quasar>' + (XmlText $quasar) + '</Quasar>') }
-    if ($quasarAbstractions) { $lines.Add('    <QuasarPluginAbstractionsAssembly>' + (XmlText $quasarAbstractions) + '</QuasarPluginAbstractionsAssembly>') }
-    if ($magnetarProtocol) { $lines.Add('    <MagnetarProtocolAssembly>' + (XmlText $magnetarProtocol) + '</MagnetarProtocolAssembly>') }
+    if ($quasarAbstractions) {
+        $lines.Add('    <QuasarPluginAbstractionsAssembly>' + (XmlText $quasarAbstractions) +
+            '</QuasarPluginAbstractionsAssembly>')
+    }
+    if ($magnetarProtocol) {
+        $lines.Add('    <MagnetarProtocolAssembly>' + (XmlText $magnetarProtocol) +
+            '</MagnetarProtocolAssembly>')
+    }
     $lines.Add('  </PropertyGroup>')
     $lines.Add('</Project>')
 
@@ -97,7 +105,8 @@ try {
     Write-Output "  GameBinaries:  $GameBinaries"
     Write-Output "  TorchBinaries: $TorchBinaries"
     if ($magnetarBin) { Write-Output "  MagnetarBin:   $magnetarBin" }
-    Write-Output 'No GameBinaries or TorchBinaries links are used. If an older checkout still has them, remove the links, not the folders they point to.'
+    Write-Output ('No GameBinaries or TorchBinaries links are used. ' +
+        'If an older checkout still has them, remove the links, not the folders they point to.')
     Write-Output 'Done! You can now open "Advanced PB Limiter.sln".'
 }
 catch {

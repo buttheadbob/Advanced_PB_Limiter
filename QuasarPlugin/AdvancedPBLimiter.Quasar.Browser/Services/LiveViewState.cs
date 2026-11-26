@@ -85,7 +85,7 @@ public sealed class LiveViewState
     public double CombinedLast => Snapshot?.Players.Sum(player => player.CombinedLastRunTimeMS) ?? 0;
     public double CombinedAverage => Snapshot?.Players.Sum(player => player.CombinedRunTimeMSAvg) ?? 0;
     public long MemoryBytes => Snapshot?.Players.Sum(player => player.MemoryBytes) ?? 0;
-    public bool MemoryUnmeasured => Snapshot?.Players.Any(player => player.MemoryUnmeasured) ?? false;
+    public bool MemoryUnmeasured => Snapshot?.Players.Exists(player => player.MemoryUnmeasured) ?? false;
     public bool HasSnapshot => Snapshot is not null;
 
     public string TabKey => Tab switch
@@ -307,7 +307,7 @@ public sealed class LiveViewState
         PagePlayers = Slice(VisiblePlayers, PlayerPage);
     }
 
-    private IReadOnlyList<T> Slice<T>(IReadOnlyList<T> rows, int page)
+    private T[] Slice<T>(IReadOnlyList<T> rows, int page)
     {
         if (rows.Count == 0) return Array.Empty<T>();
         int start = Math.Max(0, (page - 1) * PageSize);

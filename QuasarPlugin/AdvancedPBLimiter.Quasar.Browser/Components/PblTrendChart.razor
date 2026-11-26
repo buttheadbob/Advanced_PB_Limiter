@@ -58,17 +58,19 @@ else
 
         double min = double.MaxValue;
         double max = double.MinValue;
+        bool any = false;
         foreach (PblTrendSeries series in Series)
         {
             foreach (double value in series.Values)
             {
                 if (!double.IsFinite(value)) continue;
+                any = true;
                 min = Math.Min(min, value);
                 max = Math.Max(max, value);
             }
         }
 
-        if (min == double.MaxValue)
+        if (!any)
         {
             min = 0d;
             max = 1d;

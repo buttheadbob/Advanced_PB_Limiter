@@ -325,6 +325,7 @@
         }
         catch (Exception e)
         {
+            Log.LogDebug(e, "Could not read the PB Limiter profiles");
             if (PageShared.ReportReadFailures.IsNew("profiles", e.Message))
                 Log.LogWarning(e, "Could not read the PB Limiter profiles");
             _error = "Could not read the profiles: " + PageShared.ShortError(e);
@@ -439,6 +440,7 @@
         }
         catch (Exception e)
         {
+            Log.LogWarning(e, "Could not check the PB Limiter edit permission");
             _error = "Could not check your permission: " + PageShared.ShortError(e);
             return false;
         }

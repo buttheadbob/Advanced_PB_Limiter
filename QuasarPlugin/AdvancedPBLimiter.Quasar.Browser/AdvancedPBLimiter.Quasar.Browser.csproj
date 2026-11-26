@@ -27,6 +27,6 @@
     <Compile Include="..\..\Shared\Utils\InvariantText.cs" Link="Shared\InvariantText.cs" />
     <Compile Include="..\..\Shared\Utils\MemoryText.cs" Link="Shared\MemoryText.cs" />
     <Compile Include="..\..\Shared\Utils\SafeName.cs" Link="Shared\SafeName.cs" />
-    <Compile Include="..\..\Shared\Utils\Signals.cs" Link="Shared\Signals.cs" />
+
   </ItemGroup>
 </Project>
