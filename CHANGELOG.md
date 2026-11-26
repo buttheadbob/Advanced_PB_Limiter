@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.4.5
+- Moves the Quasar 1.7 UI contracts and server pick keys out of `Shared` into the Quasar browser assembly. `Shared/QuasarUiContracts.cs` declares `readonly record struct`s, and Magnetar compiles every file under `Shared`, so MagnetarLegacy (.NET Framework 4.8) failed on `IsExternalInit` and could not load the plugin. The browser and the worker still compile both files.
+- The memory check's startup self-check now covers a generic class instantiated over a value type, including a reference inside its value-type field, and bounds each read to the holder's field bytes. A runtime whose shared `FieldDesc` gives a wrong offset turns the check off instead of reading a wrong field.
+- On a Quasar cluster node the Magnetar plugin stays inactive and logs why: a grid moves between the cluster's processes and its programmable blocks' run history and punishments do not follow it, and a node loads the world before plugins start. It loads the cluster's canonical config in memory only, and starts no patches, commands or session handlers.
+
 ## 1.3.4.4
 - The Torch grids keep their selected row readable: a selected row is a dark teal band with white text in both themes, instead of the system's pale highlight with white text. Memory is right aligned with the other figures, so a Recompiles count and a Memory value no longer read as one number, and text on the Settings and Privileged Players tabs follows the theme instead of the selected tab's accent. A saved text report is now a labelled, spaced list per block and player, with wrapped quick stats, instead of one long `||`-separated line per entry.
 

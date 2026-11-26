@@ -10,6 +10,7 @@ using Advanced_PB_Limiter.QuasarContracts;
 using Advanced_PB_Limiter.Utils;
 using HarmonyLib;
 using Newtonsoft.Json;
+using PluginSdk.Clustering;
 using PluginSdk.Commands;
 using PluginSdk.Config;
 using PluginSdk.Logging;
@@ -74,9 +75,33 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
     public void Init(object gameInstance)
     {
         Log.Info("Loading");
-        Instance = this;
+        string configPath = Path.Combine(MyFileSystem.UserDataPath, Name, Name + ".cfg");
 
-        _configPath = Path.Combine(MyFileSystem.UserDataPath, Name, Name + ".cfg");
+        // A Quasar cluster runs one world across several server processes. A grid moves between them, and its programmable
+        // blocks' run history, offences and punishments, kept per process, do not follow it. A cluster node also loads the
+        // world before IPlugin.Init, so the session hook below would never fire. Nothing is started: no patches, commands
+        // or session handlers, and no local file is read or written.
+        if (PluginCluster.IsClusterProcess || ManagedPluginConfiguration.Required)
+        {
+            Log.Warning("Advanced PB Limiter is not supported on a Quasar cluster: a programmable block's run history and punishments do not follow its grid "
+                        + "from one node to another. The plugin is inactive.");
+            // Magnetar checks this plugin's PluginConfig against the cluster's canonical config, so that is loaded, in memory only.
+            if (ManagedPluginConfiguration.Required)
+            {
+                try
+                {
+                    _config = ConfigStorage.LoadXml<LimiterConfig>(configPath);
+                }
+                catch (Exception e)
+                {
+                    Log.Error("Could not read the cluster's canonical config", e);
+                }
+            }
+            return;
+        }
+
+        Instance = this;
+        _configPath = configPath;
 
         // The first Magnetar build kept the config in the user data root. A missing file loads as defaults with no error,
         // so without this an update would silently drop the server's limits and privileged players.

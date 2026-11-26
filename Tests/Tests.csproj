@@ -24,7 +24,7 @@
     <Compile Include="..\Shared\Utils\SafeName.cs" Link="Shared\SafeName.cs" />
     <Compile Include="..\Shared\Utils\BatchMark.cs" Link="Shared\BatchMark.cs" />
     <Compile Include="..\Shared\Utils\GetSizeOfObject.cs" Link="Shared\GetSizeOfObject.cs" />
-    <Compile Include="..\Shared\Utils\ServerPickKeys.cs" Link="Shared\ServerPickKeys.cs" />
+    <Compile Include="..\QuasarPlugin\AdvancedPBLimiter.Quasar.Browser\Contracts\ServerPickKeys.cs" Link="Shared\ServerPickKeys.cs" Condition="'$(TargetFramework)' == 'net10.0'" />
     <Compile Include="..\QuasarPlugin\AdvancedPBLimiter.QuasarCompanion\LimiterAssemblyName.cs" Link="Shared\LimiterAssemblyName.cs" />
     <None Include="..\AdvancedPBLimiter.xml" Link="AdvancedPBLimiter.xml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
@@ -33,6 +33,11 @@
     <!-- A hostile script's types as a plain assembly: Reflection.Emit can't declare them deepest first. -->
     <ProjectReference Include="..\TestFixtures\DeepStructsFixture\DeepStructsFixture.csproj" />
     <ProjectReference Include="..\TestFixtures\DeepFieldTypeFixture\DeepFieldTypeFixture.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The pick keys are a net10 Quasar contract; net48 compiles neither the source nor this test. -->
+    <Compile Remove="ServerPickKeysTests.cs" Condition="'$(TargetFramework)' == 'net48'" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net48'">

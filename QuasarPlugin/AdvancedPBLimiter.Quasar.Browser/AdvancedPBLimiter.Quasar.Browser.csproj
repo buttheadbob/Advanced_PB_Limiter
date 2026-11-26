@@ -20,9 +20,7 @@
        DLL it is given, and does not deliver a plugin's other assemblies to the browser. -->
   <ItemGroup>
     <Compile Include="..\..\Shared\QuasarContracts.cs" Link="Contracts\QuasarContracts.cs" />
-    <Compile Include="..\..\Shared\QuasarUiContracts.cs" Link="Contracts\QuasarUiContracts.cs" />
     <Compile Include="..\..\Shared\RecentReasons.cs" Link="Contracts\RecentReasons.cs" />
-    <Compile Include="..\..\Shared\Utils\ServerPickKeys.cs" Link="Contracts\ServerPickKeys.cs" />
   </ItemGroup>
 
   <ItemGroup>
