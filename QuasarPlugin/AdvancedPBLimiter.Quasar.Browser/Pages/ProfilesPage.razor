@@ -68,6 +68,10 @@
                         </div>
                     </div>
                 }
+                @if (HidesClusterNodes)
+                {
+                    <p class="pbl-muted">@ClusterNodesNote</p>
+                }
             </PblCard>
 
             <PblCard Title="Saved profiles" Subtitle="@($"{profiles.Count} saved")">
@@ -145,6 +149,10 @@
                     <div style="margin-top: 10px;">
                         <PblServerPicker Servers="knownServers" Selected="Picked.Ids" Changed="ServersPicked" />
                     </div>
+                    @if (HidesClusterNodes)
+                    {
+                        <p class="pbl-muted" style="margin-top: 8px;">@ClusterNodesNote</p>
+                    }
 
                     <div class="pbl-buttons" style="margin-top: 12px;">
                         <button type="button" class="pbl-btn pbl-btn-primary"
@@ -293,7 +301,15 @@
     private bool _busy;
 
     private PickedServers Picked { get; } = new();
-    private IReadOnlyList<ServerInfo> Connected => _state is null ? Array.Empty<ServerInfo>() : _state.ConnectedServers;
+    // Quasar cluster nodes are left out: the limiter does not run on them, so a profile can neither be saved from nor applied to one.
+    private IReadOnlyList<ServerInfo> Connected => _state is null ? Array.Empty<ServerInfo>() : _state.ConnectedServers.FindAll(s => !IsClusterNode(s.ClusterId));
+
+    private static bool IsClusterNode(string? clusterId) => !string.IsNullOrEmpty(clusterId);
+
+    private bool HidesClusterNodes => _state is not null
+                                      && (_state.ConnectedServers.Exists(s => IsClusterNode(s.ClusterId)) || _state.KnownServers.Exists(s => IsClusterNode(s.ClusterId)));
+
+    private const string ClusterNodesNote = "Quasar cluster nodes are not listed: Advanced PB Limiter does not run on them.";
     private bool CanSave => _state?.CanSave ?? true;
 
     private string ForgetServerName =>
@@ -359,10 +375,10 @@
 
         HashSet<string> connected = _state.ConnectedServers.Select(s => s.ServerId).ToHashSet(StringComparer.Ordinal);
         List<ServerInfo> all = new(_state.KnownServers.Count + _state.ConnectedServers.Count);
-        all.AddRange(_state.ConnectedServers);
+        all.AddRange(Connected);
         foreach (KnownServer known in _state.KnownServers)
         {
-            if (connected.Contains(known.ServerId)) continue;
+            if (connected.Contains(known.ServerId) || IsClusterNode(known.ClusterId)) continue;
             all.Add(new ServerInfo
             {
                 ServerId = known.ServerId,

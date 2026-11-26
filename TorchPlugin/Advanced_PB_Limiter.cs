@@ -153,17 +153,20 @@ namespace Advanced_PB_Limiter
                 else
                     await KeepOlderDefaultsAsync(configFile, loaded).ConfigureAwait(false);
 
+                bool adopted = false;
                 lock (_stateLock)
                 {
                     if (!_disposed)
                     {
                         _config!.Adopt(loaded);
                         Volatile.Write(ref _ready, 1);
+                        adopted = true;
                     }
                 }
                 // Adopt took over a change it still had waiting, so this saves nothing.
                 loaded.Dispose();
-                Log.Info("Loaded (Torch)");
+                if (adopted)
+                    Log.Info("Loaded (Torch)");
             }
             catch (Exception e)
             {

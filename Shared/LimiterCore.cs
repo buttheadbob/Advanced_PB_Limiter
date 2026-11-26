@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Advanced_PB_Limiter.Manager;
@@ -78,9 +79,8 @@ namespace Advanced_PB_Limiter
         Task<bool> ChangeConfigAsync(Action change);
 
         /// <summary>
-        /// Why a command may not change the config on this server, or null when it may. A node of a managed cluster runs the
-        /// cluster's configuration, which only Quasar changes, for every node at once: a change on one node could never be
-        /// saved and would set it apart from the others until it restarts.
+        /// Why a command may not change the config now, or null when it may: the config is still being read, so a change
+        /// would be overwritten by it.
         /// </summary>
         string? ConfigChangeRefusal { get; }
         void LogTrace(string message);
@@ -184,6 +184,25 @@ namespace Advanced_PB_Limiter
             return new InvalidOperationException("Advanced PB Limiter was used before LimiterCore.Init.");
         }
 
+        // Game thread, as Update. A failure that repeats every tick is logged once a minute, with how many came between.
+        private static long _updateFailureLogged;
+        private static int _updateFailuresSince;
+
+        private static void LogUpdateFailure(Exception e)
+        {
+            long now = Stopwatch.GetTimestamp();
+            if (_updateFailureLogged != 0 && now - _updateFailureLogged < Stopwatch.Frequency * 60)
+            {
+                _updateFailuresSince++;
+                return;
+            }
+            Log.Error(e, _updateFailuresSince == 0
+                ? "The update failed"
+                : "The update failed, as it did " + InvariantText.Count(_updateFailuresSince, "more time", "more times") + " since the last of these lines");
+            _updateFailureLogged = now;
+            _updateFailuresSince = 0;
+        }
+
         public static void OnSessionLoaded()
         {
             if (Retired) return;
@@ -222,7 +241,7 @@ namespace Advanced_PB_Limiter
             }
             catch (Exception e)
             {
-                Log.Error(e, "The update failed");
+                LogUpdateFailure(e);
             }
 
             // A Torch plugin reload retires this instance on its own thread, and may have cleared the tracking data while

@@ -57,6 +57,11 @@
         {
             _canEdit = await SdkClient.AllowedAsync(JS, "CanEditConfigs", _closing.Token);
         }
+        catch (OperationCanceledException)
+        {
+            // The page closed while it asked.
+            _canEdit = false;
+        }
         catch (Exception e)
         {
             Log.LogWarning(e, "Could not check the PB Limiter edit permission");

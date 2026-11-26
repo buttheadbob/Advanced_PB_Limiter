@@ -72,8 +72,8 @@ namespace Advanced_PB_Limiter.Utils
         // One gate per file, keyed by its full path (case-insensitive on Windows), in this copy of the assembly.
         private static readonly ConcurrentDictionary<string, SemaphoreSlim> Gates = new(StringComparer.Ordinal);
 
-        // Whether a folder can hold a lock file, and folders already reported, by full path: each is checked and said once.
-        private static readonly ConcurrentDictionary<string, bool> FolderHolds = new(StringComparer.Ordinal);
+        // Folders found to hold a lock file, and folders already reported, by full path.
+        private static readonly ConcurrentDictionary<string, byte> FolderHolds = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, byte> Reported = new(StringComparer.Ordinal);
 
         /// <summary>
@@ -138,9 +138,7 @@ namespace Advanced_PB_Limiter.Utils
                 {
                     try
                     {
-                        FileStream opened = new(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.None);
-                        _lockFile?.Dispose();
-                        _lockFile = opened;
+                        Open(lockPath);
                         return;
                     }
                     catch (DirectoryNotFoundException)
@@ -165,13 +163,17 @@ namespace Advanced_PB_Limiter.Utils
                             }
                         }
                         if (DateTime.UtcNow >= giveUp)
-                            throw new IOException($"{lockPath} stayed held by another process for {LockWaitSeconds.ToString(CultureInfo.InvariantCulture)} seconds ({e.Message}). "
-                                                  + "Only this plugin uses it: if no other copy of the plugin runs on this file, delete the .lock file.", e);
+                            throw new IOException($"{lockPath} stayed held by another process for {LockWaitSeconds.ToString(CultureInfo.InvariantCulture)} seconds ({e.Message}), so the file was not written. "
+                                                  + "Only this plugin opens it: check that no second copy of the plugin, or another server, uses the same folder.", e);
                         // Another holder has it, an antivirus scan say: the OS lets go when that holder closes it.
                         await Task.Delay(50).ConfigureAwait(false);
                     }
                 }
             }
+
+            // Called once per hold, when no lock file is open yet.
+            private void Open(string lockPath) =>
+                _lockFile = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.None);
 
             public void Dispose()
             {
@@ -184,23 +186,23 @@ namespace Advanced_PB_Limiter.Utils
 
         /// <summary>
         /// True when a file can be made and held in <paramref name="folder"/>: one made there under a new name, which no other
-        /// process can be holding, is opened for this process alone and removed. Checked once per folder.
+        /// process can be holding, is opened for this process alone and removed. A folder that can is remembered; one that
+        /// can't is checked again at its next conflict, as a full disk or a scan may have been passing.
         /// </summary>
         private static bool CanHoldFiles(string folder)
         {
-            return FolderHolds.GetOrAdd(folder, path =>
+            if (FolderHolds.ContainsKey(folder)) return true;
+            string probe = Path.Combine(folder, ".apbl-lock-check-" + Guid.NewGuid().ToString("N") + ".tmp");
+            try
             {
-                string probe = Path.Combine(path, ".apbl-lock-check-" + Guid.NewGuid().ToString("N") + ".tmp");
-                try
-                {
-                    using FileStream stream = new(probe, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose);
-                    return true;
-                }
-                catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException)
-                {
-                    return false;
-                }
-            });
+                using (new FileStream(probe, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose))
+                    FolderHolds.TryAdd(folder, 0);
+                return true;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                return false;
+            }
         }
 
         private static void Report(string folder, string reason)

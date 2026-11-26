@@ -185,7 +185,7 @@ namespace Advanced_PB_Limiter.Commands
                 Config.ShowTimingsBurp = false;
         }
 
-        /// <summary>Why no command may change the config now, or null: the limiter was retired, or this is a node of a managed cluster.</summary>
+        /// <summary>Why no command may change the config now, or null: the limiter was retired, or its config is still being read.</summary>
         private static string? CannotChangeConfig() => LimiterCore.Retired ? LimiterCore.RetiredMessage : LimiterCore.Host.ConfigChangeRefusal;
 
         /// <summary>

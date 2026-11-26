@@ -26,6 +26,8 @@ internal static class QuasarUiOperations
     private static readonly TimeSpan TurnOffTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ProfileReadTimeout = TimeSpan.FromSeconds(20);
 
+    private const string ClusterNodeRefusal = "Advanced PB Limiter does not run on Quasar cluster nodes, so a profile can't be saved from or applied to one.";
+
     public static void Register(IServiceCollection services, QuasarPluginContext context)
     {
         services.AddQuasarOperation<EmptyPayload, ServerListResponse>(
@@ -226,7 +228,10 @@ internal static class QuasarUiOperations
             return Unchanged("The profile name must be 1 to 64 characters, with no control or hidden formatting characters.", store, reports);
 
         token.ThrowIfCancellationRequested();
-        string serverName = reports.GetServers().FirstOrDefault(s => s.ServerId == serverId)?.DisplayName ?? serverId;
+        QuasarCompanionServer? source = reports.GetServers().FirstOrDefault(s => s.ServerId == serverId);
+        if (!string.IsNullOrEmpty(source?.ClusterId))
+            return Unchanged(ClusterNodeRefusal, store, reports);
+        string serverName = source?.DisplayName ?? serverId;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeout.CancelAfter(ProfileReadTimeout);
         ProfileData data = await reports.ReadProfileAsync(serverId, timeout.Token);
@@ -281,8 +286,12 @@ internal static class QuasarUiOperations
             ? request.ServerKeys
             : (request.ServerIds ?? new List<string>()).ConvertAll(id => ServerPickKeys.For("", "", id));
         List<KnownServer> servers = store.ResolveKnown(keys);
+        // The page lists no cluster nodes; a request from an older page, or one made by hand, may still name one.
+        int clusterNodes = servers.RemoveAll(s => !string.IsNullOrEmpty(s.ClusterId));
         if (servers.Count == 0)
-            return Unchanged($"{profile.Name.SafeName()} was not queued: the chosen servers were forgotten.", store, reports);
+            return Unchanged(clusterNodes > 0
+                ? $"{profile.Name.SafeName()} was not queued. {ClusterNodeRefusal}"
+                : $"{profile.Name.SafeName()} was not queued: the chosen servers were forgotten.", store, reports);
 
         string user = caller.User.Identity?.Name ?? "unknown";
         token.ThrowIfCancellationRequested();
@@ -291,8 +300,11 @@ internal static class QuasarUiOperations
             queue.Wake();
 
         string name = profile.Name.SafeName();
+        string leftOut = clusterNodes > 0
+            ? $" {InvariantText.Count(clusterNodes, "cluster node was", "cluster nodes were")} left out: Advanced PB Limiter does not run on them."
+            : "";
         string message = queued.Result.Changed
-            ? $"Applying {name} to {InvariantText.Count(queued.Servers, "server", "servers")}. Progress is shown below."
+            ? $"Applying {name} to {InvariantText.Count(queued.Servers, "server", "servers")}. Progress is shown below.{leftOut}"
             : $"{name} was not queued: the chosen servers were forgotten.";
         return Result(queued.Result, message, store, reports);
     }

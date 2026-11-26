@@ -314,7 +314,22 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
             start = new ConfigStart(_configPath, new LimiterConfig(), false, new List<string>(), false, false,
                                     "The config was not saved: it could not be loaded, so the settings in use are the defaults");
         }
-        ApplyStart(start);
+
+        try
+        {
+            ApplyStart(start);
+        }
+        catch (Exception e)
+        {
+            // Nothing observes this task, so the limiter starts here either way, on what it has, and saves nothing over the file.
+            Log.Error("Could not apply the config that was read; the limiter runs on the settings it has and saves no change until the server restarts", e);
+            lock (_stateLock)
+            {
+                if (_disposed) return;
+                _saveBlocked = "The config was not saved: it could not be applied when it was read";
+            }
+            Volatile.Write(ref _ready, 1);
+        }
     }
 
     /// <summary>
