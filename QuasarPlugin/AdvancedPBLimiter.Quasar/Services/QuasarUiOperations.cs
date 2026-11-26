@@ -281,13 +281,16 @@ internal static class QuasarUiOperations
 
         // A server connected now but not listed yet is recorded first, so it can be queued for as well.
         token.ThrowIfCancellationRequested();
-        await store.RecordSeenAsync(reports.GetServers());
+        List<QuasarCompanionServer> connected = reports.GetServers();
+        await store.RecordSeenAsync(connected);
         List<string> keys = request.ServerKeys is { Count: > 0 }
-            ? request.ServerKeys
+            ? new List<string>(request.ServerKeys)
             : (request.ServerIds ?? new List<string>()).ConvertAll(id => ServerPickKeys.For("", "", id));
+        // The page lists no cluster nodes, and the store keeps none; a request from an older page, or one made by hand, may
+        // still name one, by its cluster slot or by the id of a node connected now.
+        HashSet<string> nodeIds = connected.Where(server => !string.IsNullOrEmpty(server.ClusterId)).Select(server => server.ServerId).ToHashSet(StringComparer.Ordinal);
+        int clusterNodes = keys.RemoveAll(key => ServerPickKeys.TryCluster(key, out _, out _) || nodeIds.Contains(ServerPickKeys.ServerIdOf(key)));
         List<KnownServer> servers = store.ResolveKnown(keys);
-        // The page lists no cluster nodes; a request from an older page, or one made by hand, may still name one.
-        int clusterNodes = servers.RemoveAll(s => !string.IsNullOrEmpty(s.ClusterId));
         if (servers.Count == 0)
             return Unchanged(clusterNodes > 0
                 ? $"{profile.Name.SafeName()} was not queued. {ClusterNodeRefusal}"

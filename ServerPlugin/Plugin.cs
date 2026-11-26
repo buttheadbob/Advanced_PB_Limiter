@@ -219,13 +219,14 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
     /// <summary>What <see cref="ReadConfigAsync"/> read, for <see cref="ApplyStart"/>.</summary>
     private sealed class ConfigStart
     {
-        public ConfigStart(string path, LimiterConfig loaded, bool loadedOk, List<string> damage, bool copyWaiting, bool fromLegacy, string? saveBlocked)
+        public ConfigStart(string path, LimiterConfig loaded, bool loadedOk, List<string> damage, bool copyWaiting, bool configWhole, bool fromLegacy, string? saveBlocked)
         {
             Path = path;
             Loaded = loaded;
             LoadedOk = loadedOk;
             Damage = damage;
             CopyWaiting = copyWaiting;
+            ConfigWhole = configWhole;
             FromLegacy = fromLegacy;
             SaveBlocked = saveBlocked;
         }
@@ -235,6 +236,7 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
         public bool LoadedOk { get; }
         public List<string> Damage { get; }
         public bool CopyWaiting { get; }
+        public bool ConfigWhole { get; }
         public bool FromLegacy { get; }
         public string? SaveBlocked { get; }
     }
@@ -248,7 +250,7 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
         ConfigStart start;
         try
         {
-            (List<string> damage, bool copyWaiting) = await ReplaceDamageAsync(_configPath).ConfigureAwait(false);
+            (List<string> damage, bool copyWaiting, bool rewriteFailed) = await ReplaceDamageAsync(_configPath).ConfigureAwait(false);
 
             // A config set aside as unreadable is still the newer one, so the old file is not read in its place, nor while a copy
             // of the newer one waits to be restored. An old file set aside while a copy of it waited (see copyWaiting below)
@@ -276,7 +278,7 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
 
             if (fromLegacy)
             {
-                (damage, copyWaiting) = await ReplaceDamageAsync(legacyPath).ConfigureAwait(false);
+                (damage, copyWaiting, rewriteFailed) = await ReplaceDamageAsync(legacyPath).ConfigureAwait(false);
                 // Only a copy of the old config was there, and its Damage step found it cut short and removed it: there is no
                 // old config to import, so the defaults are not saved as if one had been moved.
                 if (!copyWaiting && !File.Exists(legacyPath))
@@ -300,18 +302,33 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
                 Log.Error($"Could not open the config {path}, using defaults; changes are not saved until the server restarts", e);
                 saveBlocked = "The config was not saved: the file that could not be opened is still in its place";
             }
+            catch (Exception e) when (copyWaiting)
+            {
+                // Cut short beside a complete copy: the next start moves it aside and restores the copy, so it stays where it is.
+                Log.Error($"Could not read the config {path}, using defaults. The copy at {InstantPunishmentFile.CopyPath(path)} restores it at the next start; changes are not saved until then.", e);
+            }
+            catch (Exception e) when (rewriteFailed)
+            {
+                // It still holds a Damage this version can't read, as its rewrite failed (a read-only file, say): it is kept as
+                // it is and nothing is saved over it, so its settings are not lost.
+                Log.Error($"Could not read the config {path}: it still holds an instant punishment of Damage, which could not be rewritten (see the error above). "
+                          + "The server runs on the defaults and saves nothing over the file until it restarts. Make the file writable, or set TurnOff or Destroy in it, and restart.", e);
+                saveBlocked = "The config was not saved: it holds a Damage that could not be rewritten, and is kept as it is";
+            }
             catch (Exception e)
             {
                 Log.Error("Could not read the config, using defaults", e);
                 saveBlocked = SetAside(path);
             }
 
-            start = new ConfigStart(path, loaded, loadedOk, damage, copyWaiting, fromLegacy, saveBlocked);
+            // Only a config that is whole keeps a waiting copy from becoming it; one cut short is moved aside by the next start.
+            bool configWhole = copyWaiting && await SafeFile.IsWholeAsync(path, SafeFile.IsWholeXml).ConfigureAwait(false);
+            start = new ConfigStart(path, loaded, loadedOk, damage, copyWaiting, configWhole, fromLegacy, saveBlocked);
         }
         catch (Exception e)
         {
             Log.Error("Could not finish loading the config; the limiter runs on the defaults and saves no change until the server restarts", e);
-            start = new ConfigStart(_configPath, new LimiterConfig(), false, new List<string>(), false, false,
+            start = new ConfigStart(_configPath, new LimiterConfig(), false, new List<string>(), false, false, false,
                                     "The config was not saved: it could not be loaded, so the settings in use are the defaults");
         }
 
@@ -352,7 +369,7 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
             CopyInto(_config, start.Loaded);
             _config.PropertyChanged += OnConfigChanged;
         }
-        if (start.CopyWaiting && File.Exists(start.Path))
+        if (start.CopyWaiting && start.ConfigWhole)
             Log.Error($"The copy at {copy} can't become the config by itself: the config is still in its place. "
                       + $"Stop the server and move {copy} to {start.Path} to use the copy, or delete the copy to keep the config. Changes are not saved until then.");
 
@@ -607,10 +624,10 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
     /// Rewrites an old Damage in the config file and returns the settings changed. A failure here is not the config's
     /// fault (a full disk, a file held open), so the config is then read as it is, and set aside only if that fails.
     /// </summary>
-    private static async Task<(List<string> Damage, bool CopyWaiting)> ReplaceDamageAsync(string path)
+    private static async Task<(List<string> Damage, bool CopyWaiting, bool RewriteFailed)> ReplaceDamageAsync(string path)
     {
         bool copyWaiting = false;
-        if (ManagedPluginConfiguration.Required) return (new List<string>(), false);
+        if (ManagedPluginConfiguration.Required) return (new List<string>(), false, false);
         try
         {
             InstantPunishmentFile.ReplaceDamageResult result = await InstantPunishmentFile.ReplaceDamageAsync(path, moveConfigAside: false).ConfigureAwait(false);
@@ -618,14 +635,14 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
             if (result.Recovered is not null)
                 Log.Warning(result.Recovered);
             // A copy that could not even be read, held by another program say, is left for the next start: while the
-            // config is missing or cut short beside it, nothing is saved either, and the log says so, as nothing else would.
+            // config is missing beside it, nothing is saved either, and the log says so, as nothing else would.
             if (!copyWaiting && await CopyWaitsAsync(path).ConfigureAwait(false))
             {
                 copyWaiting = true;
-                Log.Error($"The config {path} is missing or cut short and its copy at {InstantPunishmentFile.CopyPath(path)} could not be put back yet. "
+                Log.Error($"The config {path} is missing and its copy at {InstantPunishmentFile.CopyPath(path)} could not be read, held by another program say. "
                           + "The server runs on the defaults and saves nothing until the next start, which restores the copy.");
             }
-            return (result.Changed, copyWaiting);
+            return (result.Changed, copyWaiting, false);
         }
         catch (Exception e)
         {
@@ -634,7 +651,7 @@ public sealed class Plugin : IPlugin, IPbLimiterHost
             // start, as long as nothing is saved first: the defaults saved now would be the config that start sees, and the
             // copy only kept. A rename and then a write in place that both failed, on a full disk say, leave it cut short.
             copyWaiting = await CopyWaitsAsync(path).ConfigureAwait(false);
-            return (new List<string>(), copyWaiting);
+            return (new List<string>(), copyWaiting, true);
         }
     }
 

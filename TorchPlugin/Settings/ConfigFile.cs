@@ -159,8 +159,10 @@ namespace Advanced_PB_Limiter.Settings
             catch (Exception e) when (e is InvalidOperationException or InvalidDataException or XmlException)
             {
                 // Cut short beside a complete copy (a rename and then a write in place that both failed, on a full disk say):
-                // the next start moves it aside and restores the copy, as long as nothing is saved over it first.
-                if (await WaitingCopyAsync(path).ConfigureAwait(false) is { } copy)
+                // the next start moves it aside and restores the copy, as long as nothing is saved over it first. A config that
+                // is whole but can't be read is not restored over, so it is moved aside as before.
+                if (!await SafeFile.IsWholeAsync(path, SafeFile.IsWholeXml).ConfigureAwait(false)
+                    && await WaitingCopyAsync(path).ConfigureAwait(false) is { } copy)
                 {
                     Log.Error(e, "The config " + path + " could not be read and the copy at " + copy + " could not be put back. Advanced PB Limiter runs on the defaults and saves nothing until Torch restarts, when the copy is restored.");
                     return new ConfigFile(path, new Advanced_PB_LimiterConfig(), true, "the config could not be read, and its copy at " + copy + " is restored when Torch restarts");

@@ -175,9 +175,8 @@ namespace Advanced_PB_Limiter.Utils
             // Synchronous on purpose: it runs inside the async retry loop, where closing a stream would otherwise block it.
             private void Open(string lockPath)
             {
-                FileStream opened = new(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.None);
                 _lockFile?.Dispose();
-                _lockFile = opened;
+                _lockFile = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.None);
             }
 
             public void Dispose()
