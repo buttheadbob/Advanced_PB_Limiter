@@ -1,12 +1,12 @@
 #nullable enable
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
@@ -17,9 +17,10 @@ namespace Advanced_PB_Limiter.Utils
     /// <summary>
     /// Replaces a file through a complete copy written beside it, so a crash or kill at any point leaves the old file, the
     /// new file, or a complete copy that <see cref="RecoverAsync"/> puts back. Writes and recoveries of the same file run
-    /// one at a time, also across copies of the plugin's assembly in one process (an old and a new one after a Torch reload,
-    /// say), through a lock file the runtime releases when the holder exits. The lock is held across awaits, so it is not a
-    /// thread-affine mutex.
+    /// one at a time: within this copy of the assembly through a gate per file, and across processes through a lock on
+    /// &lt;file&gt;.lock beside it, which the OS releases when the holder exits. On Windows that lock also keeps two copies of
+    /// the assembly in one process apart (an old and a new one after a Torch reload); on Linux it is a POSIX record lock,
+    /// which belongs to the whole process. The lock is held across awaits, so it is not a thread-affine mutex.
     /// </summary>
     public static class SafeFile
     {
@@ -64,14 +65,64 @@ namespace Advanced_PB_Limiter.Utils
         // Windows is the only system with this separator. Case-insensitive paths only there.
         private static readonly bool OnWindows = Path.DirectorySeparatorChar == '\\';
 
+        // How long a lock another process holds is waited for. A write or recovery takes milliseconds, so a lock held longer
+        // than this is stuck, or held by something other than this plugin.
+        private const int LockWaitSeconds = 15;
+
+        // One gate per file, keyed by its full path (case-insensitive on Windows), in this copy of the assembly.
+        private static readonly ConcurrentDictionary<string, SemaphoreSlim> Gates = new(StringComparer.Ordinal);
+
         /// <summary>
         /// Holds the lock of <paramref name="path"/> until disposed, for a caller that reads and writes it as one step with
         /// <see cref="WriteHeldAsync"/> and <see cref="RecoverHeldAsync"/>. Not taken again by the same caller: those don't take it.
+        /// Where no lock file can be made beside the file (a read-only folder, a file system that does not lock), only the
+        /// gate in this process is held. Throws IOException when another process holds the lock file longer than
+        /// <see cref="LockWaitSeconds"/>.
         /// </summary>
         public static async Task<IDisposable> HoldAsync(string path)
         {
-            string name = LockName(path);
-            string lockPath = LockPath(name);
+            SemaphoreSlim gate = Gates.GetOrAdd(GateKey(path), _ => new SemaphoreSlim(1, 1));
+            await gate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                FileStream? locked = await LockFileAsync(path + ".lock").ConfigureAwait(false);
+                return new Release(() =>
+                {
+                    if (locked is not null)
+                    {
+                        try
+                        {
+                            locked.Unlock(0, 1);
+                        }
+                        catch (IOException)
+                        {
+                            // Closing the handle releases it in any case.
+                        }
+                        locked.Dispose();
+                    }
+                    gate.Release();
+                });
+            }
+            catch
+            {
+                gate.Release();
+                throw;
+            }
+        }
+
+        private static string GateKey(string path)
+        {
+            string key = Path.GetFullPath(path);
+            return OnWindows ? key.ToUpperInvariant() : key;
+        }
+
+        /// <summary>
+        /// Locks the first byte of <paramref name="lockPath"/>, creating it if needed, and returns the open file; null when
+        /// no lock file can be made or locked there. Retries only while another holder has it, up to <see cref="LockWaitSeconds"/>.
+        /// </summary>
+        private static async Task<FileStream?> LockFileAsync(string lockPath)
+        {
+            DateTime giveUp = DateTime.UtcNow.AddSeconds(LockWaitSeconds);
             while (true)
             {
                 FileStream? stream = null;
@@ -79,109 +130,46 @@ namespace Advanced_PB_Limiter.Utils
                 {
                     stream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite, 1, FileOptions.None);
                     stream.Lock(0, 1);
-                    return new Held(stream, null);
+                    return stream;
                 }
-                catch (IOException)
+                catch (Exception e) when (e is UnauthorizedAccessException or NotSupportedException or PlatformNotSupportedException
+                                              or DirectoryNotFoundException or FileNotFoundException or PathTooLongException)
                 {
-                    // Another holder has it; the OS drops the lock when that process or thread ends.
-                    stream?.Dispose();
+                    // Not a holder: the lock file can't be made or locked here. The gate in this process still applies.
+                    await DisposeAsync(stream).ConfigureAwait(false);
+                    return null;
+                }
+                catch (IOException e)
+                {
+                    // Another holder has it: the OS releases it when that holder closes it or its process ends.
+                    await DisposeAsync(stream).ConfigureAwait(false);
+                    if (DateTime.UtcNow >= giveUp)
+                        throw new IOException($"{lockPath} stayed locked by another process for {LockWaitSeconds.ToString(CultureInfo.InvariantCulture)} seconds ({e.Message}). "
+                                              + "If no other copy of the plugin uses this file, delete the .lock file.", e);
                     await Task.Delay(50).ConfigureAwait(false);
                 }
-                catch (Exception e) when (e is UnauthorizedAccessException or NotSupportedException or PlatformNotSupportedException or DirectoryNotFoundException)
-                {
-                    // A read-only temp folder, or a file system that does not lock; see HoldFallbackAsync.
-                    stream?.Dispose();
-                    return await HoldFallbackAsync(name).ConfigureAwait(false);
-                }
             }
         }
 
-        /// <summary>
-        /// A lock file name can't hold a path, so it holds a hash of it (64-bit FNV-1a over UTF-8). Two paths with the
-        /// same hash only wait for each other.
-        /// </summary>
-        private static string LockName(string path)
+        /// <summary>Runs its action once, on the first Dispose.</summary>
+        private sealed class Release : IDisposable
         {
-            string key = Path.GetFullPath(path);
-            if (OnWindows) key = key.ToUpperInvariant();
-            ulong hash = 14695981039346656037UL;
-            foreach (byte b in Encoding.UTF8.GetBytes(key))
-                hash = unchecked((hash ^ b) * 1099511628211UL);
-            return "apbl-safefile-" + hash.ToString("x16", CultureInfo.InvariantCulture);
+            private Action? _release;
+
+            public Release(Action release) => _release = release;
+
+            public void Dispose() => Interlocked.Exchange(ref _release, null)?.Invoke();
         }
 
-        private static string LockPath(string name) => Path.Combine(Path.GetTempPath(), name + ".lock");
-
-        // Where a lock file can't be made (a read-only temp folder, or a file system that does not lock), a gate per name in
-        // this copy of the assembly is used instead: it still keeps this plugin's own writes apart.
-        private sealed class LockGate
+        private static Task DisposeAsync(Stream? stream)
         {
-            public bool Busy;
-        }
-
-        private static readonly Dictionary<string, LockGate> FallbackGates = new(StringComparer.Ordinal);
-
-        private static LockGate Gate(string name)
-        {
-            lock (FallbackGates)
-            {
-                if (!FallbackGates.TryGetValue(name, out LockGate? gate))
-                    FallbackGates[name] = gate = new LockGate();
-                return gate;
-            }
-        }
-
-        private static async Task<IDisposable> HoldFallbackAsync(string name)
-        {
-            LockGate gate = Gate(name);
-            while (true)
-            {
-                lock (gate)
-                {
-                    if (!gate.Busy)
-                    {
-                        gate.Busy = true;
-                        return new Held(null, gate);
-                    }
-                }
-                await Task.Delay(50).ConfigureAwait(false);
-            }
-        }
-
-        private sealed class Held : IDisposable
-        {
-            private readonly FileStream? _stream;
-            private readonly LockGate? _gate;
-
-            public Held(FileStream? stream, LockGate? gate)
-            {
-                _stream = stream;
-                _gate = gate;
-            }
-
-            public void Dispose()
-            {
-                if (_stream is not null)
-                {
-                    try
-                    {
-                        _stream.Unlock(0, 1);
-                    }
-                    catch (IOException)
-                    {
-                        // The handle closing releases it in any case.
-                    }
-                    _stream.Dispose();
-                }
-                if (_gate is not null)
-                {
-                    lock (_gate)
-                    {
-                        _gate.Busy = false;
-                        Monitor.PulseAll(_gate);
-                    }
-                }
-            }
+            if (stream is null) return Task.CompletedTask;
+#if NETCOREAPP
+            return stream.DisposeAsync().AsTask();
+#else
+            stream.Dispose();
+            return Task.CompletedTask;
+#endif
         }
 
         /// <summary>
@@ -196,20 +184,20 @@ namespace Advanced_PB_Limiter.Utils
         /// replaces it. Throws IOException or UnauthorizedAccessException when nothing could be written. Returns the swap
         /// error when the file was written in place, otherwise null.
         /// </summary>
-        public static async Task<WriteResult> WriteAsync(string path, string temp, MemoryStream content, Func<byte[], bool> isComplete)
+        public static async Task<WriteResult> WriteAsync(string path, string temp, byte[] content, Func<byte[], bool> isComplete)
         {
             using (IDisposable hold = await HoldAsync(path).ConfigureAwait(false))
                 return await WriteHeldAsync(path, temp, content, isComplete).ConfigureAwait(false);
         }
 
         /// <summary>As <see cref="WriteAsync"/>, for a caller already in <see cref="HoldAsync"/>.</summary>
-        public static async Task<WriteResult> WriteHeldAsync(string path, string temp, MemoryStream content, Func<byte[], bool> isComplete)
+        public static async Task<WriteResult> WriteHeldAsync(string path, string temp, byte[] content, Func<byte[], bool> isComplete)
         {
             string? kept = null;
             if (File.Exists(temp) && !await IsWholeAsync(path, isComplete).ConfigureAwait(false))
             {
                 byte[] earlier = await ReadAllBytesAsync(temp).ConfigureAwait(false);
-                if (isComplete(earlier) && !earlier.SequenceEqual(content.ToArray()))
+                if (isComplete(earlier) && !earlier.SequenceEqual(content))
                     kept = KeptFile.Keep(temp, ".kept");
             }
             string keptNote = kept is null ? "" : $" A complete copy an earlier write left was kept as {kept}.";
@@ -356,8 +344,7 @@ namespace Advanced_PB_Limiter.Utils
             {
                 try
                 {
-                    using (MemoryStream complete = new(copy, false))
-                        await WriteFileAsync(path, complete, FileShare.Read).ConfigureAwait(false);
+                    await WriteFileAsync(path, copy, FileShare.Read).ConfigureAwait(false);
                 }
                 catch (Exception writeError) when (writeError is IOException or UnauthorizedAccessException)
                 {
@@ -496,28 +483,39 @@ namespace Advanced_PB_Limiter.Utils
         }
 
         /// <summary>The bytes of a file, for <see cref="InstantPunishmentFile"/>, which reads and writes it as one step.</summary>
-        internal static async Task<byte[]> ReadAllBytesAsync(string path)
+        internal static Task<byte[]> ReadAllBytesAsync(string path)
         {
 #if NETCOREAPP
-            return await File.ReadAllBytesAsync(path).ConfigureAwait(false);
+            return File.ReadAllBytesAsync(path);
 #else
+            return ReadAllBytesFrameworkAsync(path);
+#endif
+        }
+
+#if !NETCOREAPP
+        private static async Task<byte[]> ReadAllBytesFrameworkAsync(string path)
+        {
             using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous);
             using MemoryStream memory = new();
             await stream.CopyToAsync(memory).ConfigureAwait(false);
             return memory.ToArray();
-#endif
         }
-
-        private static async Task WriteFileAsync(string path, MemoryStream content, FileShare share)
-        {
-            content.Position = 0;
-#if NETCOREAPP
-            await using FileStream stream = new(path, FileMode.Create, FileAccess.Write, share, 4096, FileOptions.Asynchronous);
-#else
-            using FileStream stream = new(path, FileMode.Create, FileAccess.Write, share, 4096, FileOptions.Asynchronous);
 #endif
-            await content.CopyToAsync(stream).ConfigureAwait(false);
-            stream.Flush(true);
+
+        /// <summary>
+        /// Writes <paramref name="bytes"/> to <paramref name="path"/>, replacing it. Write-through, so the data is on disk when
+        /// the write completes, before any rename puts it in place.
+        /// </summary>
+        private static async Task WriteFileAsync(string path, byte[] bytes, FileShare share)
+        {
+            const FileOptions options = FileOptions.Asynchronous | FileOptions.WriteThrough;
+#if NETCOREAPP
+            await using FileStream stream = new(path, FileMode.Create, FileAccess.Write, share, 4096, options);
+#else
+            using FileStream stream = new(path, FileMode.Create, FileAccess.Write, share, 4096, options);
+#endif
+            await stream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
+            await stream.FlushAsync().ConfigureAwait(false);
         }
 
         private static void DeleteIfPresent(string path)

@@ -72,10 +72,7 @@ namespace Advanced_PB_Limiter.Utils
             if (!File.Exists(path)) return new ReplaceDamageResult(changed, recovered, copyWaiting);
 
             byte[] original = await SafeFile.ReadAllBytesAsync(path).ConfigureAwait(false);
-            XDocument document;
-            using (MemoryStream read = new(original))
-            using (XmlReader reader = SafeXml.Reader(read))
-                document = XDocument.Load(reader);
+            XDocument document = Parse(original);
             XElement? root = document.Root;
             if (root is null) return new ReplaceDamageResult(changed, recovered, copyWaiting);
 
@@ -89,7 +86,7 @@ namespace Advanced_PB_Limiter.Utils
 
             byte[]? edited = EditText(original, changed);
             if (edited is not null && !OnlyTheseChanged(edited, document, changed)) edited = null;
-            using MemoryStream written = edited is not null ? new(edited) : Rewrite(original, changed);
+            byte[] written = edited ?? Rewrite(original, changed);
             // A kept copy that matches this rewrite was this same rewrite, interrupted before it was swapped in.
             string? leftover = recovery.Recovery switch
             {
@@ -97,7 +94,7 @@ namespace Advanced_PB_Limiter.Utils
                 SafeFile.Recovery.KeepFailed => temp,
                 _ => null
             };
-            if (leftover is not null && await SafeFile.DropIfSameAsync(leftover, written.ToArray()).ConfigureAwait(false))
+            if (leftover is not null && await SafeFile.DropIfSameAsync(leftover, written).ConfigureAwait(false))
             {
                 recovered = null;
             }
@@ -165,7 +162,7 @@ namespace Advanced_PB_Limiter.Utils
                 root.Element(root.Name.Namespace + name)?.SetValue("TurnOff");
             try
             {
-                return XNode.DeepEquals(expected.Root, Parse(edited)?.Root);
+                return XNode.DeepEquals(expected.Root, Parse(edited).Root);
             }
             catch (XmlException)
             {
@@ -173,7 +170,7 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
 
-        private static XDocument? Parse(byte[] bytes)
+        private static XDocument Parse(byte[] bytes)
         {
             using MemoryStream read = new(bytes);
             using XmlReader reader = SafeXml.Reader(read);
@@ -181,7 +178,7 @@ namespace Advanced_PB_Limiter.Utils
         }
 
         /// <summary>The file written again from its parsed document with Damage replaced, in the encoding it was read in.</summary>
-        private static MemoryStream Rewrite(byte[] original, List<string> settings)
+        private static byte[] Rewrite(byte[] original, List<string> settings)
         {
             XDocument document;
             using (MemoryStream read = new(original))
@@ -195,12 +192,11 @@ namespace Advanced_PB_Limiter.Utils
                     root.Element(root.Name.Namespace + name)?.SetValue("TurnOff");
             }
 
-            MemoryStream written = new();
+            using MemoryStream written = new();
             XmlWriterSettings writeSettings = new() { Encoding = EncodingOf(original, document), Indent = false, NewLineHandling = NewLineHandling.Entitize };
             using (XmlWriter writer = XmlWriter.Create(written, writeSettings))
                 document.Save(writer);
-            written.Position = 0;
-            return written;
+            return written.ToArray();
         }
 
         /// <summary>

@@ -34,29 +34,37 @@ namespace Advanced_PB_Limiter
         private TorchSessionManager? _sessionManager;
         public Advanced_PB_LimiterConfig? Config => _config?.Data;
 
-        // The live config is on its defaults until the file is read, and the limiter enforces those meanwhile. Torch starts
-        // the world after Init, so the read runs beside it and the settings are copied into the same config instance.
+        // The config file is read beside Torch's start, on a pool thread, and its settings copied into the live config
+        // instance, which the tab and the limiter hold from Init, when read. Until then nothing is enforced and nothing is
+        // saved: the session-loaded step, the limiter's Update and commands that change settings wait for it. The
+        // session-loaded step itself runs only on the game thread, from the session event or the first Update after the
+        // config is ready, so it runs exactly once per session.
         private readonly object _stateLock = new();
         private int _ready;
         private bool _disposed;
         private bool _sessionLoaded;
         private bool _sessionLoadRaised;
 
+        internal bool IsReady => Volatile.Read(ref _ready) != 0;
+
+        private const string StillLoading = "Advanced PB Limiter is still loading its config; nothing was changed. Try again in a moment.";
+
         // IPbLimiterHost
         IPbLimiterConfig IPbLimiterHost.Config => Config!;
-        // The change arms the autosave; Save starts the write now and calls that autosave off, so the file is written once.
-        bool IPbLimiterHost.ChangeConfig(Action change)
+        // The change arms the autosave; the save here writes it now and calls that autosave off, so the file is written once.
+        async Task<bool> IPbLimiterHost.ChangeConfigAsync(Action change)
         {
-            if (Volatile.Read(ref _ready) == 0)
+            if (!IsReady)
             {
+                // The commands ask ConfigChangeRefusal first, which refuses while the config loads.
                 Log.Warn("A setting change came before the config had loaded; it was not applied");
                 return false;
             }
             change();
-            return Save();
+            return await SaveAsync().ConfigureAwait(false);
         }
-        // Torch has no managed configuration: every command may change the config.
-        string? IPbLimiterHost.ConfigChangeRefusal => null;
+        // Torch has no managed configuration: every command may change the config once it has loaded.
+        string? IPbLimiterHost.ConfigChangeRefusal => IsReady ? null : StillLoading;
         void IPbLimiterHost.LogTrace(string message) => Log.Trace(message);
         void IPbLimiterHost.LogInfo(string message) => Log.Info(message);
         void IPbLimiterHost.LogWarn(string message) => Log.Warn(message);
@@ -100,6 +108,8 @@ namespace Advanced_PB_Limiter
                 // A game update that changed something the limiter needs must not take the server down.
                 Log.Fatal(e, "The game no longer matches this version, Advanced PB Limiter is inactive");
                 LimiterCore.RetireMismatched();
+                // The config is still read, so the tab shows the server's settings rather than the defaults.
+                _ = InitializeAsync(configFile);
                 return;
             }
 
@@ -113,8 +123,8 @@ namespace Advanced_PB_Limiter
         }
 
         /// <summary>
-        /// Reads the config beside the running defaults and copies it into the live instance once it is ready. The session
-        /// events and Update are gated until then.
+        /// Pool thread: deals with the config file, reads it and copies it into the live instance. A failure leaves the
+        /// defaults, with saves refused so they never replace the file.
         /// </summary>
         private async Task InitializeAsync(string configFile)
         {
@@ -137,47 +147,49 @@ namespace Advanced_PB_Limiter
                 }
 
                 ConfigFile loaded = await ConfigFile.LoadAsync(configFile).ConfigureAwait(false);
-                bool runLoaded;
+                if (loaded.IsNew)
+                    Log.Info("Using the default config.");
+                else if (!LimiterCore.Retired)
+                    await KeepOlderDefaultsAsync(configFile, loaded).ConfigureAwait(false);
+
                 lock (_stateLock)
                 {
-                    if (_disposed)
+                    if (!_disposed)
                     {
-                        loaded.Dispose();
-                        return;
+                        _config!.Adopt(loaded);
+                        Volatile.Write(ref _ready, 1);
                     }
-                    _config!.Adopt(loaded);
-                    _ready = 1;
-                    runLoaded = _sessionLoaded && !_sessionLoadRaised;
-                    if (runLoaded) _sessionLoadRaised = true;
                 }
+                // Adopt took over a change it still had waiting, so this saves nothing.
                 loaded.Dispose();
-
-                if (_config!.IsNew)
-                    Log.Info("Using the default config.");
-                else
-                    await KeepOlderDefaultsAsync(configFile, _config).ConfigureAwait(false);
-
                 Log.Info("Loaded (Torch)");
-                if (runLoaded) RaiseSessionLoaded();
             }
             catch (Exception e)
             {
-                Log.Error(e, "Could not finish loading the config; the limiter runs on its defaults");
-                bool runLoaded;
+                Log.Error(e, "Could not finish loading the config; the limiter runs on the defaults and saves no change until Torch restarts");
                 lock (_stateLock)
                 {
                     if (_disposed) return;
-                    _ready = 1;
-                    runLoaded = _sessionLoaded && !_sessionLoadRaised;
-                    if (runLoaded) _sessionLoadRaised = true;
+                    _config!.RefuseSaves("the config could not be loaded");
+                    Volatile.Write(ref _ready, 1);
                 }
-                if (runLoaded) RaiseSessionLoaded();
             }
         }
 
+        /// <summary>Game thread. Runs the limiter once the config is ready, starting it on the loaded world first.</summary>
         public override void Update()
         {
-            if (Volatile.Read(ref _ready) == 0) return;
+            if (!IsReady) return;
+            if (!_sessionLoadRaised && Volatile.Read(ref _sessionLoaded))
+            {
+                bool raise;
+                lock (_stateLock)
+                {
+                    raise = !_disposed && _sessionLoaded && !_sessionLoadRaised;
+                    if (raise) _sessionLoadRaised = true;
+                }
+                if (raise) RaiseSessionLoaded();
+            }
             LimiterCore.Update();
         }
 
@@ -192,7 +204,8 @@ namespace Advanced_PB_Limiter
         /// a stop keeps the process and its plugins for the next start, and closing or restarting it ends the process without
         /// disposing them. A Torch that does call it is shutting down, not reloading: the limiter then only stops, and says
         /// nothing about a reload. <see cref="DisposedForShutdown"/> says which it is, and takes a reload when unsure.
-        /// Either way a change still waiting for the autosave, or for its retry after a failed save, gets one last try.
+        /// Either way a change still waiting for the autosave, or for its retry after a failed save, gets one last save, which
+        /// Dispose waits for.
         /// </summary>
         public override void Dispose()
         {
@@ -248,12 +261,13 @@ namespace Advanced_PB_Limiter
             switch (state)
             {
                 case TorchSessionState.Loaded:
+                    // The limiter starts on the world now when the config is ready, else at the first Update once it is.
                     bool run;
                     lock (_stateLock)
                     {
                         if (_disposed || _sessionLoaded) return;
                         _sessionLoaded = true;
-                        run = Volatile.Read(ref _ready) != 0 && !_sessionLoadRaised;
+                        run = IsReady && !_sessionLoadRaised;
                         if (run) _sessionLoadRaised = true;
                     }
                     if (run) RaiseSessionLoaded();
@@ -282,7 +296,8 @@ namespace Advanced_PB_Limiter
         /// <summary>
         /// Instant kills and the memory limit always used Destroy before they had a setting. A file saved before then has no
         /// element for them, which XmlSerializer reads as the new TurnOff default, so it is set back to Destroy and saved.
-        /// Only a config read from the file is checked, so a new config starts at TurnOff.
+        /// Only a config read from the file is checked, so a new config starts at TurnOff. Runs on the loaded instance before
+        /// it is adopted; a save that fails here is taken over by the live instance's autosave.
         /// </summary>
         private static async Task KeepOlderDefaultsAsync(string configFile, ConfigFile config)
         {
@@ -303,7 +318,7 @@ namespace Advanced_PB_Limiter
 
                 if (!changed) return;
                 // This save calls off the autosave the changes above armed, so the file is written once.
-                config.Save();
+                await config.SaveAsync().ConfigureAwait(false);
                 Log.Info("This config was saved before the instant kill and memory punishments had a setting: they stay at Destroy, as before. New configs start at TurnOff.");
             }
             catch (Exception e)
@@ -319,20 +334,25 @@ namespace Advanced_PB_Limiter
         private static async Task<bool> ConfigFileLacksAsync(string path, string element)
         {
             if (!File.Exists(path)) return false;
-            byte[] bytes = await SafeFile.ReadAllBytesAsync(path).ConfigureAwait(false);
-            XDocument document;
-            using (MemoryStream stream = new(bytes, false))
-            using (XmlReader reader = SafeXml.Reader(stream))
-                document = XDocument.Load(reader);
-            XElement? root = document.Root;
+            XElement? root = Parse(await SafeFile.ReadAllBytesAsync(path).ConfigureAwait(false)).Root;
             return root is not null && root.Element(root.Name.Namespace + element) is null;
+        }
+
+        private static XDocument Parse(byte[] bytes)
+        {
+            using MemoryStream stream = new(bytes, false);
+            using XmlReader reader = SafeXml.Reader(stream);
+            return XDocument.Load(reader);
         }
 
         /// <summary>A save that fails is tried again by the autosave, unless saves are refused until Torch restarts.</summary>
         internal bool FailedSavesRetried => _config is { SavesRefused: false };
 
-        /// <summary>False when no save could be started: saves are refused, the config is still loading, or the plugin is retired.</summary>
-        public bool Save()
+        /// <summary>
+        /// Saves the config now. False when it was not saved, with the reason logged: the plugin is retired, the config is
+        /// still loading, saves are refused until Torch restarts, or the write failed, which the autosave then tries again.
+        /// </summary>
+        public async Task<bool> SaveAsync()
         {
             if (LimiterCore.Retired)
             {
@@ -341,25 +361,22 @@ namespace Advanced_PB_Limiter
                 return false;
             }
 
-            if (Volatile.Read(ref _ready) == 0 || _config is null)
+            if (!IsReady || _config is null)
             {
-                Log.Warn("No config is loaded, nothing was saved.");
+                Log.Warn("The config has not loaded yet, nothing was saved.");
                 return false;
             }
 
             try
             {
-                if (!_config.Save())
-                {
-                    Log.Warn(_config.SavesRefused ? "Configuration not saved" : "Configuration could not be saved");
-                    return false;
-                }
-                Log.Info("Configuration save started.");
+                await _config.SaveAsync().ConfigureAwait(false);
                 return true;
             }
             catch (Exception e)
             {
-                Log.Warn(e, "Configuration failed to save; it is tried again every 30 seconds until it saves");
+                Log.Warn(e, FailedSavesRetried
+                    ? "The config could not be saved; it is tried again every 30 seconds until it saves"
+                    : "The config was not saved");
                 return false;
             }
         }

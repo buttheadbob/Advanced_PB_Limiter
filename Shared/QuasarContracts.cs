@@ -116,6 +116,12 @@ namespace Advanced_PB_Limiter.QuasarContracts
         /// <summary>False until the world has loaded.</summary>
         public bool Online { get; set; }
 
+        /// <summary>
+        /// Why the limiter is inactive on this server for good, as on a node of a Quasar cluster or after a game update it
+        /// does not match, or null. Older servers never set it.
+        /// </summary>
+        public string? Inactive { get; set; }
+
         /// <summary>The limiter's own Enabled setting. Nothing new is tracked or punished while it is off.</summary>
         public bool Enabled { get; set; }
 

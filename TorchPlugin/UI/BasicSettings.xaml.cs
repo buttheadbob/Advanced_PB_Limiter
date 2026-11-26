@@ -9,7 +9,10 @@ namespace Advanced_PB_Limiter.UI
 {
     public partial class BasicSettings
     {
-        private static Advanced_PB_LimiterConfig Config => AdvancedPBLimiterPlugin.Instance!.Config!;
+        // The config this tab was built for: a tab Torch keeps after a reload still holds it, so it never reads a plugin
+        // instance that is gone.
+        private readonly Advanced_PB_LimiterConfig _config = AdvancedPBLimiterPlugin.Instance!.Config!;
+        private Advanced_PB_LimiterConfig Config => _config;
 
         public BasicSettings()
         {
@@ -30,7 +33,7 @@ namespace Advanced_PB_Limiter.UI
 
         private void SaveLocallyButton_OnClick(object sender, RoutedEventArgs e)
         {
-            Advanced_PB_LimiterControl.SaveConfig();
+            _ = Advanced_PB_LimiterControl.SaveConfigAsync();
         }
 
         private void PunishmentComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)

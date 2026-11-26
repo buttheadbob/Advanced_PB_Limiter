@@ -93,10 +93,13 @@ namespace Advanced_PB_Limiter.Tests
             return (result.Changed, result.Recovered, result.CopyWaiting);
         }
 
+        /// <summary>The file and every copy beside it; the lock file SafeFile keeps beside a file it writes is not a copy.</summary>
+        private string[] FilesBeside(string name) =>
+            Directory.GetFiles(_folder, name + "*").Where(file => !file.EndsWith(".lock", StringComparison.Ordinal)).ToArray();
+
         private static async Task<string?> WriteWithSafeFileAsync(string path, string temp, byte[] bytes)
         {
-            using MemoryStream content = new(bytes);
-            SafeFile.WriteResult write = await SafeFile.WriteAsync(path, temp, content, SafeFile.IsWholeXml);
+            SafeFile.WriteResult write = await SafeFile.WriteAsync(path, temp, bytes, SafeFile.IsWholeXml);
             return write.Kept;
         }
 
@@ -335,7 +338,7 @@ namespace Advanced_PB_Limiter.Tests
 
             Assert.Null(kept);
             Assert.Equal(Bytes(false, Config("\n", "TurnOff", "Destroy")), await ReadAsync(path));
-            Assert.Equal("same-left.cfg", Path.GetFileName(Assert.Single(Directory.GetFiles(_folder, "same-left.cfg*"))));
+            Assert.Equal("same-left.cfg", Path.GetFileName(Assert.Single(FilesBeside("same-left.cfg"))));
         }
 
         [Fact]
@@ -401,7 +404,7 @@ namespace Advanced_PB_Limiter.Tests
 
             Assert.Equal(Bytes(false, Config("\n", "TurnOff", "Destroy")), await ReadAsync(path));
             Assert.Null(recovered);
-            Assert.Equal("again.cfg", Path.GetFileName(Assert.Single(Directory.GetFiles(_folder, "again.cfg*"))));
+            Assert.Equal("again.cfg", Path.GetFileName(Assert.Single(FilesBeside("again.cfg"))));
         }
 
         [Fact]
@@ -525,8 +528,7 @@ namespace Advanced_PB_Limiter.Tests
             {
                 for (int round = 0; round < 50; round++)
                 {
-                    using MemoryStream content = new(Bytes(false, version));
-                    await SafeFile.WriteAsync(path, path + ".tmp", content, SafeFile.IsWholeXml);
+                    await SafeFile.WriteAsync(path, path + ".tmp", Bytes(false, version), SafeFile.IsWholeXml);
                 }
             })));
 
@@ -555,8 +557,7 @@ namespace Advanced_PB_Limiter.Tests
             await held.WaitAsync();
             Task writer = Task.Run(async () =>
             {
-                using MemoryStream content = new(Bytes(false, Config("\n", "Destroy", "Destroy")));
-                await SafeFile.WriteAsync(path, path + ".tmp", content, SafeFile.IsWholeXml);
+                await SafeFile.WriteAsync(path, path + ".tmp", Bytes(false, Config("\n", "Destroy", "Destroy")), SafeFile.IsWholeXml);
             });
 
             Task first = await Task.WhenAny(writer, Task.Delay(300));
@@ -564,6 +565,20 @@ namespace Advanced_PB_Limiter.Tests
             release.Set();
             await Task.WhenAll(holder, writer);
             Assert.Equal(Bytes(false, Config("\n", "Destroy", "Destroy")), await ReadAsync(path));
+        }
+
+        [Fact]
+        public async Task TheLockIsHeldWhereNoLockFileCanBeMade()
+        {
+            // A folder that is not there: no lock file can be made beside the file, so only the gate in this process is held,
+            // instead of waiting for a lock file for ever.
+            string path = Path.Combine(_folder, "missing-folder", "none.cfg");
+            Task<IDisposable> hold = SafeFile.HoldAsync(path);
+            Assert.Same(hold, await Task.WhenAny(hold, Task.Delay(5000)));
+            Task<IDisposable> second = SafeFile.HoldAsync(path);
+            Assert.NotSame(second, await Task.WhenAny(second, Task.Delay(200)));
+            (await hold).Dispose();
+            (await second).Dispose();
         }
 
         [Fact]

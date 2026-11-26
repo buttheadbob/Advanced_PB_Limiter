@@ -154,6 +154,7 @@ internal static class QuasarUiOperations
     {
         Installed = snapshot.Installed,
         Online = snapshot.Online,
+        Inactive = snapshot.Inactive,
         Enabled = snapshot.Enabled,
         Version = snapshot.Version,
         Truncated = snapshot.Truncated,

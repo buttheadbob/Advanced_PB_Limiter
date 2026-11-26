@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Advanced_PB_Limiter.Manager;
 using Advanced_PB_Limiter.Patches;
 using Advanced_PB_Limiter.Utils;
@@ -69,11 +70,12 @@ namespace Advanced_PB_Limiter
         IPbLimiterConfig Config { get; }
         string Version { get; }
         /// <summary>
-        /// Runs a command's <paramref name="change"/> to the config and makes sure the result is saved, once: false when it
-        /// could not be, and the host has logged why. A host whose config saves each change as it is made answers with how
-        /// that save went instead of writing the file, and logging a failure, a second time.
+        /// Runs a command's <paramref name="change"/> to the config at once, on the caller's thread, and makes sure the result
+        /// is saved, once: the task gives false when it could not be, and the host has logged why. A host whose config saves
+        /// each change as it is made answers with how that save went instead of writing the file, and logging a failure, a
+        /// second time.
         /// </summary>
-        bool ChangeConfig(Action change);
+        Task<bool> ChangeConfigAsync(Action change);
 
         /// <summary>
         /// Why a command may not change the config on this server, or null when it may. A node of a managed cluster runs the

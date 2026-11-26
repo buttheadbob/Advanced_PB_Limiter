@@ -127,6 +127,10 @@
     {
         <PblEmptyState Icon="server" Title="Advanced PB Limiter is not loaded" Description="Add the plugin on the server's Plugins page, then try again." />
     }
+    else if (_snapshot.Inactive is { Length: > 0 } inactive)
+    {
+        <PblEmptyState Icon="power" Title="Advanced PB Limiter is inactive on this server" Description="@inactive" />
+    }
     else if (!_snapshot.Online)
     {
         <PblEmptyState Icon="clock" Title="The world is still loading" Description="The report will appear as soon as the server is ready." />

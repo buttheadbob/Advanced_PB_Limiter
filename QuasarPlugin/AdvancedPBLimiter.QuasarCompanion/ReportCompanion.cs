@@ -85,7 +85,10 @@ namespace AdvancedPBLimiter.QuasarCompanion
 
                     case ReportOperations.ProfileApply:
                         var profile = Read<ProfileApplyRequest>(request);
-                        response.PayloadJson = await OnLoadedWorld(bridge => ApplyOnce(bridge, profile), DeadlineOf(profile.TimeoutMs, profile.ExpiresUnixMs), cancellationToken).ConfigureAwait(false);
+                        // A limiter that is inactive for good never applies it: refused, so Quasar stops sending it.
+                        response.PayloadJson = InactiveOf(FindBridge()) is { } inactive
+                            ? JsonConvert.SerializeObject(new ProfileData { Refused = inactive }, Json)
+                            : await OnLoadedWorld(bridge => ApplyOnce(bridge, profile), DeadlineOf(profile.TimeoutMs, profile.ExpiresUnixMs), cancellationToken).ConfigureAwait(false);
                         break;
 
                     default:
@@ -136,7 +139,7 @@ namespace AdvancedPBLimiter.QuasarCompanion
                 return JsonConvert.SerializeObject(new ReportSnapshot { Installed = false }, Json);
 
             if (!(bool)Invoke(bridge, "IsOnline")!)
-                return JsonConvert.SerializeObject(new ReportSnapshot { Installed = true, Online = false }, Json);
+                return JsonConvert.SerializeObject(new ReportSnapshot { Installed = true, Online = false, Inactive = InactiveOf(bridge) }, Json);
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -167,6 +170,8 @@ namespace AdvancedPBLimiter.QuasarCompanion
         private Task<T> OnLoadedWorld<T>(Func<Type, T> work, long deadline, CancellationToken cancellationToken)
         {
             var bridge = FindBridge() ?? throw new InvalidOperationException("Advanced PB Limiter is not loaded on this server.");
+            if (InactiveOf(bridge) is { } inactive)
+                throw new InvalidOperationException(inactive);
             if (!(bool)Invoke(bridge, "IsOnline")!)
                 throw new InvalidOperationException("The world has not finished loading.");
 
@@ -279,6 +284,13 @@ namespace AdvancedPBLimiter.QuasarCompanion
                 _appliedAnswer = answer;
             }
             return answer;
+        }
+
+        /// <summary>Why the limiter is inactive until the server restarts, or null; a limiter before 1.3.4.5 never says.</summary>
+        private static string? InactiveOf(Type? bridge)
+        {
+            MethodInfo? reason = bridge?.GetMethod("InactiveReason", BindingFlags.Public | BindingFlags.Static);
+            return reason?.Invoke(null, null) as string;
         }
 
         private static object? Invoke(Type bridge, string method, params object[] args)

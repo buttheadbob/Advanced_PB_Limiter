@@ -92,13 +92,8 @@ public sealed class ProfileStore : IDisposable
         // Cancelling wakes a change waiting for the writer. The fields are disposed only once Cancel has returned and
         // the last change under way has left: disposing a source from its own cancellation notification, or disposing
         // the writer under a waiting change, is not safe.
-        try
-        {
-            _stopping.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-        }
+        // Not yet disposed: only Dispose(true) disposes it, and only after _cancelCompleted is set below.
+        _stopping.Cancel();
         Volatile.Write(ref _cancelCompleted, 1);
         if (Volatile.Read(ref _activeChanges) == 0)
             Dispose(true);
@@ -967,8 +962,7 @@ public sealed class ProfileStore : IDisposable
             if (!string.IsNullOrEmpty(folder))
                 Directory.CreateDirectory(folder);
 
-            using MemoryStream content = new(json, false);
-            SafeFile.WriteResult write = await SafeFile.WriteAsync(_path, temporary, content, IsWholeJson).ConfigureAwait(false);
+            SafeFile.WriteResult write = await SafeFile.WriteAsync(_path, temporary, json, IsWholeJson).ConfigureAwait(false);
             if (write.Kept is not null)
                 _log.LogWarning("A complete copy of the PB Limiter profiles an earlier save left at {File} was kept as {Kept} before this save, in case it holds profiles you want.", temporary, write.Kept);
             if (write.SwapError is not null)

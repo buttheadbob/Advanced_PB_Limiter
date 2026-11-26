@@ -77,6 +77,9 @@ namespace Advanced_PB_Limiter.QuasarContracts
     {
         public bool Installed { get; set; }
         public bool Online { get; set; }
+
+        /// <summary>Why the limiter is inactive on this server until it restarts, or null; see ReportSnapshot.Inactive.</summary>
+        public string? Inactive { get; set; }
         public bool Enabled { get; set; }
         public string Version { get; set; } = "";
         public bool Truncated { get; set; }

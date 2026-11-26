@@ -40,7 +40,8 @@ namespace Advanced_PB_Limiter.UI
         private readonly List<long> _staleIds = new();
         private readonly Action<TrackedPBBlock, bool> _addBlock;
         private readonly System.Text.StringBuilder _updatedText = new();
-        private TrackedPlayer _currentPlayer = null!;
+        // The player whose blocks PlayerTotals.Of is adding, during a refresh only, so no player is kept after it.
+        private TrackedPlayer? _currentPlayer;
 
         // A DispatcherTimer coalesces ticks while the UI is busy, where a System.Timers.Timer posted a refresh for each
         // tick and a busy window let them pile up.
@@ -108,6 +109,7 @@ namespace Advanced_PB_Limiter.UI
         private void ClearRows()
         {
             StopLiveView();
+            _currentPlayer = null;
 
             foreach (CustomBlockReport row in _allBlocks.Values)
                 row.Detach();
@@ -199,6 +201,10 @@ namespace Advanced_PB_Limiter.UI
                     playerRow.Update(player, totals);
                 }
             }
+            // Nothing of the world is kept between refreshes: the rows hold what they show.
+            _currentPlayer = null;
+            _playerScratch.Clear();
+            _blockScratch.Clear();
 
             RemoveUnseenRows();
             ApplyLiveVisibility();
@@ -220,17 +226,18 @@ namespace Advanced_PB_Limiter.UI
 
         private void AddBlock(TrackedPBBlock block, bool resting)
         {
+            if (_currentPlayer is not { } player) return;
             if (!_seenBlockIds.Add(block.EntityId)) return;
             if (resting) _restingCount++;
 
             if (!_allBlocks.TryGetValue(block.EntityId, out CustomBlockReport? row))
             {
-                row = new CustomBlockReport(_currentPlayer, block, resting);
+                row = new CustomBlockReport(player, block, resting);
                 _allBlocks.Add(block.EntityId, row);
             }
             else
             {
-                row.Update(_currentPlayer, block, resting);
+                row.Update(player, block, resting);
             }
         }
 

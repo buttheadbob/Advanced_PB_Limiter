@@ -95,7 +95,7 @@ public sealed class PbLimiterCommands : CommandModule
 
     [Command("debug", "Only for debugging, not regular use for servers.")]
     [Permission(MyPromoteLevel.Admin)]
-    public string Debug(bool debug) => LimiterCommands.SetDebug(debug);
+    public void Debug(bool debug) => LimiterCommands.SetDebug(debug, RespondOnGameThread());
 
     [Command("Timings", "Logs the limiter's own timings for a few seconds. On Torch this is a button on the plugin's tab.")]
     [Permission(MyPromoteLevel.Admin)]
@@ -107,24 +107,24 @@ public sealed class PbLimiterCommands : CommandModule
 
     [Command("Disable", "Disables the Advanced PB Limiter.")]
     [Permission(MyPromoteLevel.Admin)]
-    public string Disable() => LimiterCommands.SetEnabled(false);
+    public void Disable() => LimiterCommands.SetEnabled(false, RespondOnGameThread());
 
     [Command("Enable", "Enables the Advanced PB Limiter.")]
     [Permission(MyPromoteLevel.Admin)]
-    public string Enable() => LimiterCommands.SetEnabled(true);
+    public void Enable() => LimiterCommands.SetEnabled(true, RespondOnGameThread());
 
     [Command("AllowStaffCommands", "Allows staff to use CreatePrivilegedUser. Only the server owner can use this command.")]
     [Permission(MyPromoteLevel.Owner)]
-    public string AllowStaffCommands() => LimiterCommands.SetStaffCommandsAllowed(true);
+    public void AllowStaffCommands() => LimiterCommands.SetStaffCommandsAllowed(true, RespondOnGameThread());
 
     [Command("DenyStaffCommands", "Stops staff using CreatePrivilegedUser. Only the server owner can use this command.")]
     [Permission(MyPromoteLevel.Owner)]
-    public string DenyStaffCommands() => LimiterCommands.SetStaffCommandsAllowed(false);
+    public void DenyStaffCommands() => LimiterCommands.SetStaffCommandsAllowed(false, RespondOnGameThread());
 
     [Command("CreatePrivilegedUser", "Creates a new privileged user or overwrites an existing one.")]
     [Permission(MyPromoteLevel.Admin)]
-    public string CreatePrivilegedUser(ulong steamId, double maxRunTimeMS, double maxRunTimeMSAvg, bool combinedLimits, double maxAllBlocksCombinedRunTimeMS, double maxAllBlocksCombinedRunTimeMSAvg, int offencesBeforePunishment, Enums.Punishment punishment, int gracefulShutDownRequestDelay)
-        => LimiterCommands.CreatePrivilegedUser(steamId, maxRunTimeMS, maxRunTimeMSAvg, combinedLimits, maxAllBlocksCombinedRunTimeMS, maxAllBlocksCombinedRunTimeMSAvg, offencesBeforePunishment, punishment, gracefulShutDownRequestDelay);
+    public void CreatePrivilegedUser(ulong steamId, double maxRunTimeMS, double maxRunTimeMSAvg, bool combinedLimits, double maxAllBlocksCombinedRunTimeMS, double maxAllBlocksCombinedRunTimeMSAvg, int offencesBeforePunishment, Enums.Punishment punishment, int gracefulShutDownRequestDelay)
+        => LimiterCommands.CreatePrivilegedUser(steamId, maxRunTimeMS, maxRunTimeMSAvg, combinedLimits, maxAllBlocksCombinedRunTimeMS, maxAllBlocksCombinedRunTimeMSAvg, offencesBeforePunishment, punishment, gracefulShutDownRequestDelay, RespondOnGameThread());
 
     [Command("DetailedAdminHelp", "Gives a list of all staff commands and their usage.")]
     [Permission(MyPromoteLevel.Admin)]

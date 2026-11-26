@@ -40,8 +40,8 @@ namespace Advanced_PB_Limiter.Settings
         private bool _disposed;
         private bool _swapFailureLogged;
 
-        // The reason the last failed save was logged for, by the autosave or by whoever called Save, under the save lock:
-        // a retry that fails the same way logs nothing, and the save that works after it says so.
+        // The reason the last failed save was logged for, by the autosave or by whoever called SaveAsync, under the save
+        // lock: a retry that fails the same way logs nothing, and the save that works after it says so.
         private string? _autosaveFailure;
 
         public Advanced_PB_LimiterConfig Data { get; }
@@ -63,17 +63,27 @@ namespace Advanced_PB_Limiter.Settings
         }
 
         /// <summary>
-        /// The live instance before the file is read: the limiter enforces these defaults while the async read runs, then
-        /// <see cref="Adopt"/> copies the file's settings into this same instance.
+        /// The live instance before the file is read: the tab and the limiter hold it from the start, and
+        /// <see cref="Adopt"/> later copies the file's settings into it. It saves nothing until then, so defaults edited
+        /// meanwhile never replace the file.
         /// </summary>
-        internal static ConfigFile Defaults(string path) => new(path, new Advanced_PB_LimiterConfig(), true, null);
+        internal static ConfigFile Defaults(string path) => new(path, new Advanced_PB_LimiterConfig(), true, "the config has not been read yet");
 
         /// <summary>
         /// Copies the settings and the save state read from the file into this instance, which the limiter already holds.
-        /// The change handler is detached while the copy runs, so adopting does not arm a save.
+        /// The change handler is detached while the copy runs, so adopting does not arm a save. A change <paramref name="loaded"/>
+        /// still had waiting, its first save having failed, is taken over and tried again here, as the loaded instance is
+        /// disposed after this.
         /// </summary>
         internal void Adopt(ConfigFile loaded)
         {
+            bool pending;
+            lock (loaded._timerLock)
+            {
+                pending = loaded._pending;
+                loaded._pending = false;
+            }
+
             Data.PropertyChanged -= OnPropertyChanged;
             try
             {
@@ -81,10 +91,31 @@ namespace Advanced_PB_Limiter.Settings
                     property.SetValue(Data, property.GetValue(loaded.Data));
                 IsNew = loaded.IsNew;
                 _saveRefused = loaded._saveRefused;
+                _autosaveFailure = loaded._autosaveFailure;
             }
             finally
             {
                 Data.PropertyChanged += OnPropertyChanged;
+            }
+
+            if (!pending) return;
+            lock (_timerLock)
+            {
+                if (_disposed || _saveRefused is not null) return;
+                _pending = true;
+                _autosave.Change(AutosaveRetryDelayMs, Timeout.Infinite);
+            }
+        }
+
+        /// <summary>No save is made from now until Torch restarts, for <paramref name="reason"/>.</summary>
+        internal void RefuseSaves(string reason)
+        {
+            lock (_timerLock)
+            {
+                _saveRefused = reason;
+                _pending = false;
+                if (!_disposed)
+                    _autosave.Change(Timeout.Infinite, Timeout.Infinite);
             }
         }
 
@@ -119,7 +150,7 @@ namespace Advanced_PB_Limiter.Settings
 
             try
             {
-                return new ConfigFile(path, await ReadAsync(path).ConfigureAwait(false), false, null);
+                return new ConfigFile(path, Read(await SafeFile.ReadAllBytesAsync(path).ConfigureAwait(false)), false, null);
             }
             catch (Exception e) when (SafeFile.IsReadFailure(e))
             {
@@ -155,9 +186,8 @@ namespace Advanced_PB_Limiter.Settings
 
         private static string TempPath(string path) => path + ".tmp";
 
-        private static async Task<Advanced_PB_LimiterConfig> ReadAsync(string path)
+        private static Advanced_PB_LimiterConfig Read(byte[] bytes)
         {
-            byte[] bytes = await SafeFile.ReadAllBytesAsync(path).ConfigureAwait(false);
             using MemoryStream stream = new(bytes, false);
             using XmlReader reader = SafeXml.Reader(stream);
             return Serializer.Deserialize(reader) as Advanced_PB_LimiterConfig ?? throw new InvalidDataException("The file holds no config.");
@@ -165,7 +195,7 @@ namespace Advanced_PB_Limiter.Settings
 
         private static async Task<ConfigFile> CreateNewAsync(string path)
         {
-            ConfigFile created = Defaults(path);
+            ConfigFile created = new(path, new Advanced_PB_LimiterConfig(), true, null);
             await created.TrySaveAsync("The new config could not be saved").ConfigureAwait(false);
             return created;
         }
@@ -193,45 +223,41 @@ namespace Advanced_PB_Limiter.Settings
         }
 
         /// <summary>
-        /// Queues a save and says only whether one can be made: false when saves are refused. The write is asynchronous;
-        /// a failure is logged and retried by the autosave, not returned here.
+        /// Writes the config. Throws when it can't be written, when saves are refused (see <see cref="LoadAsync"/>), or once
+        /// <see cref="Dispose"/> has run. A change waiting for the autosave is written by this save, so that autosave is
+        /// called off rather than writing the file a second time; a change made after this point arms it again. If the
+        /// write fails, the config, which then holds something the file does not, counts as waiting and the autosave tries
+        /// it again in 30 seconds, then every 30 seconds until a save works or <see cref="Dispose"/> runs.
         /// </summary>
-        public bool Save()
+        public Task SaveAsync()
         {
-            if (_saveRefused is not null)
+            lock (_timerLock)
             {
-                Log.Warn("Not saved until Torch restarts: " + _saveRefused + ".");
-                return false;
+                if (_disposed)
+                    throw new InvalidOperationException("The plugin has stopped, so the config is not saved.");
             }
-
-            _ = SaveAsync().ContinueWith(
-                task => Log.Warn(task.Exception, "The config could not be saved"),
-                CancellationToken.None,
-                TaskContinuationOptions.OnlyOnFaulted,
-                TaskScheduler.Default);
-            return true;
+            return SaveCoreAsync(false);
         }
 
         /// <summary>
-        /// Writes the config. Throws when it can't be written, or when the unreadable file could not be moved aside. A change
-        /// waiting for the autosave is written by this save, so that autosave is called off rather than writing the file a
-        /// second time; a change made after this point arms it again. If the write fails, the config, which then holds
-        /// something the file does not, counts as waiting and the autosave tries it again in 30 seconds, then every 30
-        /// seconds until a save works or <see cref="Dispose"/> runs. A refused save (see <see cref="LoadAsync"/>) is not tried
-        /// again.
+        /// The save, under the save lock, which also makes a save wait for one already writing. With
+        /// <paramref name="onlyIfPending"/>, for the autosave and the last save in Dispose, it writes only when a change still
+        /// waits once the lock is held, and a refused save is skipped rather than thrown.
         /// </summary>
-        public async Task SaveAsync()
+        private async Task SaveCoreAsync(bool onlyIfPending)
         {
             if (_saveRefused is not null)
+            {
+                if (onlyIfPending) return;
                 throw new InvalidOperationException("Not saved until Torch restarts: " + _saveRefused + ".");
+            }
 
-            // All under the save lock, which Dispose takes first: it then sees either the change still waiting, or this save
-            // done, with a change whose write failed put back.
             await _saveLock.WaitAsync().ConfigureAwait(false);
             try
             {
                 lock (_timerLock)
                 {
+                    if (onlyIfPending && !_pending) return;
                     _pending = false;
                     if (!_disposed)
                         _autosave.Change(Timeout.Infinite, Timeout.Infinite);
@@ -239,26 +265,22 @@ namespace Advanced_PB_Limiter.Settings
 
                 try
                 {
-                    using MemoryStream content = new();
-                    using (StreamWriter text = new(content, new UTF8Encoding(false), 1024, true))
-                        Serializer.Serialize(text, Data);
-                    await WriteSafelyAsync(content).ConfigureAwait(false);
+                    await WriteSafelyAsync(Serialize(Data)).ConfigureAwait(false);
                 }
                 catch (Exception e)
                 {
-                    // Whoever called Save logs this failure; the retries that follow only log a different reason.
+                    // Whoever called SaveAsync logs this failure; the retries that follow only log a different reason.
                     _autosaveFailure = Reason(e);
                     // Whatever this save was for, a waiting change or one that raises no change event (a privileged
-                    // player added from the tab or a command), the config holds something the file does not: try again.
+                    // player added from the tab or a command), the config holds something the file does not: try again,
+                    // by the autosave, or by the last save in Dispose when that is waiting for this one.
                     lock (_timerLock)
                     {
+                        _pending = true;
                         // The longer delay also replaces the one second a change made during this write armed, so a file
                         // that is held is not tried again at once, bar a callback that had already fired.
                         if (!_disposed)
-                        {
-                            _pending = true;
                             _autosave.Change(AutosaveRetryDelayMs, Timeout.Infinite);
-                        }
                     }
                     throw;
                 }
@@ -273,11 +295,19 @@ namespace Advanced_PB_Limiter.Settings
             }
         }
 
+        private static byte[] Serialize(Advanced_PB_LimiterConfig data)
+        {
+            using MemoryStream content = new();
+            using (StreamWriter text = new(content, new UTF8Encoding(false), 1024, true))
+                Serializer.Serialize(text, data);
+            return content.ToArray();
+        }
+
         /// <summary>
         /// Through <see cref="SafeFile.WriteAsync"/>: a complete copy swapped in with one rename, written in place only where
         /// the swap fails, and one save of the file at a time, also with another instance of the plugin after a reload.
         /// </summary>
-        private async Task WriteSafelyAsync(MemoryStream content)
+        private async Task WriteSafelyAsync(byte[] content)
         {
             SafeFile.WriteResult write = await SafeFile.WriteAsync(_path, TempPath(_path), content, SafeFile.IsWholeXml).ConfigureAwait(false);
             if (write.Kept is not null)
@@ -294,8 +324,8 @@ namespace Advanced_PB_Limiter.Settings
             if (e.PropertyName == nameof(Advanced_PB_LimiterConfig.ShowTimingsBurp)) return;
             lock (_timerLock)
             {
-                // No save is made while saves are refused, or while the limiter is retired (a reload or a game mismatch,
-                // whose saves the plugin refuses), so there is nothing for the autosave to try.
+                // No save is made while saves are refused (also before the file is read), or while the limiter is retired
+                // (a reload or a game mismatch, whose saves the plugin refuses), so there is nothing for the autosave to try.
                 if (_disposed || _saveRefused is not null || LimiterCore.Retired) return;
                 _pending = true;
                 _autosave.Change(AutosaveDelayMs, Timeout.Infinite);
@@ -305,11 +335,11 @@ namespace Advanced_PB_Limiter.Settings
         /// <summary>What tells two failed saves apart for the log: the kind of error and its message.</summary>
         private static string Reason(Exception error) => error.GetType().FullName + ": " + error.Message;
 
-        // Runs on the timer thread, where an exception would end the process. SaveAsync clears the waiting change itself,
-        // and keeps it waiting and arms the retry if the write fails. Under the save lock (Save takes it again, which a
-        // semaphore does not allow re-entrantly, so this wrapper only calls SaveAsync), so the check below and the logged
-        // reason see one save at a time.
-        private async void Autosave(object? state)
+        // The timer's callback, on a pool thread. The save runs as a task that logs every failure itself.
+        private void Autosave(object? state) => _ = AutosaveAsync();
+
+        // SaveCoreAsync clears the waiting change itself, and keeps it waiting and arms the retry if the write fails.
+        private async Task AutosaveAsync()
         {
             try
             {
@@ -319,11 +349,11 @@ namespace Advanced_PB_Limiter.Settings
                     if (_disposed || !_pending) return;
                 }
 
-                // Save records a failure's reason itself, so the reason logged before this try is kept to compare with.
+                // A failure's reason is recorded by the save itself, so the reason logged before this try is kept to compare with.
                 string? logged = _autosaveFailure;
                 try
                 {
-                    await SaveAsync().ConfigureAwait(false);
+                    await SaveCoreAsync(true).ConfigureAwait(false);
                 }
                 catch (Exception e)
                 {
@@ -334,12 +364,11 @@ namespace Advanced_PB_Limiter.Settings
             }
             catch (Exception e)
             {
-                // An async void timer callback must not let an exception end the process.
                 Log.Error(e, "The config autosave failed");
             }
         }
 
-        // Runs when the plugin loads and in Dispose, where an exception would end the load or the reload.
+        // Runs when a new config is created, where an exception would end the load.
         private async Task TrySaveAsync(string failure)
         {
             try
@@ -353,33 +382,36 @@ namespace Advanced_PB_Limiter.Settings
         }
 
         /// <summary>
-        /// Stops the autosave and its retries, and starts one last save of a change still waiting for them, also one an
-        /// autosave still writing gives back when its write fails. Torch calls this when it reloads plugins, not when its
-        /// own server stops or restarts, so the process is still alive for that write to finish. <see cref="Save"/> still
-        /// works afterwards.
+        /// Stops the autosave and its retries, waits for a save already writing, and then writes a change still waiting,
+        /// also one that save gave back when its write failed, and waits for that too. Torch calls Dispose synchronously and
+        /// may end the process soon after, so this is the one place the plugin blocks on a save. Every await on the save
+        /// path uses ConfigureAwait(false), so the save needs no thread the caller may hold. No save is made afterwards.
         /// </summary>
         public void Dispose()
         {
-            bool pending;
             lock (_timerLock)
             {
                 if (_disposed) return;
                 _disposed = true;
-                pending = _pending;
-                _pending = false;
                 Data.PropertyChanged -= OnPropertyChanged;
                 _autosave.Dispose();
             }
 
-            if (pending)
-                _ = SaveAfterDisposeAsync();
+            try
+            {
+                SaveLastChangeAsync().GetAwaiter().GetResult();
+            }
+            finally
+            {
+                _saveLock.Dispose();
+            }
         }
 
-        private async Task SaveAfterDisposeAsync()
+        private async Task SaveLastChangeAsync()
         {
             try
             {
-                await SaveAsync().ConfigureAwait(false);
+                await SaveCoreAsync(true).ConfigureAwait(false);
             }
             catch (Exception e)
             {

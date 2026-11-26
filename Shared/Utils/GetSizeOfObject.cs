@@ -501,9 +501,9 @@ namespace Advanced_PB_Limiter.Utils
             /// compatible instantiations; the self-check reads the reference field and, for RefValue, the reference inside
             /// the value field.
             /// </summary>
-            private sealed class GenericHolder<T>
+            private sealed class GenericHolder<T> where T : struct
             {
-                public T Value = default!;
+                public T Value;
                 public object Reference = new();
             }
 
