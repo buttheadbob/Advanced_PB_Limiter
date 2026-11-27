@@ -29,6 +29,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Utils\MemoryText.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Utils\Limits.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Utils\BatchMark.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Utils\RunTimeWindow.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Utils\RunClock.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Utils\PlayerTotals.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Utils\SafeName.cs" />

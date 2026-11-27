@@ -13,11 +13,6 @@ public enum AnswerOutcome
 {
     /// <summary>The answer is recorded against the request.</summary>
     Recorded,
-    /// <summary>
-    /// The request was moved to a new incarnation of its cluster node while on its way, so the answer came from a node that
-    /// is gone: it waits for the new node. See CompletePendingAsync for when the new node may already have it.
-    /// </summary>
-    Moved,
     /// <summary>The request's server was forgotten while it was on its way, so nothing is recorded. A newer request never replaces one on its way.</summary>
     Gone,
     /// <summary>Quasar stopped the store before the answer could be recorded: nothing is recorded, and the request is left as last saved.</summary>
@@ -68,6 +63,7 @@ public sealed class ProfileStore : IDisposable
     {
         _path = path;
         _log = log;
+        SafeFile.Warning = message => log.LogWarning("{Message}", message);
         Loaded = LoadAsync();
     }
 
@@ -81,15 +77,31 @@ public sealed class ProfileStore : IDisposable
     public event Action? Changed;
 
     private int _disposed;
+    private int _activeChanges;
+    private int _fieldsDisposed;
+    private int _cancelCompleted;
 
     public void Dispose()
     {
         // Once: Quasar may dispose it more than once as it stops.
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        // Cancelling wakes a change waiting for the writer. The writer and the source are left to the garbage collector:
-        // a change already under way may still be waiting on or holding the semaphore, and disposing either under it is
-        // not safe. Neither holds a handle here, as the writer's wait handle is never asked for.
+        // Cancelling wakes a change waiting for the writer. The fields are disposed only once Cancel has returned and
+        // the last change under way has left: disposing a source from its own cancellation notification, or disposing
+        // the writer under a waiting change, is not safe.
+        // Not yet disposed: only Dispose(true) disposes it, and only after _cancelCompleted is set below.
         _stopping.Cancel();
+        Volatile.Write(ref _cancelCompleted, 1);
+        if (Volatile.Read(ref _activeChanges) == 0)
+            Dispose(true);
+    }
+
+    private void Dispose(bool disposing)
+    {
+        if (!disposing) return;
+        if (Volatile.Read(ref _cancelCompleted) == 0) return;
+        if (Interlocked.Exchange(ref _fieldsDisposed, 1) != 0) return;
+        _writer.Dispose();
+        _stopping.Dispose();
     }
 
     // Each returns a copy, sorted for display the same way on every host, that the caller may keep.
@@ -103,8 +115,8 @@ public sealed class ProfileStore : IDisposable
     public List<KnownServer> GetKnownServers() => _state.KnownServers.OrderBy(s => s.DisplayName, StringComparer.OrdinalIgnoreCase).ToList();
 
     /// <summary>
-    /// The known servers that <see cref="ServerInfo.PickKey"/>s name: by id, or by the cluster slot the node now in it
-    /// holds. A queue request made after the page's last poll therefore still reaches a slot whose node restarted.
+    /// The known servers that <see cref="ServerInfo.PickKey"/>s name, by id. A cluster slot's key names no known server: the
+    /// limiter does not run on cluster nodes, so none is kept.
     /// </summary>
     public List<KnownServer> ResolveKnown(IEnumerable<string> keys)
     {
@@ -112,34 +124,13 @@ public sealed class ProfileStore : IDisposable
         List<KnownServer> resolved = new();
         foreach (string key in keys)
         {
-            if (string.IsNullOrEmpty(key)) continue;
-            KnownServer? server;
-            if (ServerPickKeys.TryCluster(key, out string clusterId, out string clusterSlot))
-            {
-                server = known.Find(s => string.Equals(s.ClusterId, clusterId, StringComparison.Ordinal)
-                                         && string.Equals(s.ClusterSlot, clusterSlot, StringComparison.Ordinal));
-            }
-            else
-            {
-                string serverId = ServerPickKeys.ServerIdOf(key);
-                server = serverId.Length == 0 ? null : known.Find(s => string.Equals(s.ServerId, serverId, StringComparison.Ordinal));
-            }
-
+            string serverId = ServerPickKeys.ServerIdOf(key);
+            KnownServer? server = serverId.Length == 0 ? null : known.Find(s => string.Equals(s.ServerId, serverId, StringComparison.Ordinal));
             if (server is not null && !resolved.Contains(server))
                 resolved.Add(server);
         }
         return resolved;
     }
-
-    /// <summary>
-    /// The server as it is known now: the same id, or for a cluster node that restarted, the node now in its slot. Null when
-    /// it is no longer known. The same rule QueueAsync applies.
-    /// </summary>
-    public KnownServer? FindCurrent(KnownServer server) => Current(_state, server);
-
-    /// <summary>The server listed with exactly this ServerId, with no cluster slot fallback. Null when none is.</summary>
-    public KnownServer? FindById(string serverId) =>
-        _state.KnownServers.Find(s => string.Equals(s.ServerId, serverId, StringComparison.Ordinal));
 
 
     public Task<StoreResult> SaveProfileAsync(SavedProfile profile)
@@ -165,7 +156,7 @@ public sealed class ProfileStore : IDisposable
     /// waiting, or one its server refused, which is logged. One already on its way is kept beside it until it is recorded,
     /// and the new one is sent after it. Each of
     /// <paramref name="servers"/> is looked up again when the change is made, as the caller's list may be old by then: a
-    /// cluster node restarted since is queued under its new ServerId, and a server forgotten since is skipped.
+    /// server forgotten since is skipped.
     /// </summary>
     public async Task<QueueResult> QueueAsync(SavedProfile profile, IEnumerable<KnownServer> servers, string queuedBy)
     {
@@ -176,11 +167,10 @@ public sealed class ProfileStore : IDisposable
         List<Dropped> dropped = new();
         StoreResult result = await ChangeAsync(draft =>
         {
-            // Two chosen servers can now be one, an old incarnation of a node and its new one, which is queued once.
             List<KnownServer> targets = new(requested.Count);
             foreach (KnownServer server in requested)
             {
-                KnownServer? current = Current(draft.Read, server);
+                KnownServer? current = draft.Read.KnownServers.Find(s => string.Equals(s.ServerId, server.ServerId, StringComparison.Ordinal));
                 if (current != null && !targets.Contains(current))
                     targets.Add(current);
             }
@@ -195,8 +185,7 @@ public sealed class ProfileStore : IDisposable
                 renumbered = true;
             }
 
-            // One number for the request, for every server it goes to: one applied to an incarnation of a cluster slot
-            // does not make the one for another incarnation older.
+            // One number for the request, for every server it goes to.
             long sequence = ++state.LastSequence;
             foreach (KnownServer server in targets)
             {
@@ -229,20 +218,6 @@ public sealed class ProfileStore : IDisposable
         return new QueueResult(result, queued);
     }
 
-    /// <summary>
-    /// The entry known now for <paramref name="server"/>, read from an earlier state: the one with its ServerId, or for a
-    /// cluster node gone since, the one in its cluster slot, where <see cref="TakeOverSlot"/> or <see cref="Replaced"/>
-    /// left its new incarnation. Null when it was forgotten.
-    /// </summary>
-    private static KnownServer? Current(State state, KnownServer server)
-    {
-        KnownServer? known = state.KnownServers.Find(s => string.Equals(s.ServerId, server.ServerId, StringComparison.Ordinal));
-        if (known != null || string.IsNullOrEmpty(server.ClusterId) || string.IsNullOrEmpty(server.ClusterSlot))
-            return known;
-        return state.KnownServers.Find(s => string.Equals(s.ClusterId, server.ClusterId, StringComparison.Ordinal)
-                                            && string.Equals(s.ClusterSlot, server.ClusterSlot, StringComparison.Ordinal));
-    }
-
     /// <summary>Refused while the queue is sending it: a request on its way cannot be called back.</summary>
     public async Task<CancelResult> CancelPendingAsync(Guid id)
     {
@@ -269,9 +244,7 @@ public sealed class ProfileStore : IDisposable
 
     /// <summary>
     /// The server <paramref name="sent"/> went to refused it for good: it stays listed with the reason until cancelled, and
-    /// is not sent again. <see cref="AnswerOutcome.Moved"/> when it was moved to a new incarnation of its cluster node
-    /// while on its way: the refusal came from a node that is gone, so it waits for the new one instead.
-    /// <see cref="AnswerOutcome.Gone"/> when it went with a forgotten server: there is nothing left to mark, and
+    /// is not sent again. <see cref="AnswerOutcome.Gone"/> when it went with a forgotten server: there is nothing left to mark, and
     /// <see cref="AnswerOutcome.Stopping"/> when Quasar stopped the store first, the request left as it was. A newer
     /// request queued meanwhile is kept and sent either way.
     /// </summary>
@@ -289,11 +262,6 @@ public sealed class ProfileStore : IDisposable
             }
             PendingApply refused = draft.Edit(pending);
             refused.Sending = false;
-            if (!string.Equals(pending.ServerId, sent.ServerId, StringComparison.Ordinal))
-            {
-                outcome = AnswerOutcome.Moved;
-                return true;
-            }
             outcome = AnswerOutcome.Recorded;
             refused.Refused = true;
             refused.LastError = reason;
@@ -305,10 +273,9 @@ public sealed class ProfileStore : IDisposable
     /// <summary>
     /// Claims a request for sending to <paramref name="serverId"/>, so a cancel from now on is refused, and returns it as
     /// claimed: what is sent and recorded is the request as it is now, not the copy the queue read earlier. Null when it
-    /// is gone, cancelled or replaced since the queue read it, or moved to a new incarnation of its cluster node, which
-    /// the queue has not checked is connected. Null too, and the request dropped, when it is older than a profile already
-    /// applied to its cluster slot by any incarnation still listed, or than one waiting for the same server: it is never
-    /// applied after a newer one. The drop is saved and logged. The mark is not written on its own; a load clears it.
+    /// is gone, cancelled or replaced since the queue read it. Null too, and the request dropped, when it is older than a
+    /// profile already applied to its server, or than one waiting for the same server: it is never applied after a newer
+    /// one. The drop is saved and logged. The mark is not written on its own; a load clears it.
     /// </summary>
     public async Task<PendingApply?> TryStartSendingAsync(Guid id, string serverId)
     {
@@ -387,26 +354,17 @@ public sealed class ProfileStore : IDisposable
     }
 
     /// <summary>
-    /// Records <paramref name="sent"/> as applied to the server it went to. <see cref="AnswerOutcome.Moved"/> when it was
-    /// moved to a new incarnation of its cluster node while on its way: the node it reached is gone, so it waits for the new
-    /// node. On a managed cluster that applies it once: the 1.3.3 limiter refuses profiles on a managed node, and PluginSdk
-    /// refuses any save that differs from the cluster's configuration, so only a limiter before 1.3.3 took it, live and
-    /// unsaved, and it went with the node. On a cluster Quasar
-    /// does not manage, whose nodes may read one config file, the old node may have saved it there, and the new node then
-    /// gets it a second time. <see cref="AnswerOutcome.Gone"/> when it went with a forgotten server, and
-    /// <see cref="AnswerOutcome.Stopping"/> when Quasar stopped the store first: nothing is recorded.
-    /// A newer request queued meanwhile is applied after it and is what the history and the server's last applied time show.
-    /// When recorded, a request queued earlier for another incarnation of the same cluster slot is dropped, and logged, as
-    /// it would now be applied after a newer one; one on its way is left to finish, and the claim drops it if it fails.
-    /// The request's sequence is read from the store, not from <paramref name="sent"/>: a reset of the queue numbers
-    /// while it was on its way renumbers the stored one only.
+    /// Records <paramref name="sent"/> as applied to the server it went to. <see cref="AnswerOutcome.Gone"/> when it went
+    /// with a forgotten server, and <see cref="AnswerOutcome.Stopping"/> when Quasar stopped the store first: nothing is
+    /// recorded. A newer request queued meanwhile is applied after it and is what the history and the server's last
+    /// applied time show. The request's sequence is read from the store, not from <paramref name="sent"/>: a reset of the
+    /// queue numbers while it was on its way renumbers the stored one only.
     /// </summary>
     public async Task<AnswerOutcome> CompletePendingAsync(PendingApply sent, int settings, int privilegedPlayers)
     {
         // Left Stopping when Quasar stopped the store before the change could run: nothing was recorded.
         AnswerOutcome outcome = AnswerOutcome.Stopping;
-        List<Dropped> dropped = new();
-        StoreResult result = await ChangeAsync(draft =>
+        await ChangeAsync(draft =>
         {
             // By id: a newer request for this server may wait beside it, queued while this one was on its way, and still has to run.
             PendingApply? pending = draft.Read.Pending.Find(p => p.Id == sent.Id);
@@ -415,40 +373,16 @@ public sealed class ProfileStore : IDisposable
                 outcome = AnswerOutcome.Gone;
                 return false;
             }
-            if (!string.Equals(pending.ServerId, sent.ServerId, StringComparison.Ordinal))
-            {
-                outcome = AnswerOutcome.Moved;
-                PendingApply moved = draft.Edit(pending);
-                moved.Sending = false;
-                moved.MayBeApplied = true; // By the node that was replaced.
-                return true;
-            }
 
             outcome = AnswerOutcome.Recorded;
             State state = draft.Write;
             state.Pending.Remove(pending);
             KnownServer? server = state.KnownServers.Find(s => string.Equals(s.ServerId, sent.ServerId, StringComparison.Ordinal));
-            if (server != null)
-            {
-                long sequence = pending.Sequence;
-                if (server.LastAppliedSequence < sequence)
-                    draft.Edit(server).LastAppliedSequence = sequence;
-
-                // What still waits for another incarnation of this slot and was queued before this one would otherwise be
-                // applied after it, when that incarnation connects or is replaced. One queued with it, for both, shares its
-                // sequence: the same request, which the admin made once for the slot, one server to them, and which one
-                // incarnation now has, so its copy is dropped too rather than applied a second time. One already on its way cannot be called back, so it is left to finish rather
-                // than logged as dropped unsent.
-                foreach (PendingApply older in state.Pending.Where(p => p.Sequence <= sequence && !p.Sending && InSlot(state, p.ServerId, server)).ToList())
-                {
-                    state.Pending.Remove(older);
-                    dropped.Add(new Dropped(older, older.Sequence == sequence
-                        ? "the same request was applied to " + sent.ServerName + " in the same cluster slot"
-                        : "profile " + sent.ProfileName + ", queued after it, was applied to " + sent.ServerName + " in the same cluster slot"));
-                }
-            }
+            if (server != null && server.LastAppliedSequence < pending.Sequence)
+                draft.Edit(server).LastAppliedSequence = pending.Sequence;
             state.Applied.Insert(0, new AppliedProfile
             {
+                ServerId = sent.ServerId,
                 ServerName = sent.ServerName,
                 ProfileName = sent.ProfileName,
                 QueuedBy = sent.QueuedBy,
@@ -460,7 +394,6 @@ public sealed class ProfileStore : IDisposable
                 state.Applied.RemoveRange(MaxApplied, state.Applied.Count - MaxApplied);
             return true;
         }).ConfigureAwait(false);
-        LogDropped(dropped, result);
         return outcome;
     }
 
@@ -531,203 +464,80 @@ public sealed class ProfileStore : IDisposable
     public Task<StoreResult> ServersSeenAsync(IEnumerable<QuasarCompanionServer> servers)
     {
         DateTime now = DateTime.UtcNow;
-        List<QuasarCompanionServer> seen = servers.ToList();
+        // Quasar cluster nodes run no limiter, so they never take a profile: they are not recorded.
+        List<QuasarCompanionServer> seen = servers.Where(server => string.IsNullOrEmpty(server.ClusterId)).ToList();
         foreach (QuasarCompanionServer server in seen)
             _seenNow[server.ServerId] = now;
         List<KeyValuePair<string, DateTime>> gone = _seenNow.Where(kvp => !seen.Exists(s => string.Equals(s.ServerId, kvp.Key, StringComparison.Ordinal))).ToList();
         // Asked on every page refresh and queue pass: the store is copied only when there is something to change.
         State current = _state;
-        if (gone.Count == 0 && !seen.Exists(server => IsNews(current, server, now)) && Replaced(current, seen).Count == 0)
+        if (gone.Count == 0 && !seen.Exists(server => IsNews(current, server, now)) && !current.KnownServers.Exists(IsClusterNode))
             return Task.FromResult(new StoreResult(false, true));
 
         return RecordServersAsync(seen, now, gone);
     }
 
-    /// <summary>The change <see cref="ServersSeenAsync"/> makes when there is one. Requests it drops while moving them are logged.</summary>
+    /// <summary>The change <see cref="ServersSeenAsync"/> makes when there is one.</summary>
     private async Task<StoreResult> RecordServersAsync(List<QuasarCompanionServer> seen, DateTime now, List<KeyValuePair<string, DateTime>> gone)
     {
-        List<Dropped> dropped = new();
+        int clusterNodes = 0;
         StoreResult result = await ChangeAsync(draft =>
         {
             // No longer connected: the last time it was seen is kept.
             bool changed = KeepLastSeen(draft, gone);
+
+            // A cluster node an earlier version recorded goes, with anything waiting for it, which it would never apply.
+            HashSet<string> nodes = draft.Read.KnownServers.Where(IsClusterNode).Select(node => node.ServerId).ToHashSet(StringComparer.Ordinal);
+            if (nodes.Count > 0)
+            {
+                draft.Write.KnownServers.RemoveAll(known => nodes.Contains(known.ServerId));
+                draft.Write.Pending.RemoveAll(pending => nodes.Contains(pending.ServerId));
+                clusterNodes = nodes.Count;
+                changed = true;
+            }
+
             foreach (QuasarCompanionServer server in seen)
             {
                 KnownServer? known = draft.Read.KnownServers.Find(s => string.Equals(s.ServerId, server.ServerId, StringComparison.Ordinal));
-                if (known == null && TakeOverSlot(draft, server, seen, now, dropped))
+                if (known == null)
                 {
-                    changed = true;
-                }
-                else if (known == null)
-                {
-                    draft.Write.KnownServers.Add(new KnownServer
-                    {
-                        ServerId = server.ServerId, DisplayName = server.DisplayName, LastSeenUtc = now,
-                        ClusterId = server.ClusterId, ClusterSlot = server.ClusterSlot,
-                    });
+                    draft.Write.KnownServers.Add(new KnownServer { ServerId = server.ServerId, DisplayName = server.DisplayName, LastSeenUtc = now });
                     changed = true;
                 }
                 else if (IsNews(draft.Read, server, now))
                 {
                     KnownServer renewed = draft.Edit(known);
                     renewed.DisplayName = server.DisplayName;
-                    renewed.ClusterId = server.ClusterId;
-                    renewed.ClusterSlot = server.ClusterSlot;
                     renewed.LastSeenUtc = now;
                     changed = true;
                 }
-            }
-
-            // A node that connected while its old incarnation was still listed was added on its own; once the old one
-            // is gone, what waited for it moves to the node now in its slot, and so does what was applied to it, which an
-            // older request for the slot is compared against.
-            foreach ((KnownServer old, QuasarCompanionServer node) in Replaced(draft.Read, seen))
-            {
-                MovePending(draft, old.ServerId, node, dropped);
-                KnownServer? survivor = draft.Read.KnownServers.Find(s => string.Equals(s.ServerId, node.ServerId, StringComparison.Ordinal));
-                if (survivor != null && survivor.LastAppliedSequence < old.LastAppliedSequence)
-                    draft.Edit(survivor).LastAppliedSequence = old.LastAppliedSequence;
-                draft.Write.KnownServers.Remove(old);
-                changed = true;
             }
             return changed;
         }).ConfigureAwait(false);
         // Only its own entry: one that connected again meanwhile has a newer time and stays.
         foreach (KeyValuePair<string, DateTime> offline in gone)
             ((ICollection<KeyValuePair<string, DateTime>>)_seenNow).Remove(offline);
-        LogDropped(dropped, result);
+        if (clusterNodes > 0 && result.Changed && _log.IsEnabled(LogLevel.Information))
+            _log.LogInformation("Dropped {Count} Quasar cluster node(s) from the PB Limiter servers, with any profile waiting for them: the limiter does not run on cluster nodes", clusterNodes);
         return result;
     }
 
-    /// <summary>Known cluster nodes no longer connected whose slot a connected node with another ServerId now holds.</summary>
-    private static List<(KnownServer Old, QuasarCompanionServer Node)> Replaced(State state, List<QuasarCompanionServer> connected)
-    {
-        List<(KnownServer, QuasarCompanionServer)> replaced = new();
-        foreach (KnownServer known in state.KnownServers)
-        {
-            if (string.IsNullOrEmpty(known.ClusterId) || string.IsNullOrEmpty(known.ClusterSlot)) continue;
-            if (connected.Exists(c => string.Equals(c.ServerId, known.ServerId, StringComparison.Ordinal))) continue;
-            QuasarCompanionServer? node = connected.Find(c => string.Equals(c.ClusterId, known.ClusterId, StringComparison.Ordinal)
-                                                              && string.Equals(c.ClusterSlot, known.ClusterSlot, StringComparison.Ordinal));
-            if (node != null)
-                replaced.Add((known, node));
-        }
-        return replaced;
-    }
+    private static bool IsClusterNode(KnownServer server) => !string.IsNullOrEmpty(server.ClusterId);
 
-    /// <summary>
-    /// What waits for one server now waits for another. A server has one request at a time, the newest queued: a moved
-    /// request older than one already waiting for the new server, or not newer than one applied to it or to any
-    /// incarnation of its cluster slot still listed, is dropped, and so is an older one waiting there for a newer one
-    /// moved in. Each drop goes into <paramref name="dropped"/>. A request on its way is never dropped: it cannot be called
-    /// back, and may still be applied. One that would be is moved all the same, so it is not left waiting for a server that
-    /// is gone, and an older one on its way to the new server stays beside the one moved in. Once such a request is
-    /// answered or fails, the claim drops whichever of the two is older before it is sent again.
-    /// </summary>
-    private static void MovePending(Draft draft, string fromServerId, QuasarCompanionServer to, List<Dropped> dropped)
-    {
-        foreach (PendingApply pending in draft.Read.Pending.Where(p => string.Equals(p.ServerId, fromServerId, StringComparison.Ordinal)).ToList())
-        {
-            State state = draft.Write;
-            bool newerWaiting = state.Pending.Exists(p => p != pending && string.Equals(p.ServerId, to.ServerId, StringComparison.Ordinal) && p.Sequence >= pending.Sequence);
-            // Equal is the same request, queued for both incarnations and already applied to the other.
-            bool newerApplied = SlotApplied(state, to.ServerId, to.ClusterId, to.ClusterSlot) >= pending.Sequence;
-            if ((newerWaiting || newerApplied) && !pending.Sending)
-            {
-                state.Pending.Remove(pending);
-                dropped.Add(new Dropped(pending, newerWaiting
-                    ? "a profile queued after it already waits for " + to.DisplayName + ", the node now in its cluster slot"
-                    : "it, or a profile queued after it, was already applied to its cluster slot"));
-                continue;
-            }
-
-            // Only when the moved request is the newest for the new server, so what waits there is older.
-            if (!newerWaiting && !newerApplied)
-            {
-                foreach (PendingApply older in state.Pending.Where(p => p != pending && !p.Sending && string.Equals(p.ServerId, to.ServerId, StringComparison.Ordinal)).ToList())
-                {
-                    state.Pending.Remove(older);
-                    dropped.Add(new Dropped(older, "profile " + pending.ProfileName + ", queued after it for the same cluster slot, now waits for " + to.DisplayName + " instead"));
-                }
-            }
-            PendingApply moved = draft.Edit(pending);
-            moved.ServerId = to.ServerId;
-            moved.ServerName = to.DisplayName;
-        }
-    }
-
-    /// <summary>True when the server is new, renamed, moved in its cluster, or due for its last-seen time to be saved again.</summary>
+    /// <summary>True when the server is new, renamed, or due for its last-seen time to be saved again.</summary>
     private static bool IsNews(State state, QuasarCompanionServer server, DateTime now)
     {
         KnownServer? known = state.KnownServers.Find(s => string.Equals(s.ServerId, server.ServerId, StringComparison.Ordinal));
         return known == null
                || !string.Equals(known.DisplayName, server.DisplayName, StringComparison.Ordinal)
-               || !string.Equals(known.ClusterId, server.ClusterId, StringComparison.Ordinal)
-               || !string.Equals(known.ClusterSlot, server.ClusterSlot, StringComparison.Ordinal)
                || now - known.LastSeenUtc > TimeSpan.FromMinutes(SeenSaveMinutes);
     }
 
     /// <summary>
-    /// A new incarnation of a known cluster node takes over its slot: what waits for the old ServerId is meant for this
-    /// node, and the old one never connects again. False for a server that is not a cluster node, a slot not seen yet,
-    /// or a slot whose node is still connected, while one replaces the other.
-    /// </summary>
-    private static bool TakeOverSlot(Draft draft, QuasarCompanionServer server, List<QuasarCompanionServer> connected, DateTime now, List<Dropped> dropped)
-    {
-        if (string.IsNullOrEmpty(server.ClusterId) || string.IsNullOrEmpty(server.ClusterSlot)) return false;
-        KnownServer? slot = draft.Read.KnownServers.Find(s => string.Equals(s.ClusterId, server.ClusterId, StringComparison.Ordinal)
-                                                         && string.Equals(s.ClusterSlot, server.ClusterSlot, StringComparison.Ordinal));
-        if (slot == null || connected.Exists(c => string.Equals(c.ServerId, slot.ServerId, StringComparison.Ordinal))) return false;
-
-        MovePending(draft, slot.ServerId, server, dropped);
-        // Another incarnation of the slot may still be listed, until Replaced drops it: the newest applied to any of them
-        // is what an older request for the slot is compared against from now on.
-        long applied = SlotApplied(draft.Read, server.ServerId, server.ClusterId, server.ClusterSlot);
-        KnownServer taken = draft.Edit(slot);
-        taken.ServerId = server.ServerId;
-        taken.DisplayName = server.DisplayName;
-        taken.LastSeenUtc = now;
-        if (taken.LastAppliedSequence < applied)
-            taken.LastAppliedSequence = applied;
-        return true;
-    }
-
-    /// <summary>
-    /// The sequence of the newest profile applied to <paramref name="serverId"/>, or to any entry listed in the same
-    /// cluster slot: one slot is one server to the admin, whichever incarnation a profile reached. 0 when none is known.
-    /// </summary>
-    private static long SlotApplied(State state, string serverId, string clusterId, string clusterSlot)
-    {
-        bool clustered = !string.IsNullOrEmpty(clusterId) && !string.IsNullOrEmpty(clusterSlot);
-        long newest = 0;
-        foreach (KnownServer known in state.KnownServers)
-        {
-            bool same = string.Equals(known.ServerId, serverId, StringComparison.Ordinal)
-                        || (clustered && string.Equals(known.ClusterId, clusterId, StringComparison.Ordinal)
-                                      && string.Equals(known.ClusterSlot, clusterSlot, StringComparison.Ordinal));
-            if (same && known.LastAppliedSequence > newest)
-                newest = known.LastAppliedSequence;
-        }
-        return newest;
-    }
-
-    /// <summary>True when <paramref name="serverId"/> is <paramref name="server"/>, or a listed entry in its cluster slot.</summary>
-    private static bool InSlot(State state, string serverId, KnownServer server)
-    {
-        if (string.Equals(serverId, server.ServerId, StringComparison.Ordinal)) return true;
-        if (string.IsNullOrEmpty(server.ClusterId) || string.IsNullOrEmpty(server.ClusterSlot)) return false;
-        return state.KnownServers.Exists(s => string.Equals(s.ServerId, serverId, StringComparison.Ordinal)
-                                              && string.Equals(s.ClusterId, server.ClusterId, StringComparison.Ordinal)
-                                              && string.Equals(s.ClusterSlot, server.ClusterSlot, StringComparison.Ordinal));
-    }
-
-    /// <summary>
     /// Why <paramref name="pending"/> must not be sent, or null when it may be: sending it would apply it after a newer
-    /// profile. Either one queued after it was already applied to its server's cluster slot, or one waits for the same
-    /// server, which <see cref="MovePending"/> leaves when it moves a request on its way. Decided by sequence, so a clock
-    /// set back cannot make a new request look older. One queued with it for another incarnation shares its sequence: once
-    /// either copy is applied to the slot the other is not sent, as <see cref="MovePending"/> decides too. Two copies of one
-    /// request moved onto one server are the same profile, and the one with the higher Id is the copy dropped.
+    /// profile. Either one queued after it was already applied to its server, or one waits for the same server, queued while
+    /// it was on its way. Decided by sequence, so a clock set back cannot make a new request look older; of two with one
+    /// sequence, the one with the higher Id is dropped.
     /// </summary>
     private static string? SupersededBecause(State state, PendingApply pending)
     {
@@ -735,8 +545,8 @@ public sealed class ProfileStore : IDisposable
                                       && (p.Sequence > pending.Sequence || (p.Sequence == pending.Sequence && p.Id.CompareTo(pending.Id) < 0))))
             return "the same profile, or one queued after it, already waits for this server";
         KnownServer? server = state.KnownServers.Find(s => string.Equals(s.ServerId, pending.ServerId, StringComparison.Ordinal));
-        return server != null && pending.Sequence <= SlotApplied(state, server.ServerId, server.ClusterId, server.ClusterSlot)
-            ? "it, or a profile queued after it, was already applied to this server or its cluster slot"
+        return server != null && pending.Sequence <= server.LastAppliedSequence
+            ? "it, or a profile queued after it, was already applied to this server"
             : null;
     }
 
@@ -796,41 +606,51 @@ public sealed class ProfileStore : IDisposable
     /// </summary>
     private async Task<StoreResult> ChangeAsync(Func<Draft, bool> change, bool persist = true)
     {
-        bool published = false;
-        bool written = false;
+        if (Volatile.Read(ref _disposed) != 0) return new StoreResult(false, true);
+        Interlocked.Increment(ref _activeChanges);
         try
         {
-            bool saved = true;
-            await _writer.WaitAsync(_stopping.Token).ConfigureAwait(false);
+            bool published = false;
+            bool written = false;
             try
             {
-                // Made under the writer, so it works on the newest state and no other change is published meanwhile.
-                // A change that wrote nothing changed nothing, whatever it returned.
-                Draft draft = new(_state);
-                State? next = change(draft) ? draft.Result : null;
-                if (next != null)
+                bool saved = true;
+                await _writer.WaitAsync(_stopping.Token).ConfigureAwait(false);
+                try
                 {
-                    _state = next;
-                    published = true;
-                    if (persist)
-                        saved = _canSave && Write(JsonSerializer.SerializeToUtf8Bytes(next, Json));
-                    written = saved;
+                    // Made under the writer, so it works on the newest state and no other change is published meanwhile.
+                    // A change that wrote nothing changed nothing, whatever it returned.
+                    Draft draft = new(_state);
+                    State? next = change(draft) ? draft.Result : null;
+                    if (next != null)
+                    {
+                        _state = next;
+                        published = true;
+                        if (persist)
+                            saved = _canSave && await WriteAsync(JsonSerializer.SerializeToUtf8Bytes(next, Json)).ConfigureAwait(false);
+                        written = saved;
+                    }
                 }
-            }
-            finally
-            {
-                _writer.Release();
-            }
+                finally
+                {
+                    _writer.Release();
+                }
 
-            if (published)
-                RaiseChanged();
-            return new StoreResult(published, saved);
+                if (published)
+                    RaiseChanged();
+                return new StoreResult(published, saved);
+            }
+            catch (Exception e) when (e is ObjectDisposedException or OperationCanceledException)
+            {
+                // Stopped part way, or before it could start: a change already made, and saved, stays made, and is reported so.
+                _log.LogWarning(e, "A PB Limiter profile change came while Quasar was stopping the store, it may not be saved");
+                return new StoreResult(published, written);
+            }
         }
-        catch (Exception e) when (e is ObjectDisposedException or OperationCanceledException)
+        finally
         {
-            // Stopped part way, or before it could start: a change already made, and saved, stays made, and is reported so.
-            _log.LogWarning(e, "A PB Limiter profile change came while Quasar was stopping the store, it may not be saved");
-            return new StoreResult(published, written);
+            if (Interlocked.Decrement(ref _activeChanges) == 0 && Volatile.Read(ref _disposed) != 0)
+                Dispose(true);
         }
     }
 
@@ -840,7 +660,7 @@ public sealed class ProfileStore : IDisposable
         bool canSave = false;
         try
         {
-            RecoverInterruptedSave();
+            await RecoverInterruptedSaveAsync().ConfigureAwait(false);
             if (File.Exists(_path))
                 loaded = Normalise(Parse(await File.ReadAllBytesAsync(_path, CancellationToken.None).ConfigureAwait(false))); // Never cut short, see _stopping.
             canSave = true;
@@ -864,16 +684,16 @@ public sealed class ProfileStore : IDisposable
     }
 
     /// <summary>
-    /// Puts back a complete copy an interrupted save left beside the profiles (<see cref="SafeFile.Recover"/>), before
+    /// Puts back a complete copy an interrupted save left beside the profiles (<see cref="SafeFile.RecoverAsync"/>), before
     /// the file is read, so a crash between writing the copy and moving it into place cannot lose the last change.
     /// </summary>
-    private void RecoverInterruptedSave()
+    private async Task RecoverInterruptedSaveAsync()
     {
         string temporary = _path + ".tmp";
         try
         {
-            SafeFile.Recovery recovery = SafeFile.Recover(_path, temporary, IsWholeJson, out string? kept);
-            string? line = SafeFile.Describe(recovery, _path, temporary, kept);
+            SafeFile.RecoverResult recovery = await SafeFile.RecoverAsync(_path, temporary, IsWholeJson).ConfigureAwait(false);
+            string? line = SafeFile.Describe(recovery.Recovery, _path, temporary, recovery.Kept);
             if (line is not null)
                 _log.LogWarning("{Recovery}", line);
         }
@@ -926,8 +746,8 @@ public sealed class ProfileStore : IDisposable
 
     // Through SafeFile: a complete copy swapped in with one rename, written in place only where the swap fails, and one
     // save of the file at a time, also with another Quasar worker during a restart. A complete copy an earlier write left
-    // beside a missing or cut-short file is put back by RecoverInterruptedSave.
-    private bool Write(byte[] json)
+    // beside a missing or cut-short file is put back by RecoverInterruptedSaveAsync.
+    private async Task<bool> WriteAsync(byte[] json)
     {
         string temporary = _path + ".tmp";
         try
@@ -936,13 +756,12 @@ public sealed class ProfileStore : IDisposable
             if (!string.IsNullOrEmpty(folder))
                 Directory.CreateDirectory(folder);
 
-            using MemoryStream content = new(json, false);
-            Exception? swapError = SafeFile.Write(_path, temporary, content, IsWholeJson, out string? kept);
-            if (kept is not null)
-                _log.LogWarning("A complete copy of the PB Limiter profiles an earlier save left at {File} was kept as {Kept} before this save, in case it holds profiles you want.", temporary, kept);
-            if (swapError is not null)
+            SafeFile.WriteResult write = await SafeFile.WriteAsync(_path, temporary, json, IsWholeJson).ConfigureAwait(false);
+            if (write.Kept is not null)
+                _log.LogWarning("A complete copy of the PB Limiter profiles an earlier save left at {File} was kept as {Kept} before this save, in case it holds profiles you want.", temporary, write.Kept);
+            if (write.SwapError is not null)
                 // For example a file mounted on its own into a container, or held open by another program.
-                _log.LogWarning(swapError, "The PB Limiter profiles could not be swapped into place, so they are written in place");
+                _log.LogWarning(write.SwapError, "The PB Limiter profiles could not be swapped into place, so they are written in place");
             return true;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)

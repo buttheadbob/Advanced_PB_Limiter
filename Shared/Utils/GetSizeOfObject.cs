@@ -481,10 +481,12 @@ namespace Advanced_PB_Limiter.Utils
         /// <summary>
         /// Reads a reference by its offset from the start of an object's or a boxed struct's data, so the field's type is
         /// never resolved: compiled code that names the field resolves it too. The offset is the runtime's own: on .NET 10
-        /// from RuntimeFieldHandle.GetInstanceFieldOffset, on .NET Framework from the field's FieldDesc, checked to belong to
-        /// the field's type and to be of the kind expected. All of it is set up and checked once against Reflection on known
-        /// types; where any of that fails, <see cref="Works"/> is false, <see cref="Failure"/> says why when it threw, and
-        /// nothing is read.
+        /// from RuntimeFieldHandle.GetInstanceFieldOffset, on .NET Framework from the field's FieldDesc, checked to be of
+        /// the kind expected. The owner check is skipped for generic types, whose FieldDesc may name a canonical
+        /// instantiation; the self-check below reads the reference fields of generic classes instantiated over value types,
+        /// and a reference inside one's value-type field. All of it is set
+        /// up and checked once against Reflection on known types; where any of that fails, <see cref="Works"/> is false,
+        /// <see cref="Failure"/> says why when it threw, and nothing is read.
         /// </summary>
         private static class RawFields
         {
@@ -494,6 +496,23 @@ namespace Advanced_PB_Limiter.Utils
             // DWORD whose low 27 bits are the offset and high 5 bits the field's element type, class for every reference.
             private const int FIELD_DESC_OFFSET_BITS = 27;
             private const int FIELD_DESC_OFFSET_MASK = (1 << FIELD_DESC_OFFSET_BITS) - 1;
+
+            /// <summary>
+            /// A generic class with a value-type field and a reference field. The runtime may share a FieldDesc between
+            /// compatible instantiations; the self-check reads the reference field and, for RefValue, the reference inside
+            /// the value field.
+            /// </summary>
+            private sealed class GenericHolder<T> where T : struct
+            {
+                public T Value;
+                public object Reference = new();
+            }
+
+            /// <summary>A value type holding a reference, to exercise a generic instantiation's value-field offset.</summary>
+            private struct RefValue
+            {
+                public object? Value;
+            }
 
             /// <summary>What the setup gave: the reader and the offset source, or why there are none.</summary>
             private sealed class Setup
@@ -520,7 +539,8 @@ namespace Advanced_PB_Limiter.Utils
 
             /// <summary>
             /// The field's offset from the start of its holder's data. Throws InvalidOperationException when the runtime's
-            /// figure does not look like this field's, which never happens where the check passed.
+            /// figure does not look like this field's. Generic types skip the owner check; the self-check reads the reference
+            /// fields of generic classes over value types, and a reference inside one's value-type field.
             /// </summary>
             internal static int OffsetOf(FieldInfo field, bool reference)
             {
@@ -531,7 +551,10 @@ namespace Advanced_PB_Limiter.Utils
                 return offset;
             }
 
-            /// <summary>Sets up the reader and checks it, catching anything: a failure leaves the memory check off, never the plugin.</summary>
+            /// <summary>
+            /// Sets up the reader and checks it, catching anything: a failure leaves the memory check off, never the plugin.
+            /// Self-check reads are bounded to the holder's field bytes.
+            /// </summary>
             private static Setup Prepare()
             {
                 try
@@ -556,7 +579,8 @@ namespace Advanced_PB_Limiter.Utils
 
                 Type declaring = field.DeclaringType!;
                 IntPtr desc = field.FieldHandle.Value;
-                // A generic type's fields are shared by its instantiations, so their FieldDesc names a canonical type.
+                // A generic type's fields may be shared between compatible instantiations, so their FieldDesc may name a
+                // canonical type; value-type instantiations have their own.
                 if (!declaring.IsGenericType && !NamesType(desc, declaring.TypeHandle.Value)) return -1;
                 int bits = Marshal.ReadInt32(desc, IntPtr.Size + 4);
                 int elementType = (int)((uint)bits >> FIELD_DESC_OFFSET_BITS);
@@ -601,10 +625,18 @@ namespace Advanced_PB_Limiter.Utils
             {
                 object first = new();
                 object second = new();
+                object nested = new();
                 KeyValuePair<long, object> pair = new(7, second);
+                GenericHolder<byte> byteHolder = new() { Reference = first };
+                GenericHolder<Guid> guidHolder = new() { Reference = second };
+                GenericHolder<RefValue> refHolder = new() { Value = new RefValue { Value = nested }, Reference = first };
                 return Matches(readAt, instanceFieldOffset, Tuple.Create(first, "text", 5L, pair, new object[1]))
                        && Matches(readAt, instanceFieldOffset, pair)
                        && Matches(readAt, instanceFieldOffset, new StringBuilder("text", 64))
+                       && Matches(readAt, instanceFieldOffset, byteHolder)
+                       && Matches(readAt, instanceFieldOffset, guidHolder)
+                       && Matches(readAt, instanceFieldOffset, refHolder)
+                       && NestedGeneric(readAt, instanceFieldOffset, refHolder, nested)
                        && Nested(readAt, instanceFieldOffset, Tuple.Create(1, pair), second);
             }
 
@@ -616,10 +648,22 @@ namespace Advanced_PB_Limiter.Utils
                     {
                         if (field.IsStatic || field.FieldType.IsValueType || field.FieldType.IsPointer) continue;
                         int offset = RuntimeOffset(instanceFieldOffset, field, reference: true);
-                        if (offset < 0 || !ReferenceEquals(readAt(holder, offset), field.GetValue(holder))) return false;
+                        if (offset < 0 || !Readable(holder, offset) || !ReferenceEquals(readAt(holder, offset), field.GetValue(holder))) return false;
                     }
                 }
                 return true;
+            }
+
+            /// <summary>A reference inside a value-type field of a generic instantiation, at the value field's offset plus the reference's in the struct.</summary>
+            private static bool NestedGeneric(Reader readAt, MethodInfo? instanceFieldOffset, GenericHolder<RefValue> holder, object expected)
+            {
+                FieldInfo? outer = typeof(GenericHolder<RefValue>).GetField(nameof(GenericHolder<RefValue>.Value), BindingFlags.Public | BindingFlags.Instance);
+                FieldInfo? inner = typeof(RefValue).GetField(nameof(RefValue.Value), BindingFlags.Public | BindingFlags.Instance);
+                if (outer is null || inner is null) return false;
+                int outerOffset = RuntimeOffset(instanceFieldOffset, outer, reference: false);
+                int innerOffset = RuntimeOffset(instanceFieldOffset, inner, reference: true);
+                return outerOffset >= 0 && innerOffset >= 0 && Readable(holder, outerOffset + innerOffset)
+                       && ReferenceEquals(readAt(holder, outerOffset + innerOffset), expected);
             }
 
             /// <summary>A reference in a struct held by an object, at the struct field's offset plus the reference's in the struct.</summary>
@@ -630,7 +674,71 @@ namespace Advanced_PB_Limiter.Utils
                 if (outer is null || inner is null) return false;
                 int outerOffset = RuntimeOffset(instanceFieldOffset, outer, reference: false);
                 int innerOffset = RuntimeOffset(instanceFieldOffset, inner, reference: true);
-                return outerOffset >= 0 && innerOffset >= 0 && ReferenceEquals(readAt(holder, outerOffset + innerOffset), expected);
+                return outerOffset >= 0 && innerOffset >= 0 && Readable(holder, outerOffset + innerOffset)
+                       && ReferenceEquals(readAt(holder, outerOffset + innerOffset), expected);
+            }
+
+            /// <summary>Whether a reference-sized read at the offset stays inside the holder's field bytes.</summary>
+            private static bool Readable(object holder, int offset)
+            {
+                int bytes = DataBytes(holder.GetType());
+                return offset >= 0 && offset <= bytes - IntPtr.Size;
+            }
+
+            /// <summary>The holder's field bytes, rounded to pointer size, without reading field offsets.</summary>
+            private static int DataBytes(Type type)
+            {
+                int bytes = 0;
+                for (Type? current = type; current != null && current != typeof(object) && current != typeof(ValueType); current = current.BaseType)
+                {
+                    foreach (FieldInfo field in current.GetTypeInfo().DeclaredFields)
+                    {
+                        if (field.IsStatic) continue;
+                        bytes += field.FieldType.IsValueType ? SimpleValueBytes(field.FieldType) : IntPtr.Size;
+                    }
+                }
+                return (bytes + IntPtr.Size - 1) & ~(IntPtr.Size - 1);
+            }
+
+            /// <summary>The size of a value type's fields, rounded to pointer size, without reading field offsets.</summary>
+            private static int SimpleValueBytes(Type type)
+            {
+                if (!type.IsValueType) return IntPtr.Size;
+
+                switch (Type.GetTypeCode(type))
+                {
+                    case TypeCode.Boolean:
+                    case TypeCode.Byte:
+                    case TypeCode.SByte:
+                        return 1;
+                    case TypeCode.Char:
+                    case TypeCode.Int16:
+                    case TypeCode.UInt16:
+                        return 2;
+                    case TypeCode.Int32:
+                    case TypeCode.UInt32:
+                    case TypeCode.Single:
+                        return 4;
+                    case TypeCode.Int64:
+                    case TypeCode.UInt64:
+                    case TypeCode.Double:
+                    case TypeCode.DateTime:
+                        return 8;
+                    case TypeCode.Decimal:
+                        return 16;
+                    default:
+                        if (type.IsPrimitive) return IntPtr.Size;
+                        int bytes = 0;
+                        for (Type? current = type; current != null && current != typeof(object) && current != typeof(ValueType); current = current.BaseType)
+                        {
+                            foreach (FieldInfo field in current.GetTypeInfo().DeclaredFields)
+                            {
+                                if (field.IsStatic) continue;
+                                bytes += field.FieldType.IsValueType ? SimpleValueBytes(field.FieldType) : IntPtr.Size;
+                            }
+                        }
+                        return (bytes + IntPtr.Size - 1) & ~(IntPtr.Size - 1);
+                }
             }
         }
     }

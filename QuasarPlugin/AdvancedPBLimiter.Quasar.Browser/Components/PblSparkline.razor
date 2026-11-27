@@ -44,14 +44,16 @@
 
         double min = double.MaxValue;
         double max = double.MinValue;
+        bool any = false;
         foreach (double value in Values)
         {
             if (!double.IsFinite(value)) continue;
+            any = true;
             min = Math.Min(min, value);
             max = Math.Max(max, value);
         }
 
-        if (min == double.MaxValue)
+        if (!any)
         {
             LinePoints = AreaPoints = "";
             return;

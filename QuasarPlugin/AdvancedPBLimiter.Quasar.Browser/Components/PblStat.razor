@@ -5,10 +5,6 @@
             <span class="pbl-stat-icon"><PblIcon Name="@Icon" /></span>
         }
         <span class="pbl-stat-label">@Label</span>
-        @if (!string.IsNullOrWhiteSpace(Hint))
-        {
-            <span class="pbl-stat-help" title="@Hint"><PblIcon Name="info" /></span>
-        }
     </div>
 
     <div class="pbl-stat-value">@Value</div>

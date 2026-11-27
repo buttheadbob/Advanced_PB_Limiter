@@ -28,7 +28,7 @@ Generate report: one text file for the servers you choose.
 
 Needs the Advanced PB Limiter Magnetar plugin on the servers and Quasar 1.7 or later. Includes a small companion Magnetar
 plugin (advancedpblimiter.quasar) that Quasar adds to managed servers; restart servers that were running when this plugin
-was enabled. Each cluster node shows as its own server.
+was enabled. The limiter does not run on Quasar cluster nodes: they show it as inactive and are not offered for profiles.
     </Description>
 
     <PluginKind>QuasarUiPlugin</PluginKind>

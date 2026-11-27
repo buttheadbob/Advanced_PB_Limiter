@@ -78,6 +78,31 @@ namespace Advanced_PB_Limiter.Tests
             return bom ? new byte[] { 0xEF, 0xBB, 0xBF }.Concat(body).ToArray() : body;
         }
 
+        private static async Task<List<string>> ReplaceDamageAsync(string path) =>
+            (await InstantPunishmentFile.ReplaceDamageAsync(path)).Changed;
+
+        private static async Task<(List<string> Changed, string? Recovered)> ReplaceDamageWithRecoveryAsync(string path)
+        {
+            InstantPunishmentFile.ReplaceDamageResult result = await InstantPunishmentFile.ReplaceDamageAsync(path);
+            return (result.Changed, result.Recovered);
+        }
+
+        private static async Task<(List<string> Changed, string? Recovered, bool CopyWaiting)> ReplaceDamageHeldAsync(string path)
+        {
+            InstantPunishmentFile.ReplaceDamageResult result = await InstantPunishmentFile.ReplaceDamageAsync(path, moveConfigAside: false);
+            return (result.Changed, result.Recovered, result.CopyWaiting);
+        }
+
+        /// <summary>The file and every copy beside it; the lock file SafeFile keeps beside a file it writes is not a copy.</summary>
+        private string[] FilesBeside(string name) =>
+            Directory.GetFiles(_folder, name + "*").Where(file => !file.EndsWith(".lock", StringComparison.Ordinal)).ToArray();
+
+        private static async Task<string?> WriteWithSafeFileAsync(string path, string temp, byte[] bytes)
+        {
+            SafeFile.WriteResult write = await SafeFile.WriteAsync(path, temp, bytes, SafeFile.IsWholeXml);
+            return write.Kept;
+        }
+
         [Theory]
         [InlineData(true, "\r\n")]
         [InlineData(false, "\r\n")]
@@ -87,7 +112,7 @@ namespace Advanced_PB_Limiter.Tests
         {
             string path = await WriteAsync("damage.cfg", Bytes(bom, Config(newLine, "Damage", "Damage")));
 
-            List<string> changed = InstantPunishmentFile.ReplaceDamage(path);
+            List<string> changed = await ReplaceDamageAsync(path);
 
             Assert.Equal(BothSettings, changed, StringComparer.Ordinal);
             Assert.Equal(Bytes(bom, Config(newLine, "TurnOff", "TurnOff")), await ReadAsync(path));
@@ -100,7 +125,7 @@ namespace Advanced_PB_Limiter.Tests
             const string before = "<LimiterConfig>\r\n  <InstantKillPunishment>Damage</InstantKillPunishment>\n  <MemoryPunishment>Destroy</MemoryPunishment>\r\n</LimiterConfig>";
             string path = await WriteAsync("mixed.cfg", Bytes(false, before));
 
-            InstantPunishmentFile.ReplaceDamage(path);
+            await ReplaceDamageAsync(path);
 
             const string after = "<LimiterConfig>\r\n  <InstantKillPunishment>TurnOff</InstantKillPunishment>\n  <MemoryPunishment>Destroy</MemoryPunishment>\r\n</LimiterConfig>";
             Assert.Equal(Bytes(false, after), await ReadAsync(path));
@@ -112,7 +137,7 @@ namespace Advanced_PB_Limiter.Tests
             const string before = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<LimiterConfig>\n  <!-- <MemoryPunishment>Damage</MemoryPunishment> -->\n  <MemoryPunishment> Damage </MemoryPunishment>\n</LimiterConfig>\n";
             string path = await WriteAsync("comment.cfg", Bytes(true, before));
 
-            Assert.Equal(MemoryOnly, InstantPunishmentFile.ReplaceDamage(path), StringComparer.Ordinal);
+            Assert.Equal(MemoryOnly, await ReplaceDamageAsync(path), StringComparer.Ordinal);
             const string after = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<LimiterConfig>\n  <!-- <MemoryPunishment>Damage</MemoryPunishment> -->\n  <MemoryPunishment>TurnOff</MemoryPunishment>\n</LimiterConfig>\n";
             Assert.Equal(Bytes(true, after), await ReadAsync(path));
         }
@@ -122,7 +147,7 @@ namespace Advanced_PB_Limiter.Tests
         {
             string path = await WriteAsync("one.cfg", Bytes(false, Config("\n", "Destroy", "Damage")));
 
-            Assert.Equal(MemoryOnly, InstantPunishmentFile.ReplaceDamage(path), StringComparer.Ordinal);
+            Assert.Equal(MemoryOnly, await ReplaceDamageAsync(path), StringComparer.Ordinal);
             Assert.Equal(Bytes(false, Config("\n", "Destroy", "TurnOff")), await ReadAsync(path));
         }
 
@@ -133,7 +158,7 @@ namespace Advanced_PB_Limiter.Tests
             byte[] bytes = Encoding.Unicode.GetPreamble().Concat(Encoding.Unicode.GetBytes(before)).ToArray();
             string path = await WriteAsync("unicode.cfg", bytes);
 
-            Assert.Equal(KillOnly, InstantPunishmentFile.ReplaceDamage(path), StringComparer.Ordinal);
+            Assert.Equal(KillOnly, await ReplaceDamageAsync(path), StringComparer.Ordinal);
             byte[] written = await ReadAsync(path);
             Assert.Equal(Encoding.Unicode.GetPreamble(), written.Take(2).ToArray());
             System.Xml.Linq.XDocument after = System.Xml.Linq.XDocument.Parse(Encoding.Unicode.GetString(written, 2, written.Length - 2));
@@ -154,10 +179,10 @@ namespace Advanced_PB_Limiter.Tests
             IOException error;
 #if NETFRAMEWORK
             using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
-                error = Assert.Throws<IOException>(() => InstantPunishmentFile.ReplaceDamage(path));
+                error = await Assert.ThrowsAsync<IOException>(async () => await InstantPunishmentFile.ReplaceDamageAsync(path));
 #else
             await using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
-                error = Assert.Throws<IOException>(() => InstantPunishmentFile.ReplaceDamage(path));
+                error = await Assert.ThrowsAsync<IOException>(async () => await InstantPunishmentFile.ReplaceDamageAsync(path));
 #endif
 
             Assert.Contains("could not be restored", error.Message, StringComparison.Ordinal);
@@ -175,7 +200,7 @@ namespace Advanced_PB_Limiter.Tests
             byte[] bytes = Encoding.Unicode.GetPreamble().Concat(Encoding.Unicode.GetBytes(before)).ToArray();
             string path = await WriteAsync("linebreak.cfg", bytes);
 
-            Assert.Equal(KillOnly, InstantPunishmentFile.ReplaceDamage(path), StringComparer.Ordinal);
+            Assert.Equal(KillOnly, await ReplaceDamageAsync(path), StringComparer.Ordinal);
             byte[] written = await ReadAsync(path);
             System.Xml.Linq.XDocument after;
 #if NETFRAMEWORK
@@ -196,7 +221,7 @@ namespace Advanced_PB_Limiter.Tests
             const string before = "<?xml version=\"1.0\" encoding=\"iso-8859-1\"?>\n<LimiterConfig>\n  <!-- caf\u00e9 -->\n  <InstantKillPunishment>Damage</InstantKillPunishment>\n</LimiterConfig>\n";
             string path = await WriteAsync("latin1.cfg", latin1.GetBytes(before));
 
-            Assert.Equal(KillOnly, InstantPunishmentFile.ReplaceDamage(path), StringComparer.Ordinal);
+            Assert.Equal(KillOnly, await ReplaceDamageAsync(path), StringComparer.Ordinal);
             byte[] written = await ReadAsync(path);
             Assert.Contains((byte)0xE9, written);
             string text = latin1.GetString(written);
@@ -212,7 +237,7 @@ namespace Advanced_PB_Limiter.Tests
         {
             string path = await WriteAsync("odd.cfg", Bytes(false, Config("\n", value, "Destroy")));
 
-            Assert.Equal(KillOnly, InstantPunishmentFile.ReplaceDamage(path), StringComparer.Ordinal);
+            Assert.Equal(KillOnly, await ReplaceDamageAsync(path), StringComparer.Ordinal);
             System.Xml.Linq.XDocument after = System.Xml.Linq.XDocument.Parse(Encoding.UTF8.GetString(await ReadAsync(path)));
             Assert.Equal("TurnOff", after.Root?.Element("InstantKillPunishment")?.Value);
             Assert.Equal("Destroy", after.Root?.Element("MemoryPunishment")?.Value);
@@ -225,7 +250,7 @@ namespace Advanced_PB_Limiter.Tests
             string path = await WriteAsync("clean.cfg", content);
             DateTime written = File.GetLastWriteTimeUtc(path);
 
-            Assert.Empty(InstantPunishmentFile.ReplaceDamage(path));
+            Assert.Empty(await ReplaceDamageAsync(path));
             Assert.Equal(content, await ReadAsync(path));
             Assert.Equal(written, File.GetLastWriteTimeUtc(path));
         }
@@ -234,17 +259,17 @@ namespace Advanced_PB_Limiter.Tests
         public async Task ASecondCheckChangesNothing()
         {
             string path = await WriteAsync("twice.cfg", Bytes(false, Config("\n", "Damage", "Damage")));
-            InstantPunishmentFile.ReplaceDamage(path);
+            await ReplaceDamageAsync(path);
 
-            Assert.Empty(InstantPunishmentFile.ReplaceDamage(path));
+            Assert.Empty(await ReplaceDamageAsync(path));
         }
 
         [Fact]
-        public void AMissingFileIsLeftAlone()
+        public async Task AMissingFileIsLeftAlone()
         {
             string path = Path.Combine(_folder, "none.cfg");
 
-            Assert.Empty(InstantPunishmentFile.ReplaceDamage(path));
+            Assert.Empty(await ReplaceDamageAsync(path));
             Assert.False(File.Exists(path));
         }
 
@@ -254,7 +279,7 @@ namespace Advanced_PB_Limiter.Tests
             const string text = "<?xml version=\"1.0\"?>\n<!DOCTYPE LimiterConfig [<!ENTITY x \"Damage\">]>\n<LimiterConfig><InstantKillPunishment>&x;</InstantKillPunishment></LimiterConfig>\n";
             string path = await WriteAsync("dtd.cfg", Bytes(false, text));
 
-            Assert.ThrowsAny<System.Xml.XmlException>(() => InstantPunishmentFile.ReplaceDamage(path));
+            await Assert.ThrowsAnyAsync<System.Xml.XmlException>(async () => await InstantPunishmentFile.ReplaceDamageAsync(path));
             Assert.Equal(Bytes(false, text), await ReadAsync(path));
         }
 
@@ -264,7 +289,7 @@ namespace Advanced_PB_Limiter.Tests
             const string before = "<LimiterConfig>\n  <Old><InstantKillPunishment>Damage</InstantKillPunishment></Old>\n  <InstantKillPunishment>Damage</InstantKillPunishment>\n</LimiterConfig>";
             string path = await WriteAsync("nested.cfg", Bytes(false, before));
 
-            Assert.Equal(KillOnly, InstantPunishmentFile.ReplaceDamage(path), StringComparer.Ordinal);
+            Assert.Equal(KillOnly, await ReplaceDamageAsync(path), StringComparer.Ordinal);
 
             System.Xml.Linq.XElement root = System.Xml.Linq.XDocument.Parse(Encoding.UTF8.GetString(await ReadAsync(path))).Root!;
             Assert.Equal("TurnOff", root.Element("InstantKillPunishment")!.Value);
@@ -278,20 +303,12 @@ namespace Advanced_PB_Limiter.Tests
             string path = await WriteAsync("cut.cfg", Bytes(false, complete.Substring(0, complete.Length / 2)));
             await WriteAsync("cut.cfg.damage.tmp", Bytes(false, complete));
 
-            Assert.Empty(InstantPunishmentFile.ReplaceDamage(path));
+            Assert.Empty(await ReplaceDamageAsync(path));
 
             Assert.Equal(Bytes(false, complete), await ReadAsync(path));
             Assert.False(File.Exists(path + ".damage.tmp"));
             // In case it was a hand edit, not a write cut short, the file that was there is kept.
             Assert.Equal(Bytes(false, complete.Substring(0, complete.Length / 2)), await ReadAsync(path + ".before-restore"));
-        }
-
-        /// <summary>One SafeFile write of <paramref name="bytes"/>; returns where a copy left at the temp name was kept.</summary>
-        private static string? WriteWithSafeFile(string path, string temp, byte[] bytes)
-        {
-            using MemoryStream content = new(bytes);
-            _ = SafeFile.Write(path, temp, content, SafeFile.IsWholeXml, out string? kept);
-            return kept;
         }
 
         [Fact]
@@ -301,7 +318,7 @@ namespace Advanced_PB_Limiter.Tests
             string path = await WriteAsync("earlier.cfg", Bytes(false, whole.Substring(0, whole.Length / 2)));
             string temp = await WriteAsync("earlier.cfg.tmp", Bytes(false, Config("\n", "Destroy", "Destroy")));
 
-            string? kept = WriteWithSafeFile(path, temp, Bytes(false, Config("\n", "TurnOff", "Destroy")));
+            string? kept = await WriteWithSafeFileAsync(path, temp, Bytes(false, Config("\n", "TurnOff", "Destroy")));
 
             Assert.Equal(temp + ".kept", kept);
             Assert.Equal(Bytes(false, Config("\n", "Destroy", "Destroy")), await ReadAsync(temp + ".kept"));
@@ -317,11 +334,11 @@ namespace Advanced_PB_Limiter.Tests
             string path = await WriteAsync("same-left.cfg", Bytes(false, Config("\n", "TurnOff", "TurnOff")));
             string temp = await WriteAsync("same-left.cfg.tmp", Bytes(false, Config("\n", "Destroy", "Destroy")));
 
-            string? kept = WriteWithSafeFile(path, temp, Bytes(false, Config("\n", "TurnOff", "Destroy")));
+            string? kept = await WriteWithSafeFileAsync(path, temp, Bytes(false, Config("\n", "TurnOff", "Destroy")));
 
             Assert.Null(kept);
             Assert.Equal(Bytes(false, Config("\n", "TurnOff", "Destroy")), await ReadAsync(path));
-            Assert.Equal("same-left.cfg", Path.GetFileName(Assert.Single(Directory.GetFiles(_folder, "same-left.cfg*"))));
+            Assert.Equal("same-left.cfg", Path.GetFileName(Assert.Single(FilesBeside("same-left.cfg"))));
         }
 
         [Fact]
@@ -330,7 +347,7 @@ namespace Advanced_PB_Limiter.Tests
             string path = await WriteAsync("left.cfg", Bytes(false, Config("\n", "Damage", "Destroy")));
             await WriteAsync("left.cfg.damage.tmp", Bytes(false, "<LimiterConfig><Instant"));
 
-            Assert.Equal(KillOnly, InstantPunishmentFile.ReplaceDamage(path), StringComparer.Ordinal);
+            Assert.Equal(KillOnly, await ReplaceDamageAsync(path), StringComparer.Ordinal);
 
             Assert.Equal(Bytes(false, Config("\n", "TurnOff", "Destroy")), await ReadAsync(path));
             Assert.False(File.Exists(path + ".damage.tmp"));
@@ -349,10 +366,10 @@ namespace Advanced_PB_Limiter.Tests
             string? recovered;
 #if NETFRAMEWORK
             using (new FileStream(temp, FileMode.Open, FileAccess.Read, share))
-                changed = InstantPunishmentFile.ReplaceDamage(path, out recovered);
+                (changed, recovered) = await ReplaceDamageWithRecoveryAsync(path);
 #else
             await using (new FileStream(temp, FileMode.Open, FileAccess.Read, share))
-                changed = InstantPunishmentFile.ReplaceDamage(path, out recovered);
+                (changed, recovered) = await ReplaceDamageWithRecoveryAsync(path);
 #endif
 
             Assert.Empty(changed);
@@ -366,7 +383,8 @@ namespace Advanced_PB_Limiter.Tests
             string path = await WriteAsync("kept.cfg", Bytes(false, Config("\n", "TurnOff", "TurnOff")));
             string temp = await WriteAsync("kept.cfg.damage.tmp", Bytes(false, Config("\n", "TurnOff", "Destroy")));
 
-            Assert.Empty(InstantPunishmentFile.ReplaceDamage(path, out string? recovered));
+            (List<string> changed, string? recovered) = await ReplaceDamageWithRecoveryAsync(path);
+            Assert.Empty(changed);
 
             Assert.Equal(Bytes(false, Config("\n", "TurnOff", "TurnOff")), await ReadAsync(path));
             Assert.False(File.Exists(temp));
@@ -381,11 +399,12 @@ namespace Advanced_PB_Limiter.Tests
             string path = await WriteAsync("again.cfg", Bytes(false, Config("\n", "Damage", "Destroy")));
             string temp = await WriteAsync("again.cfg.damage.tmp", Bytes(false, Config("\n", "TurnOff", "Destroy")));
 
-            Assert.Equal(KillOnly, InstantPunishmentFile.ReplaceDamage(path, out string? recovered), StringComparer.Ordinal);
+            (List<string> changed, string? recovered) = await ReplaceDamageWithRecoveryAsync(path);
+            Assert.Equal(KillOnly, changed, StringComparer.Ordinal);
 
             Assert.Equal(Bytes(false, Config("\n", "TurnOff", "Destroy")), await ReadAsync(path));
             Assert.Null(recovered);
-            Assert.Equal("again.cfg", Path.GetFileName(Assert.Single(Directory.GetFiles(_folder, "again.cfg*"))));
+            Assert.Equal("again.cfg", Path.GetFileName(Assert.Single(FilesBeside("again.cfg"))));
         }
 
         [Fact]
@@ -394,7 +413,8 @@ namespace Advanced_PB_Limiter.Tests
             string path = await WriteAsync("survive.cfg", Bytes(false, Config("\n", "Damage", "TurnOff")));
             string temp = await WriteAsync("survive.cfg.damage.tmp", Bytes(false, Config("\n", "Destroy", "Destroy")));
 
-            Assert.Equal(KillOnly, InstantPunishmentFile.ReplaceDamage(path, out string? recovered), StringComparer.Ordinal);
+            (List<string> changed, string? recovered) = await ReplaceDamageWithRecoveryAsync(path);
+            Assert.Equal(KillOnly, changed, StringComparer.Ordinal);
 
             Assert.Equal(Bytes(false, Config("\n", "TurnOff", "TurnOff")), await ReadAsync(path));
             Assert.Equal(Bytes(false, Config("\n", "Destroy", "Destroy")), await ReadAsync(temp + ".kept"));
@@ -407,7 +427,8 @@ namespace Advanced_PB_Limiter.Tests
             string path = Path.Combine(_folder, "gone.cfg");
             string temp = await WriteAsync("gone.cfg.damage.tmp", Bytes(false, Config("\n", "TurnOff", "Destroy")));
 
-            Assert.Empty(InstantPunishmentFile.ReplaceDamage(path, out string? recovered));
+            (List<string> changed, string? recovered) = await ReplaceDamageWithRecoveryAsync(path);
+            Assert.Empty(changed);
 
             Assert.Equal(Bytes(false, Config("\n", "TurnOff", "Destroy")), await ReadAsync(path));
             Assert.False(File.Exists(temp));
@@ -427,10 +448,10 @@ namespace Advanced_PB_Limiter.Tests
             bool copyWaiting;
 #if NETFRAMEWORK
             using (new FileStream(temp, FileMode.Open, FileAccess.Read, FileShare.Read))
-                changed = InstantPunishmentFile.ReplaceDamage(path, out recovered, out copyWaiting);
+                (changed, recovered, copyWaiting) = await ReplaceDamageHeldAsync(path);
 #else
             await using (new FileStream(temp, FileMode.Open, FileAccess.Read, FileShare.Read))
-                changed = InstantPunishmentFile.ReplaceDamage(path, out recovered, out copyWaiting);
+                (changed, recovered, copyWaiting) = await ReplaceDamageHeldAsync(path);
 #endif
 
             Assert.Empty(changed);
@@ -441,8 +462,9 @@ namespace Advanced_PB_Limiter.Tests
 
             // That restart, with the config set aside as unreadable meanwhile: the copy is what is read.
             File.Move(path, path + ".unreadable");
-            Assert.Empty(InstantPunishmentFile.ReplaceDamage(path, out _, out bool waitingAgain));
-            Assert.False(waitingAgain);
+            InstantPunishmentFile.ReplaceDamageResult again = await InstantPunishmentFile.ReplaceDamageAsync(path, moveConfigAside: false);
+            Assert.Empty(again.Changed);
+            Assert.False(again.CopyWaiting);
             Assert.Equal(Bytes(false, Config("\n", "Destroy", "Destroy")), await ReadAsync(path));
         }
 
@@ -457,10 +479,18 @@ namespace Advanced_PB_Limiter.Tests
             string? recovered;
 #if NETFRAMEWORK
             using (new FileStream(temp, FileMode.Open, FileAccess.Read, FileShare.Read))
-                Assert.Empty(InstantPunishmentFile.ReplaceDamage(path, out recovered));
+            {
+                InstantPunishmentFile.ReplaceDamageResult result = await InstantPunishmentFile.ReplaceDamageAsync(path);
+                Assert.Empty(result.Changed);
+                recovered = result.Recovered;
+            }
 #else
             await using (new FileStream(temp, FileMode.Open, FileAccess.Read, FileShare.Read))
-                Assert.Empty(InstantPunishmentFile.ReplaceDamage(path, out recovered));
+            {
+                InstantPunishmentFile.ReplaceDamageResult result = await InstantPunishmentFile.ReplaceDamageAsync(path);
+                Assert.Empty(result.Changed);
+                recovered = result.Recovered;
+            }
 #endif
 
             Assert.False(File.Exists(path));
@@ -471,7 +501,7 @@ namespace Advanced_PB_Limiter.Tests
             Assert.Contains("nothing is saved", recovered, StringComparison.Ordinal);
 
             // The next start restores the copy; it holds no Damage, so it is read as it is.
-            Assert.Empty(InstantPunishmentFile.ReplaceDamage(path, out _));
+            Assert.Empty((await ReplaceDamageWithRecoveryAsync(path)).Changed);
             Assert.Equal(Bytes(false, Config("\n", "Destroy", "Destroy")), await ReadAsync(path));
             Assert.False(File.Exists(temp));
         }
@@ -481,9 +511,10 @@ namespace Advanced_PB_Limiter.Tests
         {
             string path = await WriteAsync("plain.cfg", Bytes(false, Config("\n", "Damage", "TurnOff")));
 
-            Assert.Equal(KillOnly, InstantPunishmentFile.ReplaceDamage(path, out _, out bool copyWaiting), StringComparer.Ordinal);
+            InstantPunishmentFile.ReplaceDamageResult plain = await InstantPunishmentFile.ReplaceDamageAsync(path, moveConfigAside: false);
+            Assert.Equal(KillOnly, plain.Changed, StringComparer.Ordinal);
 
-            Assert.False(copyWaiting);
+            Assert.False(plain.CopyWaiting);
             Assert.False(File.Exists(path + ".damage.tmp"));
         }
 
@@ -493,12 +524,11 @@ namespace Advanced_PB_Limiter.Tests
             string path = await WriteAsync("busy.cfg", Bytes(false, Config("\n", "TurnOff", "TurnOff")));
             string[] versions = Enumerable.Range(0, 8).Select(i => Config("\n", "TurnOff", "TurnOff") + "<!-- " + i.ToString(System.Globalization.CultureInfo.InvariantCulture) + " -->\n").ToArray();
 
-            await Task.WhenAll(versions.Select(version => Task.Run(() =>
+            await Task.WhenAll(versions.Select(version => Task.Run(async () =>
             {
                 for (int round = 0; round < 50; round++)
                 {
-                    using MemoryStream content = new(Bytes(false, version));
-                    _ = SafeFile.Write(path, path + ".tmp", content, SafeFile.IsWholeXml, out _);
+                    await SafeFile.WriteAsync(path, path + ".tmp", Bytes(false, version), SafeFile.IsWholeXml);
                 }
             })));
 
@@ -514,21 +544,20 @@ namespace Advanced_PB_Limiter.Tests
             using SemaphoreSlim held = new(0);
             using ManualResetEventSlim release = new(false);
 
-            // The lock is a named mutex, so a holder on another thread, or in another copy of the assembly, is waited for.
-            // The holder stays on its thread throughout, as a mutex is let go by the thread that took it.
-            Task holder = Task.Run(() =>
+            // The lock is a lock file, so a holder on another thread, or in another copy of the assembly, is waited for.
+            // The holder keeps the file open while the writer waits, and the OS drops the lock when it closes.
+            Task holder = Task.Run(async () =>
             {
-                using (SafeFile.Hold(path))
+                using (await SafeFile.HoldAsync(path))
                 {
                     held.Release();
                     release.Wait();
                 }
             });
             await held.WaitAsync();
-            Task writer = Task.Run(() =>
+            Task writer = Task.Run(async () =>
             {
-                using MemoryStream content = new(Bytes(false, Config("\n", "Destroy", "Destroy")));
-                _ = SafeFile.Write(path, path + ".tmp", content, SafeFile.IsWholeXml, out _);
+                await SafeFile.WriteAsync(path, path + ".tmp", Bytes(false, Config("\n", "Destroy", "Destroy")), SafeFile.IsWholeXml);
             });
 
             Task first = await Task.WhenAny(writer, Task.Delay(300));
@@ -539,13 +568,28 @@ namespace Advanced_PB_Limiter.Tests
         }
 
         [Fact]
+        public async Task TheLockIsHeldWhereNoLockFileCanBeMade()
+        {
+            // A folder that is not there: no lock file can be made beside the file, so only the gate in this process is held,
+            // instead of waiting for a lock file for ever.
+            string path = Path.Combine(_folder, "missing-folder", "none.cfg");
+            Task<IDisposable> hold = SafeFile.HoldAsync(path);
+            Assert.Same(hold, await Task.WhenAny(hold, Task.Delay(5000)));
+            Task<IDisposable> second = SafeFile.HoldAsync(path);
+            Assert.NotSame(second, await Task.WhenAny(second, Task.Delay(200)));
+            (await hold).Dispose();
+            (await second).Dispose();
+        }
+
+        [Fact]
         public async Task AKeptNameAlreadyTakenGetsAnotherAndTheConfigIsStillRead()
         {
             string path = await WriteAsync("taken.cfg", Bytes(false, Config("\n", "TurnOff", "TurnOff")));
             string temp = await WriteAsync("taken.cfg.damage.tmp", Bytes(false, Config("\n", "Destroy", "Destroy")));
             Directory.CreateDirectory(temp + ".kept");
 
-            Assert.Empty(InstantPunishmentFile.ReplaceDamage(path, out string? recovered));
+            (List<string> changed, string? recovered) = await ReplaceDamageWithRecoveryAsync(path);
+            Assert.Empty(changed);
 
             string kept = Assert.Single(Directory.GetFiles(_folder, "taken.cfg.damage.tmp.*.kept"));
             Assert.Equal(Bytes(false, Config("\n", "Destroy", "Destroy")), await ReadAsync(kept));
@@ -559,7 +603,8 @@ namespace Advanced_PB_Limiter.Tests
             string path = await WriteAsync("same.cfg", Bytes(false, Config("\n", "TurnOff", "Destroy")));
             string temp = await WriteAsync("same.cfg.damage.tmp", Bytes(false, Config("\n", "TurnOff", "Destroy")));
 
-            Assert.Empty(InstantPunishmentFile.ReplaceDamage(path, out string? recovered));
+            (List<string> changed, string? recovered) = await ReplaceDamageWithRecoveryAsync(path);
+            Assert.Empty(changed);
 
             Assert.False(File.Exists(temp));
             Assert.Null(recovered);

@@ -38,6 +38,10 @@ namespace Advanced_PB_Limiter.UI
         private readonly List<TrackedPlayer> _playerScratch = new();
         private readonly List<(TrackedPBBlock Block, bool Resting)> _blockScratch = new();
         private readonly List<long> _staleIds = new();
+        private readonly Action<TrackedPBBlock, bool> _addBlock;
+        private readonly System.Text.StringBuilder _updatedText = new();
+        // The player whose blocks PlayerTotals.Of is adding, during a refresh only, so no player is kept after it.
+        private TrackedPlayer? _currentPlayer;
 
         // A DispatcherTimer coalesces ticks while the UI is busy, where a System.Timers.Timer posted a refresh for each
         // tick and a busy window let them pile up.
@@ -61,10 +65,11 @@ namespace Advanced_PB_Limiter.UI
         {
             InitializeComponent();
             DataContext = this;
+            _addBlock = AddBlock;
 
-            PerPBDataGrid.ItemsSource = _liveBlockRows;
-            PerPlayerDataGrid.ItemsSource = _livePlayerRows;
-            DisableLiveViewButton.IsEnabled = false;
+            PerPBDataGrid!.ItemsSource = _liveBlockRows;
+            PerPlayerDataGrid!.ItemsSource = _livePlayerRows;
+            DisableLiveViewButton!.IsEnabled = false;
 
             // On the control's own dispatcher, at Background priority: a refresh waits for the UI to be free instead of
             // queueing another one.
@@ -104,6 +109,7 @@ namespace Advanced_PB_Limiter.UI
         private void ClearRows()
         {
             StopLiveView();
+            _currentPlayer = null;
 
             foreach (CustomBlockReport row in _allBlocks.Values)
                 row.Detach();
@@ -143,7 +149,7 @@ namespace Advanced_PB_Limiter.UI
         {
             try
             {
-                UpdateReportRows();
+                RefreshReportRows();
             }
             catch (Exception e)
             {
@@ -165,48 +171,45 @@ namespace Advanced_PB_Limiter.UI
         /// <summary>Fills the grids before the caller reads them, for the generated report; a failure is the caller's to report.</summary>
         private void RefreshReportDataNow()
         {
-            UpdateReportRows();
+            RefreshReportRows();
         }
 
-        private void UpdateReportRows()
+        private void RefreshReportRows()
         {
             _seenPlayerIds.Clear();
             _seenBlockIds.Clear();
             _restingCount = 0;
 
-            TrackingManager.CopyTrackedPlayers(_playerScratch);
-
-            for (int index = 0; index < _playerScratch.Count; index++)
+            try
             {
-                TrackedPlayer player = _playerScratch[index];
-                _seenPlayerIds.Add(player.PlayerId);
+                TrackingManager.CopyTrackedPlayers(_playerScratch);
 
-                PlayerTotals totals = PlayerTotals.Of(player, _blockScratch, (block, resting) =>
+                for (int index = 0; index < _playerScratch.Count; index++)
                 {
-                    if (!_seenBlockIds.Add(block.EntityId)) return;
-                    if (resting) _restingCount++;
+                    TrackedPlayer player = _playerScratch[index];
+                    _seenPlayerIds.Add(player.PlayerId);
 
-                    if (!_allBlocks.TryGetValue(block.EntityId, out CustomBlockReport? row))
+                    _currentPlayer = player;
+                    PlayerTotals totals = PlayerTotals.Of(player, _blockScratch, _addBlock);
+
+                    if (!_allPlayers.TryGetValue(player.PlayerId, out CustomPlayerReport? playerRow))
                     {
-                        row = new CustomBlockReport(player, block, resting);
-                        _allBlocks.Add(block.EntityId, row);
+                        playerRow = new CustomPlayerReport(player, totals);
+                        _allPlayers.Add(player.PlayerId, playerRow);
+                        _livePlayerRows.Add(playerRow);
                     }
                     else
                     {
-                        row.Update(player, block, resting);
+                        playerRow.Update(player, totals);
                     }
-                });
-
-                if (!_allPlayers.TryGetValue(player.PlayerId, out CustomPlayerReport? playerRow))
-                {
-                    playerRow = new CustomPlayerReport(player, totals);
-                    _allPlayers.Add(player.PlayerId, playerRow);
-                    _livePlayerRows.Add(playerRow);
                 }
-                else
-                {
-                    playerRow.Update(player, totals);
-                }
+            }
+            finally
+            {
+                // Nothing of the world is kept between refreshes, also when one fails: the rows hold what they show.
+                _currentPlayer = null;
+                _playerScratch.Clear();
+                _blockScratch.Clear();
             }
 
             RemoveUnseenRows();
@@ -214,11 +217,34 @@ namespace Advanced_PB_Limiter.UI
             UpdateSummary();
 
             _lastUpdatedUtc = DateTime.UtcNow;
-            UpdatedText.Text = "Updated " + _lastUpdatedUtc.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture)
-                               + " · " + _allBlocks.Count.ToString(CultureInfo.InvariantCulture) + " blocks · "
-                               + _allPlayers.Count.ToString(CultureInfo.InvariantCulture) + " players";
+            _updatedText.Clear();
+            _updatedText.Append("Updated ")
+                .Append(_lastUpdatedUtc.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture))
+                .Append(" · ")
+                .Append(_allBlocks.Count.ToString(CultureInfo.InvariantCulture))
+                .Append(" blocks · ")
+                .Append(_allPlayers.Count.ToString(CultureInfo.InvariantCulture))
+                .Append(" players");
+            UpdatedText.Text = _updatedText.ToString();
             NoticeBorder.Visibility = Visibility.Collapsed;
             NoticeText.Text = string.Empty;
+        }
+
+        private void AddBlock(TrackedPBBlock block, bool resting)
+        {
+            if (_currentPlayer is not { } player) return;
+            if (!_seenBlockIds.Add(block.EntityId)) return;
+            if (resting) _restingCount++;
+
+            if (!_allBlocks.TryGetValue(block.EntityId, out CustomBlockReport? row))
+            {
+                row = new CustomBlockReport(player, block, resting);
+                _allBlocks.Add(block.EntityId, row);
+            }
+            else
+            {
+                row.Update(player, block, resting);
+            }
         }
 
         private void RemoveUnseenRows()

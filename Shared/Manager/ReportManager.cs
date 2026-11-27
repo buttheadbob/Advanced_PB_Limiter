@@ -100,6 +100,79 @@ namespace Advanced_PB_Limiter.Manager
             return snapshot;
         }
 
+        /// <summary>
+        /// The last runs of the tracked blocks among <paramref name="entityIds"/>, at most <see cref="BlockHistoryResult.MaxBlocks"/>,
+        /// with the limits their owners are held to. Each is looked up under its owner in <paramref name="ownerIds"/>, at the
+        /// same index; only one not found there, as it changed owner, is searched for under every player. Any thread: the
+        /// run times are read under each block's lock.
+        /// </summary>
+        public static BlockHistoryResult BuildBlockHistory(long[] entityIds, long[] ownerIds)
+        {
+            BlockHistoryResult result = new();
+            HashSet<long> seen = new();
+            List<long> moved = new();
+            IPbLimiterConfig config = LimiterCore.Config;
+            for (int index = 0; index < entityIds.Length && seen.Count < BlockHistoryResult.MaxBlocks; index++)
+            {
+                long entityId = entityIds[index];
+                if (!seen.Add(entityId)) continue;
+                if (index < ownerIds.Length && TrackingManager.GetTrackedPlayerDataById(ownerIds[index]) is { } owner
+                                            && owner.GetTrackedPB(entityId) is { } block)
+                    result.Blocks.Add(History(block, owner, config));
+                else
+                    moved.Add(entityId);
+            }
+            if (moved.Count == 0) return result;
+
+            foreach (TrackedPlayer player in TrackingManager.GetTrackedPlayerData())
+            {
+                // A block found is dropped from the list, so one seen under two owners while it moves is listed once.
+                for (int index = moved.Count - 1; index >= 0; index--)
+                {
+                    if (player.GetTrackedPB(moved[index]) is not { } block) continue;
+                    moved.RemoveAt(index);
+                    result.Blocks.Add(History(block, player, config));
+                }
+                if (moved.Count == 0) break;
+            }
+            return result;
+        }
+
+        private static BlockHistory History(TrackedPBBlock block, TrackedPlayer owner, IPbLimiterConfig config)
+        {
+            PrivilegedPlayer? privileged = owner.Privileged;
+            double[] runs = block.CopyRunTimes(out double average, out bool[] leftOut, out RunOutcome[] outcomes);
+            return new BlockHistory
+            {
+                EntityId = block.EntityId,
+                RunTimesMS = runs,
+                LeftOutOfAverage = Indexes(leftOut),
+                Outcomes = outcomes,
+                AverageMS = average,
+                RunTimeLimitMS = privileged?.RuntimeAllowance ?? config.MaxRunTimeMS,
+                AverageLimitMS = privileged?.RuntimeAverageAllowance ?? config.MaxRunTimeMSAvg,
+                InstantKillMS = config.InstantKillThreshold,
+                InstantKillStrikes = config.InstantKillStrikes,
+                InstantKillStrikeWindow = config.InstantKillStrikeWindow
+            };
+        }
+
+        /// <summary>The positions of the runs that are marked, as the history sends them.</summary>
+        private static int[] Indexes(bool[] marked)
+        {
+            int count = 0;
+            foreach (bool mark in marked)
+            {
+                if (mark) count++;
+            }
+            int[] indexes = new int[count];
+            for (int run = 0, at = 0; run < marked.Length; run++)
+            {
+                if (marked[run]) indexes[at++] = run;
+            }
+            return indexes;
+        }
+
         /// <summary>Any thread: it reads tracking data, and the names the game thread cached, only.</summary>
         private static List<PlayerReport> GatherReports()
         {
@@ -349,8 +422,8 @@ namespace Advanced_PB_Limiter.Manager
                 for (int index = 0; index < block.RunTimes.Length; index++)
                 {
                     double runtime = block.RunTimes[index];
-                    string outlierFlag = block.Outliers[index] ? " (outlier)" : "";
-                    sb.Append(" - ").Append(InvariantText.Of(runtime, "0.0000")).Append("ms").Append(outlierFlag).AppendLine();
+                    string outlierFlag = block.Outliers[index] ? " (left out of the average)" : "";
+                    sb.Append(" - ").Append(InvariantText.Of(runtime, "0.0000")).Append("ms").Append(OutcomeText(block.Outcomes[index])).Append(outlierFlag).AppendLine();
                 }
                 sb.AppendLine("-----------------------------");
             }
@@ -362,15 +435,27 @@ namespace Advanced_PB_Limiter.Manager
             return Task.CompletedTask;
         }
 
+        /// <summary>What became of a run, for Runtimes: nothing for a run under the limit.</summary>
+        private static string OutcomeText(RunOutcome outcome) => outcome switch
+        {
+            RunOutcome.Forgiven => " (forgiven as a spike)",
+            RunOutcome.StoodOut => " (stood out as a spike)",
+            RunOutcome.Counted => " (counted)",
+            RunOutcome.InstantKilled => " (instant kill)",
+            RunOutcome.NotChecked => " (over the limit, not checked)",
+            _ => ""
+        };
+
         private sealed class RuntimeBlock
         {
-            public RuntimeBlock(string gridName, string blockName, bool resting, double[] runTimes, bool[] outliers)
+            public RuntimeBlock(string gridName, string blockName, bool resting, double[] runTimes, bool[] outliers, RunOutcome[] outcomes)
             {
                 GridName = gridName;
                 BlockName = blockName;
                 Resting = resting;
                 RunTimes = runTimes;
                 Outliers = outliers;
+                Outcomes = outcomes;
             }
 
             public string GridName { get; }
@@ -378,6 +463,7 @@ namespace Advanced_PB_Limiter.Manager
             public bool Resting { get; }
             public double[] RunTimes { get; }
             public bool[] Outliers { get; }
+            public RunOutcome[] Outcomes { get; }
         }
 
         private sealed class RuntimesSnapshot
@@ -405,12 +491,9 @@ namespace Advanced_PB_Limiter.Manager
                     continue;
                 }
 
-                double[] runTimes = pbBlock.GetRunTimesMS;
-                bool[] outliers = new bool[runTimes.Length];
-                for (int index = 0; index < runTimes.Length; index++)
-                    outliers[index] = pbBlock.IsOutlier(runTimes[index]);
+                double[] runTimes = pbBlock.CopyRunTimes(out _, out bool[] outliers, out RunOutcome[] outcomes);
 
-                blocks.Add(new RuntimeBlock(pbBlock.GridName, pbBlock.BlockName, resting, runTimes, outliers));
+                blocks.Add(new RuntimeBlock(pbBlock.GridName, pbBlock.BlockName, resting, runTimes, outliers, outcomes));
             }
             return new RuntimesSnapshot(blocks, notListed);
         }

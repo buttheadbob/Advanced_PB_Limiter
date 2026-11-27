@@ -26,7 +26,7 @@ internal static class PageShared
         }
     }
 
-    /// <summary>
+    /// <summary xml:lang="en">
     /// The part of an SDK failure worth showing an admin. The browser client appends its own JavaScript stack to the
     /// message, which belongs in the console, not in a notice; the companion's most common failure is said plainly.
     /// </summary>
@@ -46,7 +46,7 @@ internal static class PageShared
     /// <summary>
     /// Runs <paramref name="render"/> unless the page has closed. A request that finishes after the page closed would
     /// otherwise call into a renderer that is gone, and that failure would end the fire-and-forget loop that refreshes
-    /// the page. The page passes its own <c>InvokeAsync(StateHasChanged)</c>, which only it may call.
+    /// the page. The page passes its own <c language="csharp">InvokeAsync(StateHasChanged)</c>, which only it may call.
     /// </summary>
     public static async Task RenderIfOpenAsync(PageClosing closing, Func<Task> render)
     {

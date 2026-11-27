@@ -6,7 +6,7 @@
 @inject ILogger<GenerateReportPage> Log
 @using System.Globalization
 
-<PageTitle>PB Limiter report</PageTitle>
+<PageTitle>PB Limiter · Report</PageTitle>
 
 <PageTabs Active="PageTabs.Tab.Report" Description="Build one text report covering the servers you choose, with totals across all of them and the detail of each.">
     @if (_error is not null)
@@ -21,7 +21,11 @@
         }
         else
         {
-            <PblServerPicker Servers="_servers" Selected="Picked.Ids" OnlineOnly="true" Changed="ServersPicked" />
+            <PblServerPicker Servers="_servers" Selected="Picked.Ids" OnlineOnly="true" Disabled="_busy" Changed="ServersPicked" />
+            @if (_hidesClusterNodes)
+            {
+                <p class="pbl-muted" style="margin-top: 8px;">Quasar cluster nodes are not listed: Advanced PB Limiter does not run on them.</p>
+            }
 
             <div class="pbl-buttons" style="margin-top: 12px;">
                 <button type="button" class="pbl-btn pbl-btn-primary"
@@ -35,14 +39,13 @@
                     {
                         <PblIcon Name="file" />
                     }
-                    @(_busy ? "Generating…" : "Generate report")
+                    @(_busy ? "Generating…" : _results is null ? "Generate report" : "Generate again")
                 </button>
-                <span class="pbl-muted">@InvariantText.Count(SelectedConnected.Count(), "server", "servers") selected.</span>
             </div>
         }
     </PblCard>
 
-    @if (_busy || _progress.Count > 0)
+    @if (_busy)
     {
         <PblCard Title="Progress" Subtitle="Each server answers on its own." Class="pbl-section-gap">
             <div class="pbl-timeline">
@@ -64,6 +67,13 @@
     @if (_results is not null)
     {
         <PblCard Title="Report" Subtitle="@ReportSummary" Class="pbl-section-gap">
+            @if (!_reportKeys.SetEquals(Picked.Ids))
+            {
+                <PblNotice Tone="info" Icon="info">
+                    The server selection changed since this report was made.
+                    <button type="button" class="pbl-btn pbl-btn-small" @onclick="GenerateAsync" disabled="@(_busy || !SelectedConnected.Any())">Generate again</button>
+                </PblNotice>
+            }
             @if (_results.Count == 0)
             {
                 <PblEmptyState Icon="file" Title="Nothing to show" Description="None of the selected servers answered." />
@@ -93,6 +103,11 @@
                                     @InvariantText.Count(snapshot.Players.Sum(player => player.BlockCount), "block", "blocks") ·
                                     @InvariantText.Count(snapshot.Players.Sum(player => player.Offences), "offence", "offences")
                                 </p>
+                                <p>Total average <strong>@Figures.Time(snapshot.Players.Sum(player => player.CombinedRunTimeMSAvg)) ms</strong></p>
+                                @if (Hottest(snapshot) is { } hottest)
+                                {
+                                    <p class="pbl-muted">Hottest: @hottest.BlockName on @hottest.GridName, @Figures.Time(hottest.LastRunTimeMS) ms last run@(snapshot.Truncated ? " (of the blocks listed)" : "")</p>
+                                }
                                 @if (snapshot.Truncated)
                                 {
                                     <p class="pbl-muted">Some blocks are not listed; totals still count them.</p>
@@ -100,7 +115,7 @@
                             }
                             else
                             {
-                                <p>@result.Problem</p>
+                                <p>Not included: @Sentence(result.Problem)</p>
                             }
                         </div>
                     }
@@ -144,8 +159,8 @@
     private string _fileName = "";
     private string? _error;
     private bool _busy;
-    // Counts the admin's changes to the ticks, so a report generated for ticks changed while it was on its way is dropped.
-    private int _picks;
+    private readonly HashSet<string> _reportKeys = new(StringComparer.Ordinal); // The servers ticked when the report on show was asked for.
+    private bool _hidesClusterNodes;
 
     private IJSObjectReference? _download;
     private IJSObjectReference? _clipboard;
@@ -183,7 +198,9 @@
         try
         {
             ServerListResponse response = await SdkClient.RequestAsync<ServerListResponse>(JS, UiOperations.Servers, new EmptyPayload(), token);
-            _servers = response.Servers;
+            // The limiter does not run on Quasar cluster nodes, so a report from one could only ever fail.
+            _servers = response.Servers.FindAll(server => string.IsNullOrEmpty(server.ClusterId));
+            _hidesClusterNodes = _servers.Count != response.Servers.Count;
             Picked.Keep(_servers);
             _error = null;
         }
@@ -193,6 +210,7 @@
         }
         catch (Exception e)
         {
+            Log.LogDebug(e, "Could not read the PB Limiter server list");
             if (PageShared.ReportReadFailures.IsNew("report-servers", e.Message))
                 Log.LogWarning(e, "Could not read the PB Limiter server list");
             _error = "Could not read the server list: " + PageShared.ShortError(e);
@@ -201,24 +219,23 @@
         await PageShared.RenderIfOpenAsync(Closing, () => InvokeAsync(StateHasChanged));
     }
 
-    private void ServersPicked()
+    /// <summary>
+    /// The report on show stays when the ticks change: the callback only renders the page again, which then says the
+    /// selection is not the one the report was made for.
+    /// </summary>
+    private static void ServersPicked()
     {
-        _picks++;
-        ReportOutdated();
-    }
-
-    private void ReportOutdated()
-    {
-        _results = null;
-        _reportText = null;
+        // Nothing to do: the picker changed Picked.Ids in place, and invoking this callback renders the page.
     }
 
     private async Task GenerateAsync()
     {
         _busy = true;
-        ReportOutdated();
+        _results = null;
+        _reportText = null;
         _progress.Clear();
-        int picks = _picks;
+        _reportKeys.Clear();
+        _reportKeys.UnionWith(Picked.Ids);
 
         // Taken before waiting: the connected list can change meanwhile, and each server must be listed exactly once.
         List<ServerInfo> asked = SelectedConnected.ToList();
@@ -245,12 +262,6 @@
         }
 
         if (Closing.IsClosed) return;
-        if (picks != _picks)
-        {
-            // The ticks changed meanwhile: this report is for servers no longer picked.
-            _busy = false;
-            return;
-        }
 
         IEnumerable<ServerReport> offline = notAsked.Select(server => new ServerReport(server.DisplayName, null, "the server is offline"));
 
@@ -301,6 +312,7 @@
             ReportSnapshotView snapshot = await SdkClient.RequestAsync<ReportSnapshotView>(JS, UiOperations.Snapshot,
                 new ReadSnapshotRequest { ServerId = server.ServerId }, timeout.Token);
             if (!snapshot.Installed) return new ServerReport(server.DisplayName, null, "Advanced PB Limiter is not loaded");
+            if (snapshot.Inactive is { Length: > 0 } inactive) return new ServerReport(server.DisplayName, null, inactive);
             if (!snapshot.Online) return new ServerReport(server.DisplayName, null, "the world is still loading");
             return new ServerReport(server.DisplayName, snapshot, null);
         }
@@ -310,10 +322,29 @@
         }
         catch (Exception e)
         {
+            Log.LogDebug(e, "Could not read the PB Limiter report of {Server}", server.DisplayName);
             if (PageShared.ReportReadFailures.IsNew(server.ServerId, e.Message))
                 Log.LogWarning(e, "Could not read the PB Limiter report of {Server}", server.DisplayName);
             return new ServerReport(server.DisplayName, null, CompanionErrors.InSentence(PageShared.ShortError(e)) + CompanionErrors.RestartHint(e));
         }
+    }
+
+    /// <summary>A reason as the end of "Not included: ...", a sentence with a full stop.</summary>
+    private static string Sentence(string? reason)
+    {
+        string text = (reason ?? "no reason was given").Trim();
+        return text.EndsWith('.') ? text : text + ".";
+    }
+
+    /// <summary>The hottest block as the text report picks it: by last run, leaving out resting blocks. Null when none ran.</summary>
+    private static BlockRowView? Hottest(ReportSnapshotView snapshot)
+    {
+        BlockRowView? hottest = null;
+        foreach (BlockRowView block in snapshot.Blocks)
+        {
+            if (!block.Resting && block.LastRunTimeMS > (hottest?.LastRunTimeMS ?? 0)) hottest = block;
+        }
+        return hottest;
     }
 
     private async Task DownloadAsync()

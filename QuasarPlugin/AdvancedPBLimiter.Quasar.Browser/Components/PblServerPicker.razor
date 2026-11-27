@@ -7,8 +7,8 @@ else
     <div class="pbl-picker-head">
         <span class="pbl-muted">@Selected.Count of @SelectableCount selected</span>
         <div class="pbl-buttons">
-            <button type="button" class="pbl-btn pbl-btn-small" @onclick="SelectAll">Select all</button>
-            <button type="button" class="pbl-btn pbl-btn-small" @onclick="SelectNone">Select none</button>
+            <button type="button" class="pbl-btn pbl-btn-small" @onclick="SelectAll" disabled="@Disabled">Select all</button>
+            <button type="button" class="pbl-btn pbl-btn-small" @onclick="SelectNone" disabled="@Disabled">Select none</button>
         </div>
     </div>
 
@@ -16,7 +16,7 @@ else
         @foreach (ServerInfo server in Servers)
         {
             bool selected = Selected.Contains(server.PickKey);
-            bool disabled = OnlineOnly && !server.Connected;
+            bool disabled = Disabled || (OnlineOnly && !server.Connected);
             <label @key="server.ServerId" class="pbl-server-card @(selected ? "selected" : "") @(server.Connected ? "" : "offline") @(disabled ? "disabled" : "")">
                 <input type="checkbox" checked="@selected" disabled="@disabled" @onchange="e => Toggle(server.PickKey, e)" />
                 <span class="pbl-server-dot @(server.Connected ? "online" : "offline")"></span>
@@ -28,6 +28,10 @@ else
                 @if (!server.Connected)
                 {
                     <PblBadge Text="Offline" Tone="neutral" />
+                }
+                @if (Notes?.GetValueOrDefault(server.ServerId) is { } note)
+                {
+                    <span class="pbl-server-note">@note</span>
                 }
             </label>
         }
@@ -44,6 +48,12 @@ else
     [Parameter] public bool OnlineOnly { get; set; }
 
     [Parameter] public EventCallback Changed { get; set; }
+
+    /// <summary>Nothing can be ticked or cleared, while a report is being generated say.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>A line under each server, by its id: the profile it last received, say.</summary>
+    [Parameter] public IReadOnlyDictionary<string, string>? Notes { get; set; }
 
     private int SelectableCount => Servers.Count(server => !OnlineOnly || server.Connected);
 

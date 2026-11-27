@@ -23,7 +23,7 @@ first. Under load, runs can be deferred instead.
 
 Configure it in Quasar under Server plugins.
 
-Needs Magnetar 2.4.2.1 or later.
+Needs Magnetar 2.4.2.1 or later. Not supported on a Quasar cluster, where it stays inactive.
 
 Player commands: !PBLimiter Limits, !PBLimiter MyStats, !PBLimiter Runtimes, !PBLimiter About.
 Admin commands: !PBLimiter GetReport, !PBLimiter Enable, !PBLimiter Disable, !PBLimiter requestpbshutdown and more,

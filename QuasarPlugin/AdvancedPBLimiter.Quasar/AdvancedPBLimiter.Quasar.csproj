@@ -29,7 +29,6 @@
     <Compile Include="..\..\Shared\Utils\KeptFile.cs" Link="Shared\KeptFile.cs" />
     <Compile Include="..\..\Shared\Utils\SafeFile.cs" Link="Shared\SafeFile.cs" />
     <Compile Include="..\..\Shared\Utils\SafeXml.cs" Link="Shared\SafeXml.cs" />
-    <Compile Include="..\..\Shared\Utils\Signals.cs" Link="Shared\Signals.cs" />
   </ItemGroup>
 
   <!-- Built by Quasar: the contract assembly of the running Quasar -->

@@ -156,11 +156,14 @@ namespace Advanced_PB_Limiter.Commands
             return $"Sent the shutdown request to all tracked programmable blocks, with {Seconds(seconds)} until restart.";
         }
 
-        public static string SetDebug(bool debug)
+        public static void SetDebug(bool debug, Action<string> respond)
         {
-            if (CannotChangeConfig() is { } refusal) return refusal;
-            string saved = SaveChange(() => Config.DebugReporting = debug);
-            return "Debug mode is now " + (debug ? "enabled." : "disabled.") + saved;
+            if (CannotChangeConfig() is { } refusal)
+            {
+                respond(refusal);
+                return;
+            }
+            SaveChange(() => Config.DebugReporting = debug, "Debug mode is now " + (debug ? "enabled." : "disabled."), respond);
         }
 
         /// <summary>Logs the limiter's own timings for a few seconds. Too noisy to leave on.</summary>
@@ -182,46 +185,59 @@ namespace Advanced_PB_Limiter.Commands
                 Config.ShowTimingsBurp = false;
         }
 
-        /// <summary>Why no command may change the config now, or null: the limiter was retired, or this is a node of a managed cluster.</summary>
+        /// <summary>Why no command may change the config now, or null: the limiter was retired, or its config is still being read.</summary>
         private static string? CannotChangeConfig() => LimiterCore.Retired ? LimiterCore.RetiredMessage : LimiterCore.Host.ConfigChangeRefusal;
 
-        /// <summary>Makes a command's change and saves it, once: "" when saved, else the part of the reply that says it was not.</summary>
-        private static string SaveChange(Action change) => LimiterCore.Host.ChangeConfig(change) ? "" : NotSavedMessage;
+        /// <summary>
+        /// Makes a command's change now, on the command's thread, and replies with <paramref name="done"/> once the change is
+        /// saved, or with the sentence that says it was not.
+        /// </summary>
+        private static void SaveChange(Action change, string done, Action<string> respond) => _ = SaveChangeAsync(change, done, respond);
+
+        private static async Task SaveChangeAsync(Action change, string done, Action<string> respond)
+        {
+            bool saved;
+            try
+            {
+                saved = await LimiterCore.Host.ChangeConfigAsync(change).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                Log.Error(e, "A setting change failed");
+                saved = false;
+            }
+            respond(saved ? done : done + NotSavedMessage);
+        }
 
         private const string NotSavedMessage = " It could not be saved, so unless a later save succeeds it lasts only until the server restarts; the log says why.";
 
-        public static string SetEnabled(bool enabled)
+        public static void SetEnabled(bool enabled, Action<string> respond)
         {
-            if (CannotChangeConfig() is { } refusal) return refusal;
-            string saved = SaveChange(() => Config.Enabled = enabled);
-            return "Advanced PB Limiter is now " + (enabled ? "enabled." : "disabled.") + saved;
+            if (CannotChangeConfig() is { } refusal)
+            {
+                respond(refusal);
+                return;
+            }
+            SaveChange(() => Config.Enabled = enabled, "Advanced PB Limiter is now " + (enabled ? "enabled." : "disabled."), respond);
         }
 
-        public static string SetStaffCommandsAllowed(bool allowed)
+        public static void SetStaffCommandsAllowed(bool allowed, Action<string> respond)
         {
-            if (CannotChangeConfig() is { } refusal) return refusal;
-            string saved = SaveChange(() => Config.AllowStaffCommands = allowed);
-            return "CreatePrivilegedUser is now " + (allowed ? "enabled" : "disabled") + " for staff." + saved;
+            if (CannotChangeConfig() is { } refusal)
+            {
+                respond(refusal);
+                return;
+            }
+            SaveChange(() => Config.AllowStaffCommands = allowed, "CreatePrivilegedUser is now " + (allowed ? "enabled" : "disabled") + " for staff.", respond);
         }
 
-        public static string CreatePrivilegedUser(ulong steamId, double maxRunTimeMS, double maxRunTimeMSAvg, bool combinedLimits, double maxAllBlocksCombinedRunTimeMS, double maxAllBlocksCombinedRunTimeMSAvg, int offencesBeforePunishment, Enums.Punishment punishment, int gracefulShutDownRequestDelay)
+        public static void CreatePrivilegedUser(ulong steamId, double maxRunTimeMS, double maxRunTimeMSAvg, bool combinedLimits, double maxAllBlocksCombinedRunTimeMS, double maxAllBlocksCombinedRunTimeMSAvg, int offencesBeforePunishment, Enums.Punishment punishment, int gracefulShutDownRequestDelay, Action<string> respond)
         {
-            if (CannotChangeConfig() is { } refusal) return refusal;
-            if (!Config.AllowStaffCommands)
-                return StaffCommandsDisabledMessage;
-
-            // Identities with no Steam ID, NPCs among them, all share 0, so an entry for it would apply to every one of them.
-            if (steamId == 0)
-                return "The Steam ID cannot be 0.";
-
-            // A negative allowance would make every run an offence, and NaN would never be exceeded.
-            if (!Utils.Limits.IsLimit(maxRunTimeMS) || !Utils.Limits.IsLimit(maxRunTimeMSAvg) || !Utils.Limits.IsLimit(maxAllBlocksCombinedRunTimeMS) || !Utils.Limits.IsLimit(maxAllBlocksCombinedRunTimeMSAvg)
-                || !Utils.Limits.IsCount(offencesBeforePunishment) || !Utils.Limits.IsCount(gracefulShutDownRequestDelay))
-                return "Limits must be numbers of 0 or more, and offences and the shutdown delay cannot be negative.";
-
-            // A number the enum does not have would be saved as one, and the config would then fail to save or load.
-            if (!Enum.IsDefined(typeof(Enums.Punishment), punishment))
-                return "The punishment must be TurnOff, Damage or Destroy.";
+            if (PrivilegedUserRefusal(steamId, maxRunTimeMS, maxRunTimeMSAvg, maxAllBlocksCombinedRunTimeMS, maxAllBlocksCombinedRunTimeMSAvg, offencesBeforePunishment, punishment, gracefulShutDownRequestDelay) is { } refusal)
+            {
+                respond(refusal);
+                return;
+            }
 
             bool exists = Config.TryGetPrivilegedPlayer(steamId, out PrivilegedPlayer? existing);
 
@@ -244,8 +260,30 @@ namespace Advanced_PB_Limiter.Commands
             if (existing is null)
                 player.DamageAmount = 0;
 
-            string saved = SaveChange(() => Config.SetPrivilegedPlayer(player));
-            return (exists ? "Privileged user updated." : "Privileged user created.") + saved;
+            SaveChange(() => Config.SetPrivilegedPlayer(player), exists ? "Privileged user updated." : "Privileged user created.", respond);
+        }
+
+        /// <summary>Why CreatePrivilegedUser may not run with these values, or null when it may.</summary>
+        private static string? PrivilegedUserRefusal(ulong steamId, double maxRunTimeMS, double maxRunTimeMSAvg, double maxAllBlocksCombinedRunTimeMS, double maxAllBlocksCombinedRunTimeMSAvg, int offencesBeforePunishment, Enums.Punishment punishment, int gracefulShutDownRequestDelay)
+        {
+            if (CannotChangeConfig() is { } refusal) return refusal;
+            if (!Config.AllowStaffCommands)
+                return StaffCommandsDisabledMessage;
+
+            // Identities with no Steam ID, NPCs among them, all share 0, so an entry for it would apply to every one of them.
+            if (steamId == 0)
+                return "The Steam ID cannot be 0.";
+
+            // A negative allowance would make every run an offence, and NaN would never be exceeded.
+            if (!Utils.Limits.IsLimit(maxRunTimeMS) || !Utils.Limits.IsLimit(maxRunTimeMSAvg) || !Utils.Limits.IsLimit(maxAllBlocksCombinedRunTimeMS) || !Utils.Limits.IsLimit(maxAllBlocksCombinedRunTimeMSAvg)
+                || !Utils.Limits.IsCount(offencesBeforePunishment) || !Utils.Limits.IsCount(gracefulShutDownRequestDelay))
+                return "Limits must be numbers of 0 or more, and offences and the shutdown delay cannot be negative.";
+
+            // A number the enum does not have would be saved as one, and the config would then fail to save or load.
+            if (!Enum.IsDefined(typeof(Enums.Punishment), punishment))
+                return "The punishment must be TurnOff, Damage or Destroy.";
+
+            return null;
         }
 
 

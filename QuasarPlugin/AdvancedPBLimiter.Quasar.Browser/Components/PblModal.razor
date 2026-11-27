@@ -1,3 +1,7 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
 @if (Open)
 {
     <div class="pbl-modal-backdrop" tabindex="-1" @onclick="Close" @onkeydown="OnKeyDown">
@@ -17,7 +21,7 @@
                         }
                     </div>
                 </div>
-                <button type="button" class="pbl-icon-btn" aria-label="Close" @onclick="Close">
+                <button type="button" class="pbl-icon-btn" aria-label="Close" @onclick="Close" disabled="@Locked">
                     <PblIcon Name="x" />
                 </button>
             </header>
@@ -42,21 +46,50 @@
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public string? Class { get; set; }
 
+    /// <summary>The dialog cannot be closed (close button, Escape, backdrop) while true: something it started is still running.</summary>
+    [Parameter] public bool Locked { get; set; }
+
     private readonly string TitleId = "pbl-modal-title-" + Guid.NewGuid().ToString("N");
     private ElementReference _panel;
+    private IJSObjectReference? _module;
     private bool _wasOpen;
-    private bool _focus;
+    private bool _trap;    // Opened: keep Tab inside it once it has rendered, and focus it.
+    private bool _release; // Closed: give focus back to where it was before it opened.
 
     protected override void OnParametersSet()
     {
-        if (Open && !_wasOpen) _focus = true;
+        if (Open && !_wasOpen) _trap = true;
+        if (!Open && _wasOpen) _release = true;
         _wasOpen = Open;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!Open || !_focus) return;
-        _focus = false;
+        if (!_trap && !_release) return;
+        bool trap = _trap && Open;
+        _trap = _release = false;
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import",
+                new Uri(new Uri(Navigation.BaseUri), $"_quasar/plugins/{SdkClient.PluginId}/modal.js").ToString());
+            if (trap)
+                await _module.InvokeVoidAsync("trap", TitleId, _panel);
+            else
+                await _module.InvokeVoidAsync("release", TitleId);
+        }
+        catch (JSException)
+        {
+            // Without the helper the dialog still works: it takes focus, and Escape closes it.
+            if (trap) await FocusPanelAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // The browser page is gone.
+        }
+    }
+
+    private async Task FocusPanelAsync()
+    {
         try
         {
             await _panel.FocusAsync();
@@ -67,7 +100,25 @@
         }
     }
 
-    private Task Close() => OnClose.InvokeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is null) return;
+        try
+        {
+            if (_wasOpen) await _module.InvokeVoidAsync("release", TitleId);
+            await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // The browser page is gone.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already disposed.
+        }
+    }
+
+    private Task Close() => Locked ? Task.CompletedTask : OnClose.InvokeAsync();
 
     private Task OnKeyDown(KeyboardEventArgs args) =>
         string.Equals(args.Key, "Escape", StringComparison.Ordinal) ? Close() : Task.CompletedTask;

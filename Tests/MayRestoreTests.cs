@@ -37,20 +37,20 @@ namespace Advanced_PB_Limiter.Tests
         [Fact]
         public async Task AWholeCopyMayRestore()
         {
-            Assert.True(SafeFile.MayRestore(await CopyAsync("whole.cfg.damage.tmp", "<LimiterConfig><Enabled>true</Enabled></LimiterConfig>"), SafeFile.IsWholeXml));
+            Assert.True(await SafeFile.MayRestoreAsync(await CopyAsync("whole.cfg.damage.tmp", "<LimiterConfig><Enabled>true</Enabled></LimiterConfig>"), SafeFile.IsWholeXml));
         }
 
         [Fact]
         public async Task ACopyCutShortNeverRestores()
         {
             // It would otherwise hold saves back at every start, for a restore that can't happen.
-            Assert.False(SafeFile.MayRestore(await CopyAsync("cut.cfg.damage.tmp", "<LimiterConfig><Enab"), SafeFile.IsWholeXml));
+            Assert.False(await SafeFile.MayRestoreAsync(await CopyAsync("cut.cfg.damage.tmp", "<LimiterConfig><Enab"), SafeFile.IsWholeXml));
         }
 
         [Fact]
-        public void NoCopyRestoresNothing()
+        public async Task NoCopyRestoresNothing()
         {
-            Assert.False(SafeFile.MayRestore(Path.Combine(_folder, "none.cfg.damage.tmp"), SafeFile.IsWholeXml));
+            Assert.False(await SafeFile.MayRestoreAsync(Path.Combine(_folder, "none.cfg.damage.tmp"), SafeFile.IsWholeXml));
         }
 
         [Fact]
@@ -64,7 +64,7 @@ namespace Advanced_PB_Limiter.Tests
 #else
             await using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
 #endif
-                Assert.True(SafeFile.MayRestore(path, SafeFile.IsWholeXml));
+                Assert.True(await SafeFile.MayRestoreAsync(path, SafeFile.IsWholeXml));
         }
     }
 }

@@ -9,7 +9,11 @@ namespace Advanced_PB_Limiter.UI
 {
     public partial class PrivilegedUsers
     {
-        private static Advanced_PB_LimiterConfig Config => AdvancedPBLimiterPlugin.Instance!.Config!;
+        // The config this tab was built for: a tab Torch keeps after a reload still holds it, so it never reads a plugin
+        // instance that is gone.
+        private readonly Advanced_PB_LimiterConfig _config = AdvancedPBLimiterPlugin.Instance!.Config!;
+        private Advanced_PB_LimiterConfig Config => _config;
+
         public PrivilegedUsers()
         {
             InitializeComponent();
@@ -147,7 +151,7 @@ namespace Advanced_PB_Limiter.UI
             };
 
             Config.SetPrivilegedPlayer(newPlayer);
-            Advanced_PB_LimiterControl.SaveConfig();
+            _ = Advanced_PB_LimiterControl.SaveConfigAsync();
             PrivilegedPlayersGrid.ItemsSource = null;
             PrivilegedPlayersGrid.ItemsSource = Config.PrivilegedPlayers.Values;
         }
@@ -160,7 +164,7 @@ namespace Advanced_PB_Limiter.UI
             if (selectedPlayer is null) return;
             PrivilegedPlayersGrid.ItemsSource = null;
             Config.PrivilegedPlayers.Remove(selectedPlayer.SteamId);
-            Advanced_PB_LimiterControl.SaveConfig();
+            _ = Advanced_PB_LimiterControl.SaveConfigAsync();
             PrivilegedPlayersGrid.ItemsSource = Config.PrivilegedPlayers.Values;
         }
 

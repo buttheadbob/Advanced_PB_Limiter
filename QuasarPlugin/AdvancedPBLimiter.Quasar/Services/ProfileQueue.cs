@@ -99,10 +99,9 @@ public sealed class ProfileQueue : BackgroundService
                 continue;
             }
 
-            // This pass took its copy earlier; the admin may have cancelled or replaced it, or a page moved it to a new
-            // incarnation of its cluster node, while another server was being sent to. The claim settles that: from here a
-            // cancel is refused, a request gone or moved is skipped until a pass sees its server connected, and what is sent
-            // is the request as claimed.
+            // This pass took its copy earlier; the admin may have cancelled or replaced it while another server was being
+            // sent to. The claim settles that: from here a cancel is refused, a request gone is skipped, and what is sent is
+            // the request as claimed.
             PendingApply? claimed = await _store.TryStartSendingAsync(pending.Id, pending.ServerId);
             if (claimed != null)
                 await SendAsync(claimed, stoppingToken);
@@ -120,10 +119,7 @@ public sealed class ProfileQueue : BackgroundService
                 ? await _store.RefusePendingAsync(pending, refused)
                 : await _store.CompletePendingAsync(pending, applied.Settings, applied.PrivilegedPlayers);
             _logged.Forget(pending.Id.ToString());
-            if (outcome == AnswerOutcome.Moved)
-                MovedOnTheWay(pending);
-            else
-                LogAnswer(pending, applied, outcome);
+            LogAnswer(pending, applied, outcome);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -195,17 +191,5 @@ public sealed class ProfileQueue : BackgroundService
             _log.LogInformation("{User} applied PB Limiter profile {Profile} to {Server}: {Settings}, {Players}",
                 queuedBy, profile, server, InvariantText.Count(applied.Settings, "setting", "settings"), InvariantText.Count(applied.PrivilegedPlayers, "privileged player", "privileged players"));
         }
-    }
-
-    /// <summary>
-    /// The request was moved to a new incarnation of its cluster node while on its way, so the answer came from a node that
-    /// is gone. It waits for the new node, which is tried now rather than at the next retry.
-    /// </summary>
-    private void MovedOnTheWay(PendingApply sent)
-    {
-        Wake();
-        if (_log.IsEnabled(LogLevel.Information))
-            _log.LogInformation("{Server} was replaced by a new node while PB Limiter profile {Profile} was on its way, the profile now waits for that node",
-                sent.ServerName, sent.ProfileName);
     }
 }

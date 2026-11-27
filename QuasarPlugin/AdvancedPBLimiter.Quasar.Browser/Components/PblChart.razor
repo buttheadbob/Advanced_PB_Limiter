@@ -1,0 +1,73 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@inject ILogger<PblChart> Log
+
+@if (_unavailable)
+{
+    <div class="pbl-chart-empty">The chart could not be drawn: the dashboard did not provide its chart library.</div>
+}
+<div class="pbl-uplot" @ref="_container" style="min-height: @(_unavailable ? 0 : Spec.Height)px"></div>
+
+@code {
+    /// <summary>Drawn again only when this is a new instance, so the page builds it when its data changes, not on every render.</summary>
+    [Parameter, EditorRequired] public PblChartSpec Spec { get; set; } = default!;
+
+    private ElementReference _container;
+    private IJSObjectReference? _module;
+    private PblChartSpec? _drawn;
+    private bool _unavailable;
+    private bool _disposed;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_disposed || ReferenceEquals(_drawn, Spec)) return;
+        _drawn = Spec;
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import",
+                new Uri(new Uri(Navigation.BaseUri), $"_quasar/plugins/{SdkClient.PluginId}/pbl-charts.js").ToString());
+            // Disposed while the module loaded: DisposeAsync found no module to clean up with, so nothing is drawn now.
+            if (_disposed)
+            {
+                IJSObjectReference module = _module;
+                _module = null;
+                await module.DisposeAsync();
+                return;
+            }
+            bool drawn = await _module.InvokeAsync<bool>("render", _container, Spec);
+            if (drawn == _unavailable)
+            {
+                _unavailable = !drawn;
+                StateHasChanged();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // The browser page is gone.
+        }
+        catch (Exception e)
+        {
+            Log.LogDebug(e, "Could not draw the PB Limiter chart {Chart}", Spec.Label);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        if (_module is null) return;
+        try
+        {
+            await _module.InvokeVoidAsync("dispose", _container);
+            await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // The browser page is gone, and the chart with it.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already disposed.
+        }
+    }
+}

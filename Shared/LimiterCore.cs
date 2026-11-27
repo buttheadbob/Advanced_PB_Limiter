@@ -1,6 +1,8 @@
 #nullable enable
 using System;
+using System.Diagnostics;
 using System.Threading;
+using System.Threading.Tasks;
 using Advanced_PB_Limiter.Manager;
 using Advanced_PB_Limiter.Patches;
 using Advanced_PB_Limiter.Utils;
@@ -24,6 +26,8 @@ namespace Advanced_PB_Limiter
         bool ClearHistoryOnRecompile { get; }
         int GracefulShutDownRequestDelay { get; }
         double InstantKillThreshold { get; }
+        int InstantKillStrikes { get; }
+        int InstantKillStrikeWindow { get; }
         Enums.InstantPunishment InstantKillPunishment { get; }
         int PunishDamageAmount { get; }
         int GraceAfterOffence { get; }
@@ -69,16 +73,16 @@ namespace Advanced_PB_Limiter
         IPbLimiterConfig Config { get; }
         string Version { get; }
         /// <summary>
-        /// Runs a command's <paramref name="change"/> to the config and makes sure the result is saved, once: false when it
-        /// could not be, and the host has logged why. A host whose config saves each change as it is made answers with how
-        /// that save went instead of writing the file, and logging a failure, a second time.
+        /// Runs a command's <paramref name="change"/> to the config at once, on the caller's thread, and makes sure the result
+        /// is saved, once: the task gives false when it could not be, and the host has logged why. A host whose config saves
+        /// each change as it is made answers with how that save went instead of writing the file, and logging a failure, a
+        /// second time.
         /// </summary>
-        bool ChangeConfig(Action change);
+        Task<bool> ChangeConfigAsync(Action change);
 
         /// <summary>
-        /// Why a command may not change the config on this server, or null when it may. A node of a managed cluster runs the
-        /// cluster's configuration, which only Quasar changes, for every node at once: a change on one node could never be
-        /// saved and would set it apart from the others until it restarts.
+        /// Why a command may not change the config now, or null when it may: the config is still being read, so a change
+        /// would be overwritten by it.
         /// </summary>
         string? ConfigChangeRefusal { get; }
         void LogTrace(string message);
@@ -166,7 +170,9 @@ namespace Advanced_PB_Limiter
         private static long _tick;
 
         /// <summary>
-        /// Call from the host's Init, after its config is loaded and before anything is patched.
+        /// Call from the host's Init, before anything is patched. It may run before the config file is read: the limiter keeps
+        /// the instance <see cref="IPbLimiterHost.Config"/> gives here, so the host copies the file's settings into that same
+        /// instance and never replaces it.
         /// Throws when the game no longer has a member the limiter needs. The host must then stay inactive.
         /// </summary>
         public static void Init(IPbLimiterHost host)
@@ -180,6 +186,25 @@ namespace Advanced_PB_Limiter
         private static InvalidOperationException NotInitialized()
         {
             return new InvalidOperationException("Advanced PB Limiter was used before LimiterCore.Init.");
+        }
+
+        // Game thread, as Update. A failure that repeats every tick is logged once a minute, with how many came between.
+        private static long _updateFailureLogged;
+        private static int _updateFailuresSince;
+
+        private static void LogUpdateFailure(Exception e)
+        {
+            long now = Stopwatch.GetTimestamp();
+            if (_updateFailureLogged != 0 && now - _updateFailureLogged < Stopwatch.Frequency * 60)
+            {
+                _updateFailuresSince++;
+                return;
+            }
+            Log.Error(e, _updateFailuresSince == 0
+                ? "The update failed"
+                : "The update failed, as it did " + InvariantText.Count(_updateFailuresSince, "more time", "more times") + " since the last of these lines");
+            _updateFailureLogged = now;
+            _updateFailuresSince = 0;
         }
 
         public static void OnSessionLoaded()
@@ -220,7 +245,7 @@ namespace Advanced_PB_Limiter
             }
             catch (Exception e)
             {
-                Log.Error(e, "The update failed");
+                LogUpdateFailure(e);
             }
 
             // A Torch plugin reload retires this instance on its own thread, and may have cleared the tracking data while

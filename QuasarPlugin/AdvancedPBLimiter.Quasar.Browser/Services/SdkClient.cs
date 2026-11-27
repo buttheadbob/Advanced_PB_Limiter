@@ -3,8 +3,8 @@ using Microsoft.JSInterop;
 
 namespace AdvancedPBLimiter.Quasar.Services;
 
-/// <summary>
-/// Calls the worker adapter's browser SDK operations. The Quasar 1.7 dashboard exposes <c>quasarSdk.request</c>; the
+/// <summary xml:lang="en">
+/// Calls the worker adapter's browser SDK operations. The Quasar 1.7 dashboard exposes <c language="javascript">quasarSdk.request</c>; the
 /// worker authorizes and audits every call.
 /// </summary>
 public static class SdkClient

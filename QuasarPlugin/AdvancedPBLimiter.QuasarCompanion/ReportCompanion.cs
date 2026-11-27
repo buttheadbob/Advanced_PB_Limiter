@@ -85,7 +85,16 @@ namespace AdvancedPBLimiter.QuasarCompanion
 
                     case ReportOperations.ProfileApply:
                         var profile = Read<ProfileApplyRequest>(request);
-                        response.PayloadJson = await OnLoadedWorld(bridge => ApplyOnce(bridge, profile), DeadlineOf(profile.TimeoutMs, profile.ExpiresUnixMs), cancellationToken).ConfigureAwait(false);
+                        // A limiter that is inactive for good, on a cluster node, never applies it: refused, so Quasar stops
+                        // sending it. One inactive until it is updated fails below, in OnLoadedWorld, and Quasar sends it again.
+                        var target = FindBridge();
+                        response.PayloadJson = InactiveOf(target) is { } inactive && InactiveForGood(target)
+                            ? JsonConvert.SerializeObject(new ProfileData { Refused = inactive }, Json)
+                            : await OnLoadedWorld(bridge => ApplyOnce(bridge, profile), DeadlineOf(profile.TimeoutMs, profile.ExpiresUnixMs), cancellationToken).ConfigureAwait(false);
+                        break;
+
+                    case ReportOperations.BlockHistory:
+                        response.PayloadJson = GetBlockHistoryJson(Read<BlockHistoryRequest>(request));
                         break;
 
                     default:
@@ -117,6 +126,7 @@ namespace AdvancedPBLimiter.QuasarCompanion
                 case ReportOperations.TurnOffPlayer:
                 case ReportOperations.ProfileRead:
                 case ReportOperations.ProfileApply:
+                case ReportOperations.BlockHistory:
                     return operation;
                 default:
                     return "";
@@ -136,7 +146,7 @@ namespace AdvancedPBLimiter.QuasarCompanion
                 return JsonConvert.SerializeObject(new ReportSnapshot { Installed = false }, Json);
 
             if (!(bool)Invoke(bridge, "IsOnline")!)
-                return JsonConvert.SerializeObject(new ReportSnapshot { Installed = true, Online = false }, Json);
+                return JsonConvert.SerializeObject(new ReportSnapshot { Installed = true, Online = false, Inactive = InactiveOf(bridge) }, Json);
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -149,6 +159,18 @@ namespace AdvancedPBLimiter.QuasarCompanion
 
             // An older server plugin reads live block state here: it must run on the game thread.
             return await OnGameThread(() => (string)Invoke(bridge, "GetReportJson")!, deadline, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Read on this thread, as the server plugin reads the run times under each block's lock. No blocks before the world
+        /// has loaded, as nothing is tracked then.
+        /// </summary>
+        private string GetBlockHistoryJson(BlockHistoryRequest history)
+        {
+            var bridge = FindBridge() ?? throw new InvalidOperationException("Advanced PB Limiter is not loaded on this server.");
+            if (!(bool)Invoke(bridge, "IsOnline")!)
+                return JsonConvert.SerializeObject(new BlockHistoryResult(), Json);
+            return (string)Invoke(bridge, "GetBlockHistoryJson", history.EntityIds.ToArray(), history.OwnerIds.ToArray())!;
         }
 
         /// <summary>Refuses a request that has already waited past its own deadline, as OnGameThread does.</summary>
@@ -167,6 +189,8 @@ namespace AdvancedPBLimiter.QuasarCompanion
         private Task<T> OnLoadedWorld<T>(Func<Type, T> work, long deadline, CancellationToken cancellationToken)
         {
             var bridge = FindBridge() ?? throw new InvalidOperationException("Advanced PB Limiter is not loaded on this server.");
+            if (InactiveOf(bridge) is { } inactive)
+                throw new InvalidOperationException(inactive);
             if (!(bool)Invoke(bridge, "IsOnline")!)
                 throw new InvalidOperationException("The world has not finished loading.");
 
@@ -279,6 +303,20 @@ namespace AdvancedPBLimiter.QuasarCompanion
                 _appliedAnswer = answer;
             }
             return answer;
+        }
+
+        /// <summary>Why the limiter is inactive until the server restarts, or null; a limiter before 1.3.4.5 never says.</summary>
+        private static string? InactiveOf(Type? bridge)
+        {
+            MethodInfo? reason = bridge?.GetMethod("InactiveReason", BindingFlags.Public | BindingFlags.Static);
+            return reason?.Invoke(null, null) as string;
+        }
+
+        /// <summary>True when the limiter will never apply a profile on this server; a limiter before 1.3.4.5 never says.</summary>
+        private static bool InactiveForGood(Type? bridge)
+        {
+            MethodInfo? forGood = bridge?.GetMethod("InactiveForGood", BindingFlags.Public | BindingFlags.Static);
+            return forGood?.Invoke(null, null) is true;
         }
 
         private static object? Invoke(Type bridge, string method, params object[] args)

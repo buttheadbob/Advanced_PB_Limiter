@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
 
@@ -16,27 +17,38 @@ namespace Advanced_PB_Limiter.Utils
     {
         public static readonly string[] Settings = { "InstantKillPunishment", "MemoryPunishment" };
 
-        /// <summary>Rewrites Damage in those two settings to TurnOff in the file, and returns the settings it changed.</summary>
-        public static List<string> ReplaceDamage(string path) => ReplaceDamage(path, out _);
+        /// <summary>The outcome of <see cref="ReplaceDamageAsync(string, bool)"/>: the settings rewritten, a line for the log, and whether a copy waits for the next start.</summary>
+        public readonly struct ReplaceDamageResult
+        {
+            public List<string> Changed { get; }
+            public string? Recovered { get; }
+            public bool CopyWaiting { get; }
+
+            public ReplaceDamageResult(List<string> changed, string? recovered, bool copyWaiting)
+            {
+                Changed = changed;
+                Recovered = recovered;
+                CopyWaiting = copyWaiting;
+            }
+        }
+
+
+        /// <summary>As <see cref="ReplaceDamageAsync(string, bool)"/>, moving the config aside when a copy waits, as Torch needs.</summary>
+        public static Task<ReplaceDamageResult> ReplaceDamageAsync(string path) => ReplaceDamageAsync(path, moveConfigAside: true);
 
         /// <summary>
-        /// As <see cref="ReplaceDamage(string)"/>. <paramref name="recovered"/> is a line for the log when a rewrite at an
-        /// earlier start was interrupted and its copy was used or kept, otherwise null. The check and the rewrite are one step
-        /// for other writers of the file in this process.
-        /// <para>
-        /// The Torch host uses this overload and does not handle <c>copyWaiting</c>: when a complete differing copy cannot be
-        /// kept apart, the config itself is moved aside as <c>.unreadable</c>, so a loader that reads this path finds it
-        /// missing beside the copy and saves nothing over it. The copy is restored by the next start. Magnetar uses the
-        /// three-argument overload and blocks its own saves instead.
-        /// </para>
+        /// Rewrites an old Damage in the config and returns the settings changed. <paramref name="moveConfigAside"/> moves
+        /// the config aside when a complete differing copy waits, which leaves the path missing beside the copy; Magnetar
+        /// passes false and blocks its own saves instead. The check and the rewrite are one step for other writers of the file.
         /// </summary>
-        public static List<string> ReplaceDamage(string path, out string? recovered)
+        public static async Task<ReplaceDamageResult> ReplaceDamageAsync(string path, bool moveConfigAside)
         {
-            using (SafeFile.Hold(path))
+            using (IDisposable hold = await SafeFile.HoldAsync(path).ConfigureAwait(false))
             {
-                List<string> changed = ReplaceDamageHeld(path, out recovered, out bool copyWaiting);
-                if (!copyWaiting || !File.Exists(path)) return changed;
+                ReplaceDamageResult result = await ReplaceDamageHeldAsync(path).ConfigureAwait(false);
+                if (!moveConfigAside || !result.CopyWaiting || !File.Exists(path)) return result;
 
+                string? recovered;
                 try
                 {
                     string aside = KeptFile.Keep(path, ".unreadable");
@@ -46,40 +58,23 @@ namespace Advanced_PB_Limiter.Utils
                 {
                     recovered = $"The config {path} held Damage and a complete copy waits at {CopyPath(path)}, but the config could not be moved aside ({e.Message}). The copy is used at the next start once the config is out of the way; nothing may be saved until then.";
                 }
-                return changed;
+                return new ReplaceDamageResult(result.Changed, recovered, result.CopyWaiting);
             }
         }
 
-        /// <summary>
-        /// As <see cref="ReplaceDamage(string, out string?)"/>. <paramref name="copyWaiting"/> is true when a differing complete
-        /// copy from an interrupted write could not be kept apart and waits to be used at the next start: the config then
-        /// still holds Damage, and nothing may be saved over it before that restart, or the copy would be kept aside instead.
-        /// </summary>
-        public static List<string> ReplaceDamage(string path, out string? recovered, out bool copyWaiting)
+        private static async Task<ReplaceDamageResult> ReplaceDamageHeldAsync(string path)
         {
-            using (SafeFile.Hold(path))
-                return ReplaceDamageHeld(path, out recovered, out copyWaiting);
-        }
-
-        /// <summary>Where the rewrite writes its complete copy before it swaps it in: the config's name plus .damage.tmp.</summary>
-        public static string CopyPath(string path) => path + ".damage.tmp";
-
-        private static List<string> ReplaceDamageHeld(string path, out string? recovered, out bool copyWaiting)
-        {
-            copyWaiting = false;
+            bool copyWaiting = false;
             List<string> changed = new();
             string temp = CopyPath(path);
-            SafeFile.Recovery recovery = SafeFile.RecoverHeld(path, temp, SafeFile.IsWholeXml, out string? kept);
-            recovered = SafeFile.Describe(recovery, path, temp, kept);
-            if (!File.Exists(path)) return changed;
+            SafeFile.RecoverResult recovery = await SafeFile.RecoverHeldAsync(path, temp, SafeFile.IsWholeXml).ConfigureAwait(false);
+            string? recovered = SafeFile.Describe(recovery.Recovery, path, temp, recovery.Kept);
+            if (!File.Exists(path)) return new ReplaceDamageResult(changed, recovered, copyWaiting);
 
-            byte[] original = File.ReadAllBytes(path);
-            XDocument document;
-            using (MemoryStream read = new(original))
-            using (XmlReader reader = SafeXml.Reader(read))
-                document = XDocument.Load(reader);
+            byte[] original = await SafeFile.ReadAllBytesAsync(path).ConfigureAwait(false);
+            XDocument document = Parse(original);
             XElement? root = document.Root;
-            if (root is null) return changed;
+            if (root is null) return new ReplaceDamageResult(changed, recovered, copyWaiting);
 
             foreach (string name in Settings)
             {
@@ -87,41 +82,41 @@ namespace Advanced_PB_Limiter.Utils
                 if (element is not null && element.Value.Trim() == "Damage")
                     changed.Add(name);
             }
-            if (changed.Count == 0) return changed;
+            if (changed.Count == 0) return new ReplaceDamageResult(changed, recovered, copyWaiting);
 
-            // Only these values change where it can be done on the text: line endings, the declaration, comments and the BOM
-            // stay exactly as they were. A file in another encoding, or a value the text edit can't reach (CDATA, a
-            // character reference), is rewritten from the parsed document in its own encoding instead.
             byte[]? edited = EditText(original, changed);
             if (edited is not null && !OnlyTheseChanged(edited, document, changed)) edited = null;
-            using MemoryStream written = edited is not null ? new(edited) : Rewrite(original, changed);
+            byte[] written = edited ?? Rewrite(original, changed);
             // A kept copy that matches this rewrite was this same rewrite, interrupted before it was swapped in.
-            string? leftover = recovery switch
+            string? leftover = recovery.Recovery switch
             {
-                SafeFile.Recovery.CopyKept => kept,
+                SafeFile.Recovery.CopyKept => recovery.Kept,
                 SafeFile.Recovery.KeepFailed => temp,
                 _ => null
             };
-            if (leftover is not null && SafeFile.DropIfSame(leftover, written.ToArray()))
+            if (leftover is not null && await SafeFile.DropIfSameAsync(leftover, written).ConfigureAwait(false))
             {
                 recovered = null;
             }
-            else if (recovery == SafeFile.Recovery.KeepFailed)
+            else if (recovery.Recovery == SafeFile.Recovery.KeepFailed)
             {
                 // The rewrite would write its copy over that one, which may be the admin's only copy of newer settings.
-                recovered = $"A complete copy of {path} from an interrupted write differs from the config and is at {temp}, and could not be moved to a name of its own ({kept}). "
+                recovered = $"A complete copy of {path} from an interrupted write differs from the config and is at {temp}, and could not be moved to a name of its own ({recovery.Kept}). "
                             + $"The config, which holds Damage for {string.Join(" and ", changed)}, was not rewritten so that copy is not replaced, so it can't be read and is set aside as unreadable. "
                             + "At the next start that copy is used, unless it is moved elsewhere first, as long as nothing is saved over it until then.";
                 copyWaiting = true;
                 changed.Clear();
-                return changed;
+                return new ReplaceDamageResult(changed, recovered, copyWaiting);
             }
             // Written either way; the swap error only says the file was written in place, which needs no line in the log.
-            _ = SafeFile.WriteHeld(path, temp, written, SafeFile.IsWholeXml, out string? keptBeforeWrite);
-            if (keptBeforeWrite is not null)
-                recovered = (recovered is null ? "" : recovered + " ") + $"A complete copy an earlier write left at {temp} was kept as {keptBeforeWrite}.";
-            return changed;
+            SafeFile.WriteResult write = await SafeFile.WriteHeldAsync(path, temp, written, SafeFile.IsWholeXml).ConfigureAwait(false);
+            if (write.Kept is not null)
+                recovered = (recovered is null ? "" : recovered + " ") + $"A complete copy an earlier write left at {temp} was kept as {write.Kept}.";
+            return new ReplaceDamageResult(changed, recovered, copyWaiting);
         }
+
+        /// <summary>Where the rewrite writes its complete copy before it swaps it in: the config's name plus .damage.tmp.</summary>
+        public static string CopyPath(string path) => path + ".damage.tmp";
 
         /// <summary>The file with Damage replaced in its UTF-8 text, or null when that can't be done on the text.</summary>
         private static byte[]? EditText(byte[] original, List<string> settings)
@@ -167,7 +162,7 @@ namespace Advanced_PB_Limiter.Utils
                 root.Element(root.Name.Namespace + name)?.SetValue("TurnOff");
             try
             {
-                return XNode.DeepEquals(expected.Root, Parse(edited)?.Root);
+                return XNode.DeepEquals(expected.Root, Parse(edited).Root);
             }
             catch (XmlException)
             {
@@ -175,7 +170,7 @@ namespace Advanced_PB_Limiter.Utils
             }
         }
 
-        private static XDocument? Parse(byte[] bytes)
+        private static XDocument Parse(byte[] bytes)
         {
             using MemoryStream read = new(bytes);
             using XmlReader reader = SafeXml.Reader(read);
@@ -183,7 +178,7 @@ namespace Advanced_PB_Limiter.Utils
         }
 
         /// <summary>The file written again from its parsed document with Damage replaced, in the encoding it was read in.</summary>
-        private static MemoryStream Rewrite(byte[] original, List<string> settings)
+        private static byte[] Rewrite(byte[] original, List<string> settings)
         {
             XDocument document;
             using (MemoryStream read = new(original))
@@ -197,12 +192,11 @@ namespace Advanced_PB_Limiter.Utils
                     root.Element(root.Name.Namespace + name)?.SetValue("TurnOff");
             }
 
-            MemoryStream written = new();
+            using MemoryStream written = new();
             XmlWriterSettings writeSettings = new() { Encoding = EncodingOf(original, document), Indent = false, NewLineHandling = NewLineHandling.Entitize };
             using (XmlWriter writer = XmlWriter.Create(written, writeSettings))
                 document.Save(writer);
-            written.Position = 0;
-            return written;
+            return written.ToArray();
         }
 
         /// <summary>

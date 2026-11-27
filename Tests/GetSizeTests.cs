@@ -129,6 +129,17 @@ namespace Advanced_PB_Limiter.Tests
             public object? Held;
         }
 
+        public sealed class GenericHolder<T>
+        {
+            public T Value = default!;
+            public object Reference = new();
+        }
+
+        public struct RefValue
+        {
+            public object? Value;
+        }
+
         public struct OneReference
         {
             public object? A;
@@ -279,6 +290,28 @@ namespace Advanced_PB_Limiter.Tests
 
         [Fact]
         public void FieldsAreReadByOffsetOnThisRuntime() => Assert.True(GetSize.Available);
+
+        /// <summary>
+        /// A generic class over a value type, as a script can declare: the reference field and a reference inside the
+        /// value-type field must be read at that instantiation's offsets. A large followed array proves the read reached
+        /// the real field, rather than returning null for a wrong offset.
+        /// </summary>
+        [Fact]
+        public void GenericClassesOverValueTypesAreMeasured()
+        {
+            GenericHolder<byte> byteHolder = new() { Reference = new byte[1_000_000] };
+            GenericHolder<Guid> guidHolder = new() { Reference = new byte[1_000_000] };
+            GenericHolder<RefValue> refHolder = new()
+            {
+                Value = new RefValue { Value = new byte[1_000_000] },
+                Reference = new object()
+            };
+            Assert.True(Measure(byteHolder) > 1_000_000);
+            Assert.True(Measure(guidHolder) > 1_000_000);
+            Assert.True(Measure(refHolder) > 1_000_000);
+            Assert.Equal((byte)0, byteHolder.Value);
+            Assert.Equal(Guid.Empty, guidHolder.Value);
+        }
 
         [Fact]
         public void AStructTooLargeToLoadIsRefusedByTheRuntime()

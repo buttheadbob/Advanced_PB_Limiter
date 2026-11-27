@@ -92,9 +92,10 @@ public static class CsvExport
         if (value.Length > 0 && (value[0] is '=' or '+' or '-' or '@' or '\t' or '\r'))
             value = "'" + value;
 
-        bool quote = value.Contains('"') || value.Contains(',') || value.Contains('\r') || value.Contains('\n');
+        bool quote = value.Contains('"', StringComparison.Ordinal) || value.Contains(',', StringComparison.Ordinal)
+            || value.Contains('\r', StringComparison.Ordinal) || value.Contains('\n', StringComparison.Ordinal);
         if (quote)
-            value = "\"" + value.Replace("\"", "\"\"") + "\"";
+            value = "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
         return value;
     }
 

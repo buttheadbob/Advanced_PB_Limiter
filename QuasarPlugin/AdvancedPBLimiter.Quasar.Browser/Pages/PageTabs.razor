@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject IJSRuntime JS
+@inject ILogger<PageTabs> Log
 
 <div class="pbl-page">
     <header class="pbl-page-heading">
@@ -47,20 +48,33 @@
 
     // The worker checks CanEditConfigs on the page and on every profile operation; this only hides a link the user
     // cannot use. It is asked through the SDK because the browser dashboard has no ASP.NET authorization state.
+    // The last answer, kept for the browser tab, so moving between the pages does not make the Profiles link pop in
+    // late each time. It is asked again on every page and corrected if the permission changed.
+    private static bool _lastCanEdit;
+
     private readonly PageClosing _closing = new();
-    private bool _canEdit;
+    private bool _canEdit = _lastCanEdit;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
             _canEdit = await SdkClient.AllowedAsync(JS, "CanEditConfigs", _closing.Token);
+            Remember(_canEdit);
         }
-        catch (Exception)
+        catch (OperationCanceledException)
         {
+            // The page closed while it asked: the last answer stays.
+        }
+        catch (Exception e)
+        {
+            Log.LogWarning(e, "Could not check the PB Limiter edit permission");
             _canEdit = false;
+            Remember(false);
         }
     }
+
+    private static void Remember(bool canEdit) => _lastCanEdit = canEdit;
 
     private string ActiveClass(Tab tab) => tab == Active ? "active" : "";
 
