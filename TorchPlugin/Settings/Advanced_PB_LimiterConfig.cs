@@ -45,6 +45,13 @@ namespace Advanced_PB_Limiter.Settings
         private double _InstantKillThreshold = 10.0; // threshold that there are no warnings or offence limits before instant kill
         public double InstantKillThreshold { get => _InstantKillThreshold; set => SetValue(ref _InstantKillThreshold, value); }
 
+        // Runs over the instant kill run time needed within the window before the instant kill: a single spike passes.
+        private int _instantKillStrikes = 2;
+        public int InstantKillStrikes { get => _instantKillStrikes; set => SetValue(ref _instantKillStrikes, value); }
+
+        private int _instantKillStrikeWindow = 60;
+        public int InstantKillStrikeWindow { get => _instantKillStrikeWindow; set => SetValue(ref _instantKillStrikeWindow, value); }
+
         // A config saved before this setting existed keeps Destroy, see AdvancedPBLimiterPlugin.KeepOlderDefaults.
         private Enums.InstantPunishment _instantKillPunishment = Enums.InstantPunishment.TurnOff;
         public Enums.InstantPunishment InstantKillPunishment { get => _instantKillPunishment; set => SetValue(ref _instantKillPunishment, value); }

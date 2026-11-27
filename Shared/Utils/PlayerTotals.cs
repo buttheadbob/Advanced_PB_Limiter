@@ -44,7 +44,7 @@ namespace Advanced_PB_Limiter.Utils
                     totals.MemoryUnmeasured = true;
                 else
                     totals.MemoryBytes += block.memoryUsage;
-                totals.Combined.Add(block.LastRunTimeMS, block.RunTimeMSAvg, player.CountsInCombinedForReport(block, resting));
+                totals.Combined.Add(block.CombinedLastRunTimeMS, block.RunTimeMSAvg, player.CountsInCombinedForReport(block, resting));
                 each?.Invoke(block, resting);
             }
             return totals;

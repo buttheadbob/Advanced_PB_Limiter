@@ -16,12 +16,22 @@
                 </select>
             </label>
 
-            <button type="button" class="pbl-icon-btn" aria-label="First page" disabled="@(Page <= 1)" @onclick="() => Go(1)">
+            <button type="button" class="pbl-icon-btn" title="First page" aria-label="First page" disabled="@(Page <= 1)" @onclick="() => Go(1)">
+                <PblIcon Name="first-page" />
+            </button>
+            <button type="button" class="pbl-icon-btn" title="Previous page" aria-label="Previous page" disabled="@(Page <= 1)" @onclick="() => Go(Page - 1)">
                 <PblIcon Name="chevron-left" />
             </button>
-            <span class="pbl-page-number">@Page / @PageCount</span>
-            <button type="button" class="pbl-icon-btn" aria-label="Last page" disabled="@(Page >= PageCount)" @onclick="() => Go(PageCount)">
+            <label class="pbl-page-number">
+                <span class="pbl-visually-hidden">Page</span>
+                <input @key="_typed" type="number" min="1" max="@PageCount" value="@Page" @onchange="PageTyped" aria-label="Page number" />
+                <span>of @PageCount</span>
+            </label>
+            <button type="button" class="pbl-icon-btn" title="Next page" aria-label="Next page" disabled="@(Page >= PageCount)" @onclick="() => Go(Page + 1)">
                 <PblIcon Name="chevron-right" />
+            </button>
+            <button type="button" class="pbl-icon-btn" title="Last page" aria-label="Last page" disabled="@(Page >= PageCount)" @onclick="() => Go(PageCount)">
+                <PblIcon Name="last-page" />
             </button>
         </div>
     </div>
@@ -44,6 +54,18 @@
     {
         int clamped = Math.Clamp(page, 1, PageCount);
         return clamped == Page ? Task.CompletedTask : PageChanged.InvokeAsync(clamped);
+    }
+
+    // Counts the pages typed: a new input each time, so one typed out of range shows the page it was clamped to.
+    private int _typed;
+
+    private Task PageTyped(ChangeEventArgs args)
+    {
+        _typed++;
+        return int.TryParse(args.Value?.ToString(), System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out int page)
+            ? Go(page)
+            : Task.CompletedTask;
     }
 
     private Task PageSizeChangedAsync(ChangeEventArgs args)

@@ -1,9 +1,9 @@
-<div class="pbl-tabs" role="tablist" aria-label="@Label">
+<div class="pbl-tabs" role="tablist" aria-label="@Label" @onkeydown="OnKeyDown">
     @foreach (PblTab tab in Tabs)
     {
         bool active = string.Equals(tab.Key, ActiveKey, StringComparison.Ordinal);
-        <button type="button" role="tab" aria-selected="@active" class="pbl-tab @(active ? "active" : "")"
-                @onclick="() => Select(tab.Key)">
+        <button type="button" role="tab" id="@TabId(tab.Key)" aria-selected="@(active ? "true" : "false")" tabindex="@(active ? 0 : -1)"
+                class="pbl-tab @(active ? "active" : "")" @ref="_buttons[tab.Key]" @onclick="() => Select(tab.Key)">
             <PblIcon Name="@tab.Icon" />
             <span>@tab.Label</span>
             @if (tab.Count is { } count)
@@ -20,6 +20,43 @@
     [Parameter] public EventCallback<string> ActiveKeyChanged { get; set; }
     [Parameter] public string Label { get; set; } = "Views";
 
+    /// <summary>The id of a tab's button, for the panel's aria-labelledby.</summary>
+    public static string TabId(string key) => "pbl-tab-" + key;
+
+    private readonly Dictionary<string, ElementReference> _buttons = new(StringComparer.Ordinal);
+    private string? _focus; // The tab the arrow keys moved to, focused once it has rendered as active.
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focus is null || !_buttons.TryGetValue(_focus, out ElementReference button)) return;
+        _focus = null;
+        try
+        {
+            await button.FocusAsync();
+        }
+        catch (InvalidOperationException)
+        {
+            // The tabs went away first.
+        }
+    }
+
     private Task Select(string key) =>
         string.Equals(key, ActiveKey, StringComparison.Ordinal) ? Task.CompletedTask : ActiveKeyChanged.InvokeAsync(key);
+
+    /// <summary>Left and right move between the tabs, Home and End go to the first and last, as a tab list does.</summary>
+    private Task OnKeyDown(KeyboardEventArgs args)
+    {
+        int current = Tabs.ToList().FindIndex(tab => string.Equals(tab.Key, ActiveKey, StringComparison.Ordinal));
+        int next = args.Key switch
+        {
+            "ArrowRight" => (current + 1) % Tabs.Count,
+            "ArrowLeft" => (current - 1 + Tabs.Count) % Tabs.Count,
+            "Home" => 0,
+            "End" => Tabs.Count - 1,
+            _ => -1
+        };
+        if (next < 0 || Tabs.Count == 0) return Task.CompletedTask;
+        _focus = Tabs[next].Key;
+        return Select(Tabs[next].Key);
+    }
 }

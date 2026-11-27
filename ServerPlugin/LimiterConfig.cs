@@ -136,8 +136,14 @@ public class LimiterConfig : PluginConfig, IPbLimiterConfig, IJsonOnDeserializin
     [DoubleOption(0, 1000, "Max time in ms a script is allowed to average before being issued any punishment, 0 for no limit", Parent = "single")]
     public double MaxRunTimeMSAvg { get; set => SetField(ref field, value); } = 0.4;
 
-    [DoubleOption(0, 100000, "Any block that reaches this run time in ms is punished immediately with the instant kill punishment, regardless of offences and with no graceful shutdown request. A run during which a garbage collection happened is left to the other limits instead, as its time may be mostly that pause. 0 to disable", Parent = "single")]
+    [DoubleOption(0, 100000, "A block's run over this run time in ms counts as an instant kill strike: the strike that reaches InstantKillStrikes within InstantKillStrikeWindow seconds punishes it at once with the instant kill punishment, regardless of offences and with no graceful shutdown request. A run during which a garbage collection happened is left to the other limits instead, as its time may be mostly that pause. 0 to disable", Parent = "single")]
     public double InstantKillThreshold { get; set => SetField(ref field, value); } = 10.0;
+
+    [IntOption(1, 10, "How many runs over the instant kill run time, within the instant kill window, a block needs before the instant kill. The game sometimes times a steady script's run far too long, once, so 2 lets such a spike pass; 1 kills at the first run, as before. A run that does not kill is left to the run-time limit, which forgives up to 2 runs over it among a block's last 50, so runs spaced further apart than the window are never instant-killed", Parent = "single")]
+    public int InstantKillStrikes { get; set => SetField(ref field, value); } = 2;
+
+    [IntOption(1, 3600, "Seconds, from a block's first run over the instant kill run time, within which its further runs over it count towards the instant kill", Parent = "single")]
+    public int InstantKillStrikeWindow { get; set => SetField(ref field, value); } = 60;
 
     [EnumOption("Instant kill punishment: what happens to a block over the instant kill run time. TurnOff by default, or Destroy, which damages it to 100 integrity. An instant kill punishes at once, so there is no Damage: the script would keep running", Parent = "single")]
     [JsonConverter(typeof(InstantKillPunishmentJsonConverter))]

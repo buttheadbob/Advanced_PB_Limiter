@@ -23,6 +23,7 @@ namespace AdvancedPBLimiter.Quasar.Services;
 internal static class QuasarUiOperations
 {
     private static readonly TimeSpan SnapshotTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan HistoryTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan TurnOffTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ProfileReadTimeout = TimeSpan.FromSeconds(20);
 
@@ -46,6 +47,15 @@ internal static class QuasarUiOperations
             {
                 Effect = QuasarOperationEffect.Read,
                 Description = "Reads the live programmable-block report of one connected server."
+            });
+
+        services.AddQuasarOperation<BlockHistoryUiRequest, BlockHistoryView>(
+            context.PluginId, UiOperations.BlockHistory, [QuasarPolicyNames.CanView],
+            (caller, request, token) => BlockHistoryAsync(caller, request, token),
+            new QuasarOperationMetadata
+            {
+                Effect = QuasarOperationEffect.Read,
+                Description = "Reads the last 50 run times of up to 100 tracked programmable blocks of one connected server, with their limits."
             });
 
         services.AddQuasarOperation<TurnOffBlockUiRequest, TurnOffResult>(
@@ -91,6 +101,15 @@ internal static class QuasarUiOperations
             {
                 Effect = QuasarOperationEffect.Change,
                 Description = "Deletes a saved limiter profile. Applies already queued still go ahead."
+            });
+
+        services.AddQuasarOperation<ProfileNameRequest, ProfileViewResponse?>(
+            context.PluginId, UiOperations.ProfileView, [QuasarPolicyNames.CanEditConfigs],
+            (caller, request, token) => Task.FromResult(ViewProfile(caller, request, token)),
+            new QuasarOperationMetadata
+            {
+                Effect = QuasarOperationEffect.Read,
+                Description = "Shows the settings and privileged players a saved limiter profile holds."
             });
 
         services.AddQuasarOperation<ProfileQueueRequest, ProfileActionResult>(
@@ -194,6 +213,46 @@ internal static class QuasarUiOperations
         })
     };
 
+    private static async Task<BlockHistoryView> BlockHistoryAsync(QuasarOperationContext caller, BlockHistoryUiRequest request, CancellationToken token)
+    {
+        LimiterReports reports = caller.Services.GetRequiredService<LimiterReports>();
+        List<string> ids = request.EntityIds ?? [];
+        List<string> owners = request.OwnerIds ?? [];
+        List<long> entityIds = new();
+        List<long> ownerIds = new();
+        for (int index = 0; index < ids.Count && index < BlockHistoryResult.MaxBlocks; index++)
+        {
+            if (!long.TryParse(ids[index], NumberStyles.Integer, CultureInfo.InvariantCulture, out long entityId))
+                throw new ArgumentException("A block id is not a number.", nameof(request));
+            entityIds.Add(entityId);
+            // An owner that is missing or not a number only costs the server a search for the block.
+            ownerIds.Add(index < owners.Count && long.TryParse(owners[index], NumberStyles.Integer, CultureInfo.InvariantCulture, out long ownerId) ? ownerId : 0);
+        }
+        if (entityIds.Count == 0)
+            return new BlockHistoryView();
+
+        token.ThrowIfCancellationRequested();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(HistoryTimeout);
+        BlockHistoryResult result = await reports.GetBlockHistoryAsync(request.ServerId ?? "", entityIds, ownerIds, timeout.Token);
+        return new BlockHistoryView
+        {
+            Blocks = result.Blocks.ConvertAll(block => new BlockHistoryRowView
+            {
+                EntityId = block.EntityId.ToString(CultureInfo.InvariantCulture),
+                RunTimesMS = block.RunTimesMS,
+                LeftOutOfAverage = block.LeftOutOfAverage,
+                Outcomes = block.Outcomes,
+                AverageMS = block.AverageMS,
+                RunTimeLimitMS = block.RunTimeLimitMS,
+                AverageLimitMS = block.AverageLimitMS,
+                InstantKillMS = block.InstantKillMS,
+                InstantKillStrikes = block.InstantKillStrikes,
+                InstantKillStrikeWindow = block.InstantKillStrikeWindow
+            })
+        };
+    }
+
     private static async Task<TurnOffResult> TurnOffBlockAsync(QuasarOperationContext caller, TurnOffBlockUiRequest request, CancellationToken token)
     {
         LimiterReports reports = caller.Services.GetRequiredService<LimiterReports>();
@@ -254,6 +313,68 @@ internal static class QuasarUiOperations
         return Result(saved, message, store, reports);
     }
 
+    /// <summary>The profile's settings as name and value, read from the JSON the server exported, with no server asked.</summary>
+    private static ProfileViewResponse? ViewProfile(QuasarOperationContext caller, ProfileNameRequest request, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        ProfileStore store = caller.Services.GetRequiredService<ProfileStore>();
+        SavedProfile? profile = store.GetProfiles().Find(p => string.Equals(p.Name, request.Name, StringComparison.OrdinalIgnoreCase));
+        if (profile is null) return null;
+
+        ProfileViewResponse view = new() { Name = profile.Name, SavedFrom = profile.SavedFrom, SavedUtc = profile.SavedUtc };
+        try
+        {
+            // Null only in a profiles file edited by hand: read as empty, which then fails as unreadable.
+            using System.Text.Json.JsonDocument settings = System.Text.Json.JsonDocument.Parse(profile.SettingsJson ?? "");
+            if (settings.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                throw new QuasarOperationException(422, Unreadable);
+            using System.Text.Json.JsonElement.ObjectEnumerator properties = settings.RootElement.EnumerateObject();
+            while (properties.MoveNext())
+            {
+                System.Text.Json.JsonProperty setting = properties.Current;
+                if (setting.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    AddPlayers(view.PrivilegedPlayers, setting.Value);
+                else
+                    view.Settings.Add(new ProfileSettingView { Name = setting.Name, Value = Text(setting.Value) });
+            }
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            throw new QuasarOperationException(422, Unreadable);
+        }
+        return view;
+    }
+
+    // The page names the profile before this.
+    private const string Unreadable = "its saved settings can't be read. Save it again from a server.";
+
+    /// <summary>Each privileged player as "Name (SteamId)", or whichever of the two is set; a row with neither is left out.</summary>
+    private static void AddPlayers(List<string> players, System.Text.Json.JsonElement rows)
+    {
+        using System.Text.Json.JsonElement.ArrayEnumerator entries = rows.EnumerateArray();
+        while (entries.MoveNext())
+        {
+            System.Text.Json.JsonElement entry = entries.Current;
+            if (entry.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+            string name = entry.TryGetProperty("Name", out System.Text.Json.JsonElement n) ? Text(n) : "";
+            string steamId = entry.TryGetProperty("SteamId", out System.Text.Json.JsonElement s) ? Text(s) : "";
+            if (name.Length == 0)
+            {
+                if (steamId.Length > 0) players.Add(steamId);
+            }
+            else
+                players.Add(steamId.Length == 0 ? name : $"{name} ({steamId})");
+        }
+    }
+
+    /// <summary>A value as text: a string without its quotes, null as nothing, anything else as written.</summary>
+    private static string Text(System.Text.Json.JsonElement value) => value.ValueKind switch
+    {
+        System.Text.Json.JsonValueKind.String => value.GetString() ?? "",
+        System.Text.Json.JsonValueKind.Null or System.Text.Json.JsonValueKind.Undefined => "",
+        _ => value.GetRawText()
+    };
+
     private static async Task<ProfileActionResult> DeleteProfileAsync(QuasarOperationContext caller, ProfileNameRequest request, CancellationToken token)
     {
         LimiterReports reports = caller.Services.GetRequiredService<LimiterReports>();
@@ -294,7 +415,7 @@ internal static class QuasarUiOperations
         if (servers.Count == 0)
             return Unchanged(clusterNodes > 0
                 ? $"{profile.Name.SafeName()} was not queued. {ClusterNodeRefusal}"
-                : $"{profile.Name.SafeName()} was not queued: the chosen servers were forgotten.", store, reports);
+                : $"{profile.Name.SafeName()} was not queued: none of the chosen servers is known any more.", store, reports);
 
         string user = caller.User.Identity?.Name ?? "unknown";
         token.ThrowIfCancellationRequested();
@@ -308,7 +429,7 @@ internal static class QuasarUiOperations
             : "";
         string message = queued.Result.Changed
             ? $"Applying {name} to {InvariantText.Count(queued.Servers, "server", "servers")}. Progress is shown below.{leftOut}"
-            : $"{name} was not queued: the chosen servers were forgotten.";
+            : $"{name} was not queued: none of the chosen servers is known any more.";
         return Result(queued.Result, message, store, reports);
     }
 
@@ -324,12 +445,14 @@ internal static class QuasarUiOperations
         string server = (pending?.ServerName ?? "the server").SafeName();
         string message = result.Outcome switch
         {
-            CancelOutcome.Cancelled => pending?.MayBeApplied == true
+            _ when pending is null => "Nothing to cancel: it already finished or was removed.",
+            CancelOutcome.Cancelled when pending.Refused => $"Dismissed {name} for {server}.",
+            CancelOutcome.Cancelled => pending.MayBeApplied
                 ? $"Cancelled {name} for {server}. An earlier send may already have applied it."
                 : $"Cancelled {name} for {server}.",
             CancelOutcome.Sending => $"{name} for {server} is already being sent, so it can no longer be cancelled.",
             CancelOutcome.Stopping => $"Quasar is stopping, so {name} for {server} was not cancelled.",
-            _ => $"{name} for {server} was no longer waiting: it was applied, cancelled or replaced already, or its server forgotten."
+            _ => $"Nothing to cancel for {name} on {server}: it already finished or was removed."
         };
         return new ProfileActionResult
         {

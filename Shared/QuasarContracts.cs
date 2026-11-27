@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 using System.Collections.Generic;
 
 namespace Advanced_PB_Limiter.QuasarContracts
@@ -26,6 +27,86 @@ namespace Advanced_PB_Limiter.QuasarContracts
 
         /// <summary><see cref="ProfileApplyRequest"/> in, <see cref="ProfileData"/> out, describing what was applied.</summary>
         public const string ProfileApply = "profile.apply";
+
+        /// <summary><see cref="BlockHistoryRequest"/> in, <see cref="BlockHistoryResult"/> out.</summary>
+        public const string BlockHistory = "block.history";
+    }
+
+    /// <summary>What became of one run, decided as it came. Sent with the history as numbers, so the values never change.</summary>
+    public enum RunOutcome : byte
+    {
+        /// <summary>Under the run-time limit, or with no limit and not a spike.</summary>
+        Under = 0,
+
+        /// <summary>Over the run-time limit and forgiven as a spike: no offence.</summary>
+        Forgiven = 1,
+
+        /// <summary>No run-time limit, and the run stood out as a spike: the combined run time counts it as the block's average.</summary>
+        StoodOut = 2,
+
+        /// <summary>Over the run-time limit and not forgiven, but not checked: in the grace after an offence, with a punishment pending, above the sim-speed threshold, with the limiter off, or with the block instant-killed (by memory, or for an earlier run in the same tick).</summary>
+        NotChecked = 3,
+
+        /// <summary>Over the run-time limit and counted: it made an offence.</summary>
+        Counted = 4,
+
+        /// <summary>The run-time instant kill, whatever the run-time limit.</summary>
+        InstantKilled = 5
+    }
+
+    public class BlockHistoryRequest
+    {
+        /// <summary>The blocks wanted. The server answers for the first <see cref="BlockHistoryResult.MaxBlocks"/> of them.</summary>
+        public List<long> EntityIds { get; set; } = new();
+
+        /// <summary>
+        /// Each block's owner as the report gave it, at the same index, so the server looks the block up there instead of
+        /// under every player. A block that changed owner since is still found, by a search of the other players.
+        /// </summary>
+        public List<long> OwnerIds { get; set; } = new();
+    }
+
+    public class BlockHistoryResult
+    {
+        /// <summary>The most blocks one answer carries: a page of the Reports table.</summary>
+        public const int MaxBlocks = 100;
+
+        /// <summary>The tracked blocks among those asked for. One no longer tracked is left out.</summary>
+        public List<BlockHistory> Blocks { get; set; } = new();
+    }
+
+    /// <summary>A block's last runs, and the limits they are held to.</summary>
+    public class BlockHistory
+    {
+        public long EntityId { get; set; }
+
+        /// <summary>Up to the last 50 run times, oldest first.</summary>
+        public double[] RunTimesMS { get; set; } = Array.Empty<double>();
+
+        /// <summary>
+        /// Which of <see cref="RunTimesMS"/> the average leaves out: its 2 slowest once there are 10, and below that the 1 or
+        /// 2 runs that were spikes, as decided when each was added.
+        /// </summary>
+        public int[] LeftOutOfAverage { get; set; } = Array.Empty<int>();
+
+        /// <summary>What became of each of <see cref="RunTimesMS"/>, at the same index.</summary>
+        public RunOutcome[] Outcomes { get; set; } = Array.Empty<RunOutcome>();
+
+        public double AverageMS { get; set; }
+
+        /// <summary>The owner's run-time limit, privileged or not; 0 when there is none.</summary>
+        public double RunTimeLimitMS { get; set; }
+
+        /// <summary>The owner's average limit, privileged or not; 0 when there is none.</summary>
+        public double AverageLimitMS { get; set; }
+
+        /// <summary>The instant kill run time; 0 when it is off.</summary>
+        public double InstantKillMS { get; set; }
+
+        /// <summary>How many runs over <see cref="InstantKillMS"/> within <see cref="InstantKillStrikeWindow"/> seconds kill.</summary>
+        public int InstantKillStrikes { get; set; }
+
+        public int InstantKillStrikeWindow { get; set; }
     }
 
     public class SnapshotRequest

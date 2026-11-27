@@ -68,6 +68,8 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Enable:" Margin="3"/>
@@ -92,65 +94,73 @@
                 
                 <TextBlock Grid.Row="5" Grid.Column="0" Text="InstaKill Limit" Margin="3" VerticalAlignment="Center" Foreground="{StaticResource Pbl.Danger}"/>
                 <TextBox Grid.Row="5" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding InstantKillThreshold}" TextAlignment="Center"/>
-                <TextBlock Grid.Row="5" Grid.Column="2" Text="Any pb that reaches this limit will be punished immediately with the InstaKill punishment, regardless of whether it has offences.  No Graceful shutdown request will be sent.  A run during which a garbage collection happened is left to the other limits instead, as its time may be mostly that pause.  Set to 0 to disable." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="5" Grid.Column="2" Text="A pb run over this limit is an InstaKill strike: the strike that reaches InstaKill Strikes within the InstaKill Window punishes it at once with the InstaKill punishment, regardless of whether it has offences.  No Graceful shutdown request will be sent.  A run during which a garbage collection happened is left to the other limits instead, as its time may be mostly that pause.  Set to 0 to disable." Margin="3" TextWrapping="Wrap"/>
 
                 <TextBlock Grid.Row="6" Grid.Column="0" Text="InstaKill Punishment" Margin="3" VerticalAlignment="Center" Foreground="{StaticResource Pbl.Danger}"/>
                 <ComboBox Grid.Row="6" Grid.Column="1" VerticalAlignment="Center" Margin="3" ItemsSource="{Binding Source={StaticResource InstantPunishmentProvider}}" SelectedItem="{Binding InstantKillPunishment}"/>
                 <TextBlock Grid.Row="6" Grid.Column="2" Text="What happens to a pb over the InstaKill limit.  TurnOff by default, or Destroy, which damages it to 100 integrity.  An instant kill punishes at once, so there is no Damage: the script would keep running." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="7" Grid.Column="0" Text="InstaKill Strikes" Margin="3" VerticalAlignment="Center" Foreground="{StaticResource Pbl.Danger}"/>
+                <TextBox Grid.Row="7" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding InstantKillStrikes}" TextAlignment="Center"/>
+                <TextBlock Grid.Row="7" Grid.Column="2" Text="How many runs over the InstaKill limit, within the InstaKill window, a pb needs before the instant kill.  The game sometimes times a steady script's run far too long, once, so 2 lets such a spike pass; 1 kills at the first run, as before.  A run that does not kill is left to the run-time limit, which forgives up to 2 runs over it among a pb's last 50, so runs spaced further apart than the window are never instant-killed." Margin="3" TextWrapping="Wrap"/>
+                
+                <TextBlock Grid.Row="8" Grid.Column="0" Text="InstaKill Window" Margin="3" VerticalAlignment="Center" Foreground="{StaticResource Pbl.Danger}"/>
+                <TextBox Grid.Row="8" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding InstantKillStrikeWindow}" TextAlignment="Center"/>
+                <TextBlock Grid.Row="8" Grid.Column="2" Text="Seconds, from a pb's first run over the InstaKill limit, within which its further runs over it count towards the instant kill." Margin="3" TextWrapping="Wrap"/>
 
-                <TextBlock Grid.Row="7" Grid.Column="0" Text="Use SimTime" Margin="3" VerticalAlignment="Center"  />
-                <CheckBox Grid.Row="7" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding UseSimTime}" />
-                <TextBlock Grid.Row="7" Grid.Column="2" Text="Use SimTime will adjust the runtime for Sim Speed.  When sim speed tanks then the script running can also take longer to run at no fault of the player." Margin="3" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="9" Grid.Column="0" Text="Use SimTime" Margin="3" VerticalAlignment="Center"  />
+                <CheckBox Grid.Row="9" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding UseSimTime}" />
+                <TextBlock Grid.Row="9" Grid.Column="2" Text="Use SimTime will adjust the runtime for Sim Speed.  When sim speed tanks then the script running can also take longer to run at no fault of the player." Margin="3" TextWrapping="Wrap" />
                 
-                <TextBlock Grid.Row="8" Grid.Column="0" Text="No Recompile On Restart" Margin="3" VerticalAlignment="Center" Foreground="{StaticResource Pbl.Danger}"/>
-                <CheckBox Grid.Row="8" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding RequireRecompileOnRestart}" HorizontalAlignment="Center"/>
-                <TextBlock Grid.Row="8" Grid.Column="2" Text="Checking this will prevent pbs from being compiled during restart when turned off.  This means the player will have to click Recompile instead of Run.  This is best to prevent timers from enabling pbs.  This also means a button will not turn the pb on." Margin="3" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="10" Grid.Column="0" Text="No Recompile On Restart" Margin="3" VerticalAlignment="Center" Foreground="{StaticResource Pbl.Danger}"/>
+                <CheckBox Grid.Row="10" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding RequireRecompileOnRestart}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Row="10" Grid.Column="2" Text="Checking this will prevent pbs from being compiled during restart when turned off.  This means the player will have to click Recompile instead of Run.  This is best to prevent timers from enabling pbs.  This also means a button will not turn the pb on." Margin="3" TextWrapping="Wrap" />
                 
-                <TextBlock Grid.Row="9" Grid.Column="0" Text="Monitor Memory Usage" Margin="3" VerticalAlignment="Center" />
-                <CheckBox Grid.Row="9" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding EnableMemoryMonitoring}" HorizontalAlignment="Center"/>
-                <TextBlock Grid.Row="9" Grid.Column="2" Text="Enable/Disable the limiting and monitoring of memory usage." Margin="3" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="11" Grid.Column="0" Text="Monitor Memory Usage" Margin="3" VerticalAlignment="Center" />
+                <CheckBox Grid.Row="11" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding EnableMemoryMonitoring}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Row="11" Grid.Column="2" Text="Enable/Disable the limiting and monitoring of memory usage." Margin="3" TextWrapping="Wrap" />
                 
-                <TextBlock Grid.Row="10" Grid.Column="0" Text="Defer Run Always" Margin="3" VerticalAlignment="Center" />
-                <CheckBox Grid.Row="10" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding DeferRunAlways}" HorizontalAlignment="Center"/>
-                <TextBlock Grid.Row="10" Grid.Column="2" Text="Always runs timed scripts (Update1, Update10 and Update100) only after they asked to run the number of times set below." Margin="3" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="12" Grid.Column="0" Text="Defer Run Always" Margin="3" VerticalAlignment="Center" />
+                <CheckBox Grid.Row="12" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding DeferRunAlways}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Row="12" Grid.Column="2" Text="Always runs timed scripts (Update1, Update10 and Update100) only after they asked to run the number of times set below." Margin="3" TextWrapping="Wrap" />
                 
-                <TextBlock Grid.Row="11" Grid.Column="0" Text="Defer Run On Sim Rate" Margin="3" VerticalAlignment="Center" />
-                <CheckBox Grid.Row="11" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding DeferRunOnSimspeedRate}" HorizontalAlignment="Center"/>
-                <TextBlock Grid.Row="11" Grid.Column="2" Text="As Defer Run Always, but only while sim speed is below the rate set below." Margin="3" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="13" Grid.Column="0" Text="Defer Run On Sim Rate" Margin="3" VerticalAlignment="Center" />
+                <CheckBox Grid.Row="13" Grid.Column="1" VerticalAlignment="Center" Margin="3" IsChecked="{Binding DeferRunOnSimspeedRate}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Row="13" Grid.Column="2" Text="As Defer Run Always, but only while sim speed is below the rate set below." Margin="3" TextWrapping="Wrap" />
                 
-                <TextBlock Grid.Row="12" Grid.Column="0" Text="Defer Below SimRate" Margin="3" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="12" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding DeferRunBelowSimRate}" TextAlignment="Center"/>
-                <TextBlock Grid.Row="12" Grid.Column="2" Text="Set this between 0.0 and 1.0.  When the sim speed drops below this rate and Defer Run On Sim Rate is checked, this will cause pbs to run less often." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="14" Grid.Column="0" Text="Defer Below SimRate" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="14" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding DeferRunBelowSimRate}" TextAlignment="Center"/>
+                <TextBlock Grid.Row="14" Grid.Column="2" Text="Set this between 0.0 and 1.0.  When the sim speed drops below this rate and Defer Run On Sim Rate is checked, this will cause pbs to run less often." Margin="3" TextWrapping="Wrap"/>
                 
-                <TextBlock Grid.Row="13" Grid.Column="0" Text="How Many Runs To Defer on" Margin="3" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="13" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding DeferRunCount}" TextAlignment="Center"/>
-                <TextBlock Grid.Row="13" Grid.Column="2" Text="How many times should the PB request to run before allowing it." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="15" Grid.Column="0" Text="How Many Runs To Defer on" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="15" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40" Text="{Binding DeferRunCount}" TextAlignment="Center"/>
+                <TextBlock Grid.Row="15" Grid.Column="2" Text="How many times should the PB request to run before allowing it." Margin="3" TextWrapping="Wrap"/>
                 
-                <TextBlock Grid.Row="14" Grid.Column="0" Text="Disable Update1" Margin="3" VerticalAlignment="Center" />
-                <CheckBox Grid.Row="14" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding DisableUpdate1}"/>
-                <TextBlock Grid.Row="14" Grid.Column="2" Text="Attaches Update1 to Update10 and only runs when Update10 would run.  No changes to the players' scripts should be needed.  Update1 is rarely actually needed.  No script really needs to run 60 times per second." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="16" Grid.Column="0" Text="Disable Update1" Margin="3" VerticalAlignment="Center" />
+                <CheckBox Grid.Row="16" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding DisableUpdate1}"/>
+                <TextBlock Grid.Row="16" Grid.Column="2" Text="Attaches Update1 to Update10 and only runs when Update10 would run.  No changes to the players' scripts should be needed.  Update1 is rarely actually needed.  No script really needs to run 60 times per second." Margin="3" TextWrapping="Wrap"/>
                 
-                <TextBlock Grid.Row="15" Grid.Column="0" Text="Max Memory per PB (in bytes)" Margin="3" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="15" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="75"  Text="{Binding PBMemoryThreshold}" TextAlignment="Center"/>
-                <TextBlock Grid.Row="15" Grid.Column="2" Text="Limit PB use of system memory (Prevents some script attacks against the server and badly written scripts from making the system unstable).  A pb over it gets the Memory punishment the next time it runs.  Set to 0 to ignore." Margin="3" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="17" Grid.Column="0" Text="Max Memory per PB (in bytes)" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="17" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="75"  Text="{Binding PBMemoryThreshold}" TextAlignment="Center"/>
+                <TextBlock Grid.Row="17" Grid.Column="2" Text="Limit PB use of system memory (Prevents some script attacks against the server and badly written scripts from making the system unstable).  A pb over it gets the Memory punishment the next time it runs.  Set to 0 to ignore." Margin="3" TextWrapping="Wrap" />
 
-                <TextBlock Grid.Row="16" Grid.Column="0" Text="Memory Punishment" Margin="3" VerticalAlignment="Center"/>
-                <ComboBox Grid.Row="16" Grid.Column="1" VerticalAlignment="Center" Margin="3" ItemsSource="{Binding Source={StaticResource InstantPunishmentProvider}}" SelectedItem="{Binding MemoryPunishment}"/>
-                <TextBlock Grid.Row="16" Grid.Column="2" Text="What happens to a pb over the memory limit.  TurnOff by default, or Destroy, which damages it to 100 integrity.  It punishes at once, so there is no Damage: the script would keep running." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="18" Grid.Column="0" Text="Memory Punishment" Margin="3" VerticalAlignment="Center"/>
+                <ComboBox Grid.Row="18" Grid.Column="1" VerticalAlignment="Center" Margin="3" ItemsSource="{Binding Source={StaticResource InstantPunishmentProvider}}" SelectedItem="{Binding MemoryPunishment}"/>
+                <TextBlock Grid.Row="18" Grid.Column="2" Text="What happens to a pb over the memory limit.  TurnOff by default, or Destroy, which damages it to 100 integrity.  It punishes at once, so there is no Damage: the script would keep running." Margin="3" TextWrapping="Wrap"/>
 
-                <TextBlock Grid.Row="17" Grid.Column="0" Text="Destroy Protected PB" Margin="3" VerticalAlignment="Center" />
-                <CheckBox Grid.Row="17" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding KillProtectedBlock}"/>
-                <TextBlock Grid.Row="17" Grid.Column="2" Text="Programmable Blocks the game won't damage (where a SafeZone or the world forbids damage, on a grid or world with block destruction off, or with a damage modifier of 0) get no damage.  Off, the Damage punishment turns such a block off.  On, it has all its building materials removed and is reset to an unwelded block.  The Destroy punishment always does this to a protected block, also when the InstaKill or Memory punishment is Destroy." Margin="3" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="19" Grid.Column="0" Text="Destroy Protected PB" Margin="3" VerticalAlignment="Center" />
+                <CheckBox Grid.Row="19" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="3" IsChecked="{Binding KillProtectedBlock}"/>
+                <TextBlock Grid.Row="19" Grid.Column="2" Text="Programmable Blocks the game won't damage (where a SafeZone or the world forbids damage, on a grid or world with block destruction off, or with a damage modifier of 0) get no damage.  Off, the Damage punishment turns such a block off.  On, it has all its building materials removed and is reset to an unwelded block.  The Destroy punishment always does this to a protected block, also when the InstaKill or Memory punishment is Destroy." Margin="3" TextWrapping="Wrap"/>
                 
-                <TextBlock Grid.Row="18" Grid.Column="0" Text="Startup Allowance for pb startup" Margin="3" VerticalAlignment="Center"/>
-                <TextBox Grid.Row="18" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40"  Text="{Binding StartupAllowance}" TextAlignment="Center"/>
-                <TextBlock Grid.Row="18" Grid.Column="2" Text="Amount of time in seconds when block first starts to ignore its runtime." Margin="3" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="20" Grid.Column="0" Text="Startup Allowance for pb startup" Margin="3" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="20" Grid.Column="1" VerticalAlignment="Center" Margin="3" Width="40"  Text="{Binding StartupAllowance}" TextAlignment="Center"/>
+                <TextBlock Grid.Row="20" Grid.Column="2" Text="Amount of time in seconds when block first starts to ignore its runtime." Margin="3" TextWrapping="Wrap" />
                 
-                <Button Grid.Row="26" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Save Locally Only" Name="SaveLocallyButton" Click="SaveLocallyButton_OnClick"/>
-                <TextBlock Grid.Row="26" Grid.Column="2" Margin="3" Text="Saves the configuration to this server only."/>
+                <Button Grid.Row="28" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Save Locally Only" Name="SaveLocallyButton" Click="SaveLocallyButton_OnClick"/>
+                <TextBlock Grid.Row="28" Grid.Column="2" Margin="3" Text="Saves the configuration to this server only."/>
                 
-                <Button Grid.Row="28" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Timings Burp" Name="TimingsBurp" Click="TimingBurp_OnClick"/>
-                <TextBlock Grid.Row="28" Grid.Column="2" Margin="3" Text="This shows the time to process various items in the log for 5 seconds."/>
+                <Button Grid.Row="30" Grid.Column="0" Grid.ColumnSpan="2" Margin="3" Content="Timings Burp" Name="TimingsBurp" Click="TimingBurp_OnClick"/>
+                <TextBlock Grid.Row="30" Grid.Column="2" Margin="3" Text="This shows the time to process various items in the log for 5 seconds."/>
             </Grid>
         </TabItem>
         

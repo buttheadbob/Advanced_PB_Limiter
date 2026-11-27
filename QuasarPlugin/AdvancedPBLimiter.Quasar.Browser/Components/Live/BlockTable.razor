@@ -2,21 +2,32 @@
 
 @if (Rows.Count == 0)
 {
-    <PblEmptyState Icon="search" Title="No blocks match" Description="Try a different filter, or clear the filters to see every tracked block.">
-        <button type="button" class="pbl-btn" @onclick="ClearFilter">Clear filters</button>
-    </PblEmptyState>
+    @if (Filtered)
+    {
+        <PblEmptyState Icon="search" Title="No blocks match the filter" Description="Try a different filter, or clear it to see every tracked block.">
+            <button type="button" class="pbl-btn" @onclick="ClearFilter">Clear filters</button>
+        </PblEmptyState>
+    }
+    else
+    {
+        <PblEmptyState Icon="cube" Title="No blocks yet" Description="A programmable block is tracked from its first run." />
+    }
 }
 else
 {
-    <div class="pbl-table-wrap">
+    <div class="pbl-table-wrap" @onmouseenter="() => Hover.InvokeAsync(true)" @onmouseleave="() => Hover.InvokeAsync(false)">
         <table class="pbl-table">
             <thead>
                 <tr>
                     @Header("Block", nameof(BlockRowView.BlockName), "pbl-col-name")
                     @Header("Grid", nameof(BlockRowView.GridName), "pbl-col-grid")
                     @Header("Owner", nameof(BlockRowView.OwnerName), "pbl-col-owner")
-                    @Header("Last ms", nameof(BlockRowView.LastRunTimeMS), "pbl-col-last", numeric: true)
-                    @Header("Avg ms", nameof(BlockRowView.RunTimeMSAvg), "pbl-col-avg", numeric: true)
+                    <th scope="col" class="pbl-col-runs">Last 50 runs</th>
+                    @Header("Last (ms)", nameof(BlockRowView.LastRunTimeMS), "pbl-col-last", numeric: true)
+                    @Header("Avg (ms)", nameof(BlockRowView.RunTimeMSAvg), "pbl-col-avg", numeric: true)
+                    @Header("Peak (ms)", nameof(BlockRowView.PeekRunTimeMS), "pbl-col-peak", numeric: true)
+                    @Header("Offences", nameof(BlockRowView.Offences), "pbl-col-offences", numeric: true)
+                    @Header("Memory", nameof(BlockRowView.MemoryBytes), "pbl-col-memory", numeric: true)
                     <th scope="col">State</th>
                     <th scope="col" class="pbl-col-actions"><span class="pbl-visually-hidden">Actions</span></th>
                 </tr>
@@ -24,6 +35,7 @@ else
             <tbody>
                 @foreach (BlockRowView row in Rows)
                 {
+                    BlockHistoryRowView? history = History.GetValueOrDefault(row.EntityId);
                     <tr @key="row.EntityId" class="pbl-row-click" @onclick="() => Details.InvokeAsync(row)">
                         <td class="pbl-col-name">
                             <div class="pbl-cell-title">@row.BlockName</div>
@@ -41,8 +53,18 @@ else
                         </td>
                         <td class="pbl-col-grid">@row.GridName</td>
                         <td class="pbl-col-owner">@row.OwnerName</td>
-                        <td class="pbl-col-last pbl-num">@Figures.Ms(row.LastRunTimeMS)</td>
-                        <td class="pbl-col-avg pbl-num">@Figures.Ms(row.RunTimeMSAvg)</td>
+                        <td class="pbl-col-runs">
+                            @if (history is { RunTimesMS.Count: > 1 })
+                            {
+                                <PblSparkline Values="@history.RunTimesMS" Tone="@RunsTone(history)" Label="@($"Last {history.RunTimesMS.Count} run times of {row.BlockName}")"
+                                              ViewWidth="96" ViewHeight="24" />
+                            }
+                        </td>
+                        <td class="pbl-col-last pbl-num">@Figures.Time(row.LastRunTimeMS)</td>
+                        <td class="pbl-col-avg pbl-num">@Figures.Time(row.RunTimeMSAvg)</td>
+                        <td class="pbl-col-peak pbl-num">@Figures.Time(row.PeekRunTimeMS)</td>
+                        <td class="pbl-col-offences pbl-num">@row.Offences</td>
+                        <td class="pbl-col-memory pbl-num">@Figures.Memory(row.MemoryBytes, row.MemoryUnmeasured)</td>
                         <td>
                             @if (!row.Enabled)
                             {
@@ -58,9 +80,9 @@ else
                             }
                         </td>
                         <td class="pbl-col-actions">
-                            <button type="button" class="pbl-icon-btn" title="Details" aria-label="Details"
+                            <button type="button" class="pbl-icon-btn" title="Details and run history" aria-label="Details and run history"
                                     @onclick="() => Details.InvokeAsync(row)" @onclick:stopPropagation="true">
-                                <PblIcon Name="eye" />
+                                <PblIcon Name="activity" />
                             </button>
                             @if (CanControl && row.Enabled)
                             {
@@ -79,13 +101,30 @@ else
 
 @code {
     [Parameter] public IReadOnlyList<BlockRowView> Rows { get; set; } = Array.Empty<BlockRowView>();
-    [Parameter] public string SortColumn { get; set; } = nameof(BlockRowView.LastRunTimeMS);
+    [Parameter] public IReadOnlyDictionary<string, BlockHistoryRowView> History { get; set; } = new Dictionary<string, BlockHistoryRowView>();
+    [Parameter] public bool Filtered { get; set; }
+    [Parameter] public string SortColumn { get; set; } = LiveViewState.DefaultBlockSort;
     [Parameter] public bool SortDescending { get; set; } = true;
     [Parameter] public bool CanControl { get; set; }
     [Parameter] public EventCallback<string> Sort { get; set; }
     [Parameter] public EventCallback<BlockRowView> Details { get; set; }
     [Parameter] public EventCallback<BlockRowView> TurnOff { get; set; }
     [Parameter] public EventCallback ClearFilter { get; set; }
+
+    /// <summary>True as the pointer comes onto the table, false as it leaves.</summary>
+    [Parameter] public EventCallback<bool> Hover { get; set; }
+
+    /// <summary>
+    /// Red over the average limit; amber when one of the runs counted, an offence or the instant kill; otherwise the usual
+    /// colour.
+    /// </summary>
+    internal static string RunsTone(BlockHistoryRowView history)
+    {
+        if (history.AverageLimitMS > 0 && history.AverageMS > history.AverageLimitMS) return "danger";
+        if (ChartSpecs.CountOutcome(history, RunOutcome.Counted) > 0 || ChartSpecs.CountOutcome(history, RunOutcome.InstantKilled) > 0)
+            return "warning";
+        return "primary";
+    }
 
     private RenderFragment Header(string title, string column, string className, bool numeric = false) => __builder =>
     {

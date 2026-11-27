@@ -9,7 +9,7 @@
 @using System.Text.Json.Serialization
 @using AdvancedPBLimiter.Quasar.Components.Live
 
-<PageTitle>PB Limiter</PageTitle>
+<PageTitle>PB Limiter · Live</PageTitle>
 
 <PageTabs Active="PageTabs.Tab.Live" Description="Live run times of every tracked programmable block. Limits are set on the server's Plugins page.">
     <div class="pbl-commandbar">
@@ -18,7 +18,7 @@
             {
                 <label class="pbl-field pbl-field-server">
                     <span>Server</span>
-                    <select value="@_serverKey" @onchange="ServerChanged">
+                    <select value="@_serverKey" @onchange="ServerChanged" disabled="@_turnOffBusy">
                         @foreach (ServerInfo server in _servers)
                         {
                             <option value="@server.PickKey" disabled="@(!server.Connected)">@server.DisplayName@(server.Connected ? "" : " (offline)")</option>
@@ -28,18 +28,22 @@
             }
 
             <div class="pbl-live-state">
-                <span class="pbl-live-dot @(_paused ? "paused" : "live")"></span>
-                <span>@(_paused ? "Paused" : "Live")</span>
-                @if (_lastUpdatedUtc is { } updated)
+                <span class="pbl-live-dot @(_paused ? "paused" : _stale ? "stale" : "live")"></span>
+                <span>@(_paused ? "Paused" : _stale ? "Not responding" : "Live")</span>
+                @if (_paused && _pausedAtUtc is { } pausedAt)
                 {
-                    <span class="pbl-muted">· updated @TimeText.Ago(updated)</span>
+                    <span class="pbl-muted">· at @pausedAt.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture)</span>
+                }
+                else if (_lastUpdatedUtc is { } updated)
+                {
+                    <span class="pbl-muted">· @(_stale ? "last data" : "updated") @TimeText.Ago(updated)</span>
                 }
             </div>
         </div>
 
         <div class="pbl-commandbar-actions">
             <label class="pbl-field pbl-field-compact">
-                <span>Refresh</span>
+                <span>Update every</span>
                 <select value="@_refreshSeconds" @onchange="RefreshChanged">
                     @foreach (int seconds in RefreshChoices)
                     {
@@ -58,21 +62,31 @@
                 Refresh
             </button>
 
-            <button type="button" class="pbl-btn" @onclick="DownloadCsvAsync" disabled="@(_snapshot is null)">
+            <button type="button" class="pbl-btn" @onclick="DownloadCsvAsync" disabled="@(_snapshot is null)" title="Every block in the report, whatever the table is filtered by">
                 <PblIcon Name="download" />
-                CSV
+                Export blocks (CSV)
             </button>
         </div>
     </div>
 
-    @if (_refreshing && _snapshot is not null)
-    {
-        <PblProgress Indeterminate="true" Label="Refreshing report" />
-    }
+    <div class="pbl-progress-slot">
+        @if (_refreshing && _snapshot is not null)
+        {
+            <PblProgress Indeterminate="true" Label="Refreshing report" />
+        }
+    </div>
 
-    @if (_error is not null)
+    @if (_error is not null && !(_stale && _snapshot is not null))
     {
         <PblNotice Tone="danger" Icon="alert" Dismiss="ClearError">@_error</PblNotice>
+    }
+    @if (_controlCheckSlow)
+    {
+        <PblNotice Tone="info" Icon="clock">Still checking your permission to turn blocks off. If you may, the Turn off buttons appear once Quasar answers.</PblNotice>
+    }
+    @if (_controlCheckError is not null)
+    {
+        <PblNotice Tone="warning" Icon="alert" Dismiss="ClearControlCheckError">@_controlCheckError</PblNotice>
     }
     @if (_turnOffError is not null)
     {
@@ -85,7 +99,7 @@
     @if (_snapshot is not null && _stale)
     {
         <PblNotice Tone="warning" Icon="wifi-off">
-            Showing the last data received @(_lastUpdatedUtc is { } at ? TimeText.Ago(at) : "earlier").
+            @_error Showing the last data received @(_lastUpdatedUtc is { } at ? TimeText.Ago(at) : "earlier").
             <button type="button" class="pbl-btn pbl-btn-small" @onclick="RefreshNow">Try again</button>
         </PblNotice>
     }
@@ -95,10 +109,24 @@
     }
     @if (_snapshot is { Truncated: true })
     {
-        <PblNotice Tone="warning" Icon="info">This server has more blocks than a report carries; totals still count every block.</PblNotice>
+        <PblNotice Tone="warning" Icon="info">Listing @_live.ListedBlocks of @_live.TotalBlocks blocks: a report carries no more. The totals count all @_live.TotalBlocks.</PblNotice>
     }
 
-    @if (_servers.Count == 0)
+    @if (!_serversLoaded)
+    {
+        <div class="pbl-card">
+            <div class="pbl-card-body"><PblSkeleton Rows="5" /></div>
+        </div>
+    }
+    else if (_servers.Count == 0 && _serversFailed)
+    {
+        <PblEmptyState Icon="wifi-off" Title="Could not read the server list" Description="Quasar did not answer. Try again in a moment.">
+            <button type="button" class="pbl-btn pbl-btn-primary" @onclick="RefreshNow">
+                <PblIcon Name="refresh" /> Try again
+            </button>
+        </PblEmptyState>
+    }
+    else if (_servers.Count == 0)
     {
         <PblEmptyState Icon="server" Title="No servers connected" Description="Servers show up here once they are running and connected to Quasar.">
             <button type="button" class="pbl-btn pbl-btn-primary" @onclick="RefreshNow">
@@ -109,6 +137,11 @@
     else if (_serverId is null)
     {
         <PblEmptyState Icon="server" Title="Choose a server" Description="Pick a connected server above to see its live report." />
+    }
+    else if (SelectedServer is { Connected: false } offline)
+    {
+        <PblEmptyState Icon="wifi-off" Title="@(offline.DisplayName + " is offline")"
+                       Description="@(offline.LastSeenUtc > DateTime.MinValue ? $"Last seen {TimeText.Ago(offline.LastSeenUtc)}. Pick a connected server above." : "Pick a connected server above.")" />
     }
     else if (_snapshot is null)
     {
@@ -144,9 +177,9 @@
                      Sparkline="@_live.History.Blocks" />
             <PblStat Label="Resting" Value="@InvariantText.Of(_live.RestingCount)" Icon="clock" Hint="Not run lately"
                      Tone="@(_live.RestingCount > 0 ? "info" : "neutral")" />
-            <PblStat Label="Combined last" Value="@(Figures.Ms(_live.CombinedLast) + " ms")" Icon="activity" Hint="All counted blocks"
+            <PblStat Label="Total last" Value="@(Figures.Time(_live.CombinedLast) + " ms")" Icon="activity" Hint="All counted blocks; a spike counts as its block's average"
                      Sparkline="@_live.History.CombinedLast" />
-            <PblStat Label="Combined average" Value="@(Figures.Ms(_live.CombinedAverage) + " ms")" Icon="zap" Hint="Sum of the blocks' averages"
+            <PblStat Label="Total average" Value="@(Figures.Time(_live.CombinedAverage) + " ms")" Icon="zap" Hint="Sum of the blocks' averages"
                      Tone="info" Sparkline="@_live.History.CombinedAverage" />
             <PblStat Label="Offences" Value="@InvariantText.Of(_live.TotalOffences)" Icon="shield"
                      Hint="Recent offences still counted" Tone="@(_live.TotalOffences > 0 ? "warning" : "neutral")"
@@ -157,12 +190,13 @@
                      Sparkline="@_live.History.Memory" />
         </div>
 
-        <PblTabs Tabs="Tabs" ActiveKey="@_live.TabKey" ActiveKeyChanged="TabChanged" />
+        <PblTabs Tabs="Tabs" ActiveKey="@_live.TabKey" ActiveKeyChanged="TabChanged" Label="Live view" />
 
+        <div role="tabpanel" id="pbl-live-panel" aria-labelledby="@PblTabs.TabId(_live.TabKey)">
         @if (_live.Tab == LiveTab.Overview)
         {
             <div class="pbl-overview-grid">
-                <PblCard Title="Hottest blocks" Subtitle="By last run time" Class="pbl-span-2">
+                <PblCard Title="Hottest blocks" Subtitle="By average run time, the whole server" Class="pbl-span-2">
                     @if (_live.TopBlocks.Count == 0)
                     {
                         <PblEmptyState Icon="cube" Title="No blocks yet" Description="A block is tracked from its first run." />
@@ -173,21 +207,29 @@
                             @for (int index = 0; index < _live.TopBlocks.Count; index++)
                             {
                                 BlockRowView row = _live.TopBlocks[index];
+                                BlockHistoryRowView? history = _history.GetValueOrDefault(row.EntityId);
                                 <button type="button" class="pbl-rank-row" @onclick="() => ShowBlock(row)">
                                     <span class="pbl-rank">@(index + 1)</span>
                                     <span class="pbl-rank-main">
                                         <strong>@row.BlockName</strong>
                                         <small>@row.GridName · @row.OwnerName</small>
                                     </span>
-                                    <span class="pbl-rank-value">@Figures.Ms(row.LastRunTimeMS) <small>ms</small></span>
-                                    <span class="pbl-bar"><span style="width: @BarPercent(row.LastRunTimeMS, _live.MaxBlockLast)%"></span></span>
+                                    <span class="pbl-rank-spark">
+                                        @if (history is { RunTimesMS.Count: > 1 })
+                                        {
+                                            <PblSparkline Values="@history.RunTimesMS" Tone="@BlockTable.RunsTone(history)" Label="@($"Last run times of {row.BlockName}")"
+                                                          ViewWidth="96" ViewHeight="24" />
+                                        }
+                                    </span>
+                                    <span class="pbl-rank-value">@Figures.Time(row.RunTimeMSAvg) <small>ms avg</small></span>
+                                    <span class="pbl-bar"><span style="width: @BarPercent(row.RunTimeMSAvg, _live.MaxBlockAverage)%"></span></span>
                                 </button>
                             }
                         </div>
                     }
                 </PblCard>
 
-                <PblCard Title="Players at a glance" Subtitle="By combined last run time">
+                <PblCard Title="Players at a glance" Subtitle="By total average run time">
                     @if (_live.TopPlayers.Count == 0)
                     {
                         <PblEmptyState Icon="users" Title="No players yet" Description="A player appears from the first run of one of their blocks." />
@@ -196,20 +238,27 @@
                     {
                         @foreach (PlayerRowView row in _live.TopPlayers)
                         {
-                            <div class="pbl-player-mini" @key="row.IdentityId">
+                            <button type="button" class="pbl-player-mini" @key="row.IdentityId" @onclick="() => ShowPlayer(row)">
                                 <span class="pbl-avatar pbl-avatar-@AvatarIndex(row.Name)">@Initials(row.Name)</span>
-                                <div class="pbl-player-mini-main">
+                                <span class="pbl-player-mini-main">
                                     <strong>@row.Name</strong>
                                     <small>@InvariantText.Count(row.BlockCount, "block", "blocks") · @InvariantText.Count(row.Offences, "offence", "offences")</small>
-                                </div>
-                                <span class="pbl-player-mini-value">@Figures.Ms(row.CombinedLastRunTimeMS) <small>ms</small></span>
-                            </div>
+                                </span>
+                                <span class="pbl-player-mini-value">@Figures.Time(row.CombinedRunTimeMSAvg) <small>ms avg</small></span>
+                            </button>
                         }
                     }
                 </PblCard>
 
-                <PblCard Title="Session trend" Subtitle="Collected in this browser tab since it opened" Class="pbl-span-3">
-                    <PblTrendChart Series="@_live.History.Series()" />
+                <PblCard Title="Session trend" Subtitle="Total run times, collected in this browser tab since it opened" Class="pbl-span-3">
+                    @if (_sessionChart is { X.Count: > 1 })
+                    {
+                        <PblChart Spec="_sessionChart" />
+                    }
+                    else
+                    {
+                        <div class="pbl-chart-empty">The chart fills as data arrives. Leave the page live.</div>
+                    }
                 </PblCard>
             </div>
         }
@@ -219,7 +268,8 @@
                 <label class="pbl-search">
                     <PblIcon Name="search" />
                     <input type="search" placeholder="@(_live.Tab == LiveTab.Blocks ? "Filter by player, grid or block" : "Filter by player name or Steam ID")"
-                           value="@_live.Filter" @oninput="FilterChanged" @onblur="SavePreferencesAsync" />
+                           aria-label="@(_live.Tab == LiveTab.Blocks ? "Filter blocks" : "Filter players")"
+                           value="@_live.Filter" @oninput="FilterChanged" />
                 </label>
 
                 @if (_live.Tab == LiveTab.Blocks)
@@ -228,6 +278,7 @@
                         @foreach (PblStateChip chip in StateChips)
                         {
                             <button type="button" class="pbl-chip @(_live.StateFilter == chip.Filter ? "active" : "")"
+                                    aria-pressed="@(_live.StateFilter == chip.Filter ? "true" : "false")"
                                     @onclick="() => StateFilterChanged(chip.Filter)">
                                 @chip.Label <span class="pbl-chip-count">@chip.Count</span>
                             </button>
@@ -235,14 +286,25 @@
                     </div>
                 }
 
-                <button type="button" class="pbl-btn pbl-btn-ghost pbl-btn-small" @onclick="ClearFilters">Clear</button>
+                @if (_live.Tab == LiveTab.Blocks && _live.OwnerFilterId is not null)
+                {
+                    <button type="button" class="pbl-chip active" @onclick="ClearOwnerFilter" title="Show every player's blocks">
+                        Owner: @_live.OwnerFilterName <PblIcon Name="x" />
+                    </button>
+                }
+
+                @if (_live.Filtering)
+                {
+                    <button type="button" class="pbl-btn pbl-btn-ghost pbl-btn-small" @onclick="ClearFilters">Clear filters</button>
+                }
             </div>
 
             @if (_live.Tab == LiveTab.Blocks)
             {
-                <PblCard Title="Programmable blocks" Subtitle="@($"{_live.BlockMatches} shown of {_live.TotalBlocks} tracked")">
-                    <BlockTable Rows="@_live.PageBlocks" SortColumn="@_live.SortColumn" SortDescending="@_live.SortDescending"
-                                CanControl="@_canControl" Sort="SortBy" Details="ShowBlock" TurnOff="AskTurnOffBlock"
+                <PblCard Title="Programmable blocks" Subtitle="@TableSubtitle(_live.BlockMatches, _live.TotalBlocks)">
+                    <BlockTable Rows="@_live.PageBlocks" History="_history" Filtered="@_live.Filtering"
+                                SortColumn="@_live.SortColumn" SortDescending="@_live.SortDescending"
+                                CanControl="@_canControl" Sort="SortBy" Details="ShowBlock" TurnOff="AskTurnOffBlock" Hover="HoldOrder"
                                 ClearFilter="ClearFilters" />
                     <PblPagination Total="@_live.BlockMatches" Page="@_live.BlockPage" PageSize="@_live.PageSize"
                                     PageChanged="BlockPageChanged" PageSizeChanged="PageSizeChanged" />
@@ -250,33 +312,93 @@
             }
             else
             {
-                <PblCard Title="Players" Subtitle="@($"{_live.PlayerMatches} shown of {_live.TotalPlayers} tracked")">
-                    <PlayerTable Rows="@_live.PagePlayers" SortColumn="@_live.SortColumn" SortDescending="@_live.SortDescending"
-                                 CanControl="@_canControl" Sort="SortBy" Details="ShowPlayer" TurnOff="AskTurnOffPlayer"
+                <PblCard Title="Players" Subtitle="@TableSubtitle(_live.PlayerMatches, _live.TotalPlayers)">
+                    <PlayerTable Rows="@_live.PagePlayers" Filtered="@_live.Filtering"
+                                 SortColumn="@_live.SortColumn" SortDescending="@_live.SortDescending"
+                                 CanControl="@_canControl" Sort="SortBy" Details="ShowPlayer" TurnOff="AskTurnOffPlayer" Hover="HoldOrder"
+                                 PlayersWithBlocksOn="@_live.PlayersWithBlocksOn" AnyMayHaveBlocksOn="@_live.AnyPlayerMayHaveBlocksOn"
                                  ClearFilter="ClearFilters" />
                     <PblPagination Total="@_live.PlayerMatches" Page="@_live.PlayerPage" PageSize="@_live.PageSize"
                                     PageChanged="PlayerPageChanged" PageSizeChanged="PageSizeChanged" />
                 </PblCard>
             }
         }
+        </div>
     }
 
     <PblModal Open="_selectedBlock is not null" Title="@(_selectedBlock?.BlockName ?? "Block")"
               Subtitle="@BlockSubtitle" Icon="cube" OnClose="CloseDetails" Class="pbl-modal-wide">
         @if (_selectedBlock is { } block)
         {
+            BlockHistoryRowView? history = _history.GetValueOrDefault(block.EntityId);
+            <section class="pbl-history" aria-label="Run history">
+                <div class="pbl-history-head">
+                    <h3>@(history is { RunTimesMS.Count: > 0 } ? $"Last {history.RunTimesMS.Count} runs" : "Last runs")</h3>
+                    <span class="pbl-muted">Updates with the page. Click a legend item to hide it.</span>
+                </div>
+                @if (_blockChart is not null && history is not null)
+                {
+                    <PblChart Spec="_blockChart" />
+                    <ul class="pbl-history-facts">
+                        <li>
+                            Average <strong>@Figures.Time(history.AverageMS) ms</strong>
+                            @(history.AverageLimitMS > 0 ? $"of the {Figures.Time(history.AverageLimitMS)} ms limit" : "with no average limit")
+                            @if (history.LeftOutOfAverage.Count > 0)
+                            {
+                                <span class="pbl-muted">&nbsp;· @LeftOutText(history)</span>
+                            }
+                        </li>
+                        @{
+                            int forgiven = ChartSpecs.CountOutcome(history, RunOutcome.Forgiven);
+                            int counted = ChartSpecs.CountOutcome(history, RunOutcome.Counted);
+                            int notChecked = ChartSpecs.CountOutcome(history, RunOutcome.NotChecked);
+                            int stoodOut = ChartSpecs.CountOutcome(history, RunOutcome.StoodOut);
+                            int instantKilled = ChartSpecs.CountOutcome(history, RunOutcome.InstantKilled);
+                        }
+                        @if (forgiven + counted + notChecked > 0 || history.RunTimeLimitMS > 0)
+                        {
+                            <li>
+                                <strong>@(forgiven + counted + notChecked)</strong> of @history.RunTimesMS.Count runs over the run-time limit when they came@(instantKilled > 0 ? ", besides the instant kill" : "")
+                                <span class="pbl-muted">@OutcomeText(forgiven, counted, notChecked)</span>
+                            </li>
+                        }
+                        @if (stoodOut > 0)
+                        {
+                            <li>@InvariantText.Count(stoodOut, "run", "runs") stood out as @(stoodOut == 1 ? "a spike" : "spikes") with no run-time limit</li>
+                        }
+                        @if (instantKilled > 0)
+                        {
+                            <li>@InvariantText.Count(instantKilled, "run was", "runs were") the instant kill</li>
+                        }
+                        <li>@InstantKillText(history)</li>
+                    </ul>
+                }
+                else if (history is { RunTimesMS.Count: 0 })
+                {
+                    <div class="pbl-chart-empty">No runs since the block was last recompiled.</div>
+                }
+                else if (_historyError is not null)
+                {
+                    <PblNotice Tone="warning" Icon="info">The run history could not be read: @_historyError</PblNotice>
+                }
+                else
+                {
+                    <PblSkeleton Rows="3" />
+                }
+            </section>
+
             <div class="pbl-detail-grid">
                 <div class="pbl-detail">
                     <span class="pbl-detail-label">Last run</span>
-                    <span class="pbl-detail-value">@Figures.Ms(block.LastRunTimeMS) ms</span>
+                    <span class="pbl-detail-value">@Figures.Time(block.LastRunTimeMS) ms</span>
                 </div>
                 <div class="pbl-detail">
                     <span class="pbl-detail-label">Average</span>
-                    <span class="pbl-detail-value">@Figures.Ms(block.RunTimeMSAvg) ms</span>
+                    <span class="pbl-detail-value">@Figures.Time(block.RunTimeMSAvg) ms</span>
                 </div>
                 <div class="pbl-detail">
                     <span class="pbl-detail-label">Peak</span>
-                    <span class="pbl-detail-value">@Figures.Ms(block.PeekRunTimeMS) ms</span>
+                    <span class="pbl-detail-value">@Figures.Time(block.PeekRunTimeMS) ms</span>
                 </div>
                 <div class="pbl-detail">
                     <span class="pbl-detail-label">Offences</span>
@@ -321,6 +443,12 @@
                 <button type="button" class="pbl-btn" @onclick="() => CopyAsync(block.EntityId)">
                     <PblIcon Name="copy" /> Copy entity ID
                 </button>
+                @if (_snapshot?.Players.FirstOrDefault(p => p.IdentityId == block.OwnerIdentityId) is { } owner)
+                {
+                    <button type="button" class="pbl-btn" @onclick="() => ShowPlayer(owner)">
+                        <PblIcon Name="users" /> All blocks of @owner.Name
+                    </button>
+                }
                 @if (_canControl && block.Enabled)
                 {
                     <button type="button" class="pbl-btn pbl-btn-danger" @onclick="() => AskTurnOffBlock(block)">
@@ -333,17 +461,18 @@
     </PblModal>
 
     <PblModal Open="_selectedPlayer is not null" Title="@(_selectedPlayer?.Name ?? "Player")"
-              Subtitle="Combined run times and totals" Icon="users" OnClose="CloseDetails" Class="pbl-modal-narrow">
+              Subtitle="Total run times, totals and blocks" Icon="users" OnClose="CloseDetails" Class="pbl-modal-wide">
         @if (_selectedPlayer is { } player)
         {
+            IReadOnlyList<BlockRowView> playerBlocks = _live.BlocksOf(player);
             <div class="pbl-detail-grid">
                 <div class="pbl-detail">
-                    <span class="pbl-detail-label">Combined last</span>
-                    <span class="pbl-detail-value">@Figures.Ms(player.CombinedLastRunTimeMS) ms</span>
+                    <span class="pbl-detail-label">Total last</span>
+                    <span class="pbl-detail-value">@Figures.Time(player.CombinedLastRunTimeMS) ms</span>
                 </div>
                 <div class="pbl-detail">
-                    <span class="pbl-detail-label">Combined average</span>
-                    <span class="pbl-detail-value">@Figures.Ms(player.CombinedRunTimeMSAvg) ms</span>
+                    <span class="pbl-detail-label">Total average</span>
+                    <span class="pbl-detail-value">@Figures.Time(player.CombinedRunTimeMSAvg) ms</span>
                 </div>
                 <div class="pbl-detail">
                     <span class="pbl-detail-label">Blocks</span>
@@ -384,8 +513,58 @@
                 </div>
             </div>
 
+            <section class="pbl-history" aria-label="Blocks">
+                <div class="pbl-history-head">
+                    <h3>Blocks, by average</h3>
+                    @if (playerBlocks.Count > 0)
+                    {
+                        <button type="button" class="pbl-btn pbl-btn-ghost pbl-btn-small" @onclick="() => ShowBlocksOf(player)">
+                            <PblIcon Name="external" /> Show in the Blocks table
+                        </button>
+                    }
+                </div>
+                @if (playerBlocks.Count == 0)
+                {
+                    <div class="pbl-chart-empty">None of this player's blocks is in the report.</div>
+                }
+                else
+                {
+                    <div class="pbl-mini-rows">
+                        @foreach (BlockRowView row in playerBlocks.Take(PlayerBlocksShown))
+                        {
+                            BlockHistoryRowView? history = _history.GetValueOrDefault(row.EntityId);
+                            <div class="pbl-mini-row" @key="row.EntityId">
+                                <button type="button" class="pbl-mini-row-main" @onclick="() => ShowBlock(row)" title="Details and run history">
+                                    <strong>@row.BlockName</strong>
+                                    <small>@row.GridName@(row.Enabled ? "" : " · off")@(row.Resting ? " · resting" : "")</small>
+                                </button>
+                                <span class="pbl-rank-spark">
+                                    @if (history is { RunTimesMS.Count: > 1 })
+                                    {
+                                        <PblSparkline Values="@history.RunTimesMS" Tone="@BlockTable.RunsTone(history)" Label="@($"Last run times of {row.BlockName}")"
+                                                      ViewWidth="96" ViewHeight="24" />
+                                    }
+                                </span>
+                                <span class="pbl-num">@Figures.Time(row.RunTimeMSAvg) <small class="pbl-muted">ms avg</small></span>
+                                @if (_canControl && row.Enabled)
+                                {
+                                    <button type="button" class="pbl-icon-btn pbl-icon-btn-danger" title="Turn off" aria-label="@($"Turn off {row.BlockName}")"
+                                            @onclick="() => AskTurnOffBlock(row)">
+                                        <PblIcon Name="power" />
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                    @if (playerBlocks.Count > PlayerBlocksShown)
+                    {
+                        <p class="pbl-muted">And @(playerBlocks.Count - PlayerBlocksShown) more: see them in the Blocks table.</p>
+                    }
+                }
+            </section>
+
             <div class="pbl-detail-actions">
-                @if (_canControl)
+                @if (_canControl && (_live.AnyPlayerMayHaveBlocksOn || _live.PlayersWithBlocksOn.Contains(player.IdentityId)))
                 {
                     <button type="button" class="pbl-btn pbl-btn-danger" @onclick="() => AskTurnOffPlayer(player)">
                         <PblIcon Name="power" /> Turn off all blocks
@@ -396,21 +575,23 @@
         }
     </PblModal>
 
-    <PblModal Open="_turnOffTarget is not null" Title="@TurnOffTitle" Subtitle="This stops the block's script until it is turned on again." Icon="power"
-              OnClose="CancelTurnOff" Class="pbl-modal-narrow">
+    <PblModal Open="_turnOffTarget is not null" Title="@TurnOffTitle" Icon="power"
+              OnClose="CancelTurnOff" Locked="_turnOffBusy" Class="pbl-modal-narrow">
         <p>@TurnOffMessage</p>
+        <p class="pbl-muted" style="margin-top: 8px;">@(_turnOffTarget?.Player is null ? "It stays" : "They stay") off until turned on again in game.</p>
         <div class="pbl-buttons" style="margin-top: 14px; justify-content: flex-end;">
-            <button type="button" class="pbl-btn" @onclick="CancelTurnOff">Cancel</button>
+            <button type="button" class="pbl-btn" @onclick="CancelTurnOff" disabled="@_turnOffBusy" data-autofocus>Cancel</button>
             <button type="button" class="pbl-btn pbl-btn-danger" @onclick="ConfirmTurnOffAsync" disabled="@_turnOffBusy">
                 @if (_turnOffBusy)
                 {
                     <PblIcon Name="refresh" Class="pbl-spin" />
+                    <span>Sending…</span>
                 }
                 else
                 {
                     <PblIcon Name="power" />
+                    <span>Turn off</span>
                 }
-                Turn off
             </button>
         </div>
     </PblModal>
@@ -418,6 +599,7 @@
 
 @code {
     private static readonly int[] RefreshChoices = [2, 5, 10, 30];
+    private const int PlayerBlocksShown = 20;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ServersRefreshInterval = TimeSpan.FromSeconds(30);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -434,6 +616,11 @@
     private string? _serverId;
     private string? _snapshotServerId;
     private ReportSnapshotView? _snapshot;
+
+    // The report before the one on show and its server: its rows can still be on screen until the next render, so a click
+    // on one is matched to the same block or player in the report on show, when both are of the same server.
+    private ReportSnapshotView? _previousSnapshot;
+    private string? _previousSnapshotServerId;
     private string? _error;
     private string? _turnOffError;
     private string? _notice;
@@ -442,11 +629,23 @@
     private int _refreshSeconds = 5;
     private bool _paused;
     private bool _canControl;
+    private bool _controlCheckSlow;  // The permission check at page open has taken over 2 seconds and is still waiting.
+    private string? _controlCheckError;
     private DateTime? _lastUpdatedUtc;
     private DateTime _lastServersRefreshUtc;
     private bool _stale;
     private BlockRowView? _selectedBlock;
     private PlayerRowView? _selectedPlayer;
+    private bool _serversLoaded;
+    private DateTime? _pausedAtUtc;
+    private int _filterEdits; // Counts the filter's edits, so the run history is read once the typing stops.
+    private bool _serversFailed;
+    // The run history of the blocks on show: the selected block, the selected player's, and the table's or Overview's rows.
+    private Dictionary<string, BlockHistoryRowView> _history = new();
+    private string? _historyError;
+    private int _historyRequests; // Counts the history requests, so an answer overtaken by a later request is dropped.
+    private PblChartSpec? _blockChart;
+    private PblChartSpec? _sessionChart;
     private TurnOffTarget? _turnOffTarget;
     private bool _turnOffBusy;
 
@@ -471,13 +670,15 @@
         new PblStateChip("Offences", BlockStateFilter.Offences, _live.OffenceBlockCount),
     ];
 
+    private ServerInfo? SelectedServer => _servers.FirstOrDefault(server => server.PickKey == _serverKey);
+
     private string BlockSubtitle => _selectedBlock is { } block
         ? $"{block.GridName} · {block.OwnerName}"
         : "";
 
     private string MemoryValue => _live.MemoryUnmeasured
-        ? (_live.MemoryBytes > 0 ? MemoryText.Kilobytes(_live.MemoryBytes) : MemoryText.NotMeasurable)
-        : MemoryText.Kilobytes(_live.MemoryBytes);
+        ? (_live.MemoryBytes > 0 ? MemoryText.Size(_live.MemoryBytes) : MemoryText.NotMeasurable)
+        : MemoryText.Size(_live.MemoryBytes);
 
     private string MemoryHint => _live.MemoryUnmeasured
         ? "Plus scripts that could not be measured"
@@ -486,16 +687,28 @@
     private string TurnOffTitle => _turnOffTarget switch
     {
         { Block: { } block } => "Turn off " + block.BlockName + "?",
-        { Player: { } player } => "Turn off all of " + player.Name + "'s blocks?",
+        { Player: { } player } => $"Turn off all {player.BlockCount} of {player.Name}'s blocks?",
         _ => "Turn off?"
     };
 
     private string TurnOffMessage => _turnOffTarget switch
     {
-        { Block: { } block } => $"Turn off {block.BlockName} on {block.GridName}? The script stops until it is enabled again.",
-        { Player: { } player } => $"Turn off every tracked programmable block owned by {player.Name}? Their scripts stop until they are enabled again.",
+        { Block: { } block } => $"{block.GridName} · owned by {block.OwnerName}. Its script stops now.",
+        { Player: { } player } => $"Every tracked programmable block {player.Name} owns stops now.",
         _ => ""
     };
+
+    private static string InstantKillText(BlockHistoryRowView history)
+    {
+        if (history.InstantKillMS <= 0) return "Instant kill is off";
+        string above = $"above {Figures.Time(history.InstantKillMS)} ms";
+        return history.InstantKillStrikes <= 1
+            ? $"Instant kill at the first run {above}"
+            : $"Instant kill after {history.InstantKillStrikes} runs {above} within {history.InstantKillStrikeWindow} s";
+    }
+
+    private string TableSubtitle(int shown, int total) =>
+        $"{shown} shown of {total} tracked" + (_live.HoldingOrder ? " · order held while the pointer is on the table" : "");
 
     protected override async Task OnInitializedAsync()
     {
@@ -519,24 +732,44 @@
         {
             Log.LogDebug(e, "Could not read the PB Limiter server list");
             _error = "Could not read the server list: " + PageShared.ShortError(e);
+            _serversFailed = true;
         }
 
+        _serversLoaded = true;
         ApplyPreferenceSelection();
 
+        // Not awaited: the page shows its report while Quasar answers, however long that takes.
+        _ = CheckControlAtStartAsync();
+    }
+
+    /// <summary>
+    /// Asks whether the user may control servers, with no time limit: the Turn off buttons appear once Quasar answers. If
+    /// the answer takes more than 2 seconds, a notice says it is still being checked, so a missing button is explained.
+    /// </summary>
+    private async Task CheckControlAtStartAsync()
+    {
         try
         {
-            _canControl = await CanControlAsync();
+            Task<bool> asking = SdkClient.AllowedAsync(JS, "CanControlServers", _closing.Token);
+            if (await Task.WhenAny(asking, Task.Delay(2000)) != asking)
+            {
+                _controlCheckSlow = true;
+                await PageShared.RenderIfOpenAsync(_closing, () => InvokeAsync(StateHasChanged));
+            }
+            _canControl = await asking;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (_closing.IsClosed)
         {
-            // The page closed while it asked.
-            _canControl = false;
+            return; // The page closed while it asked.
         }
         catch (Exception e)
         {
             Log.LogWarning(e, "Could not check the PB Limiter control permission");
             _canControl = false;
+            _controlCheckError = "Could not check your permission to turn blocks off, so no Turn off buttons are shown: " + PageShared.ShortError(e);
         }
+        _controlCheckSlow = false;
+        await PageShared.RenderIfOpenAsync(_closing, () => InvokeAsync(StateHasChanged));
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -586,14 +819,26 @@
                 {
                     try
                     {
-                        await RefreshServersAsync(closing);
+                        // Paused, the new server on show is read once, at once, as when an admin picks one.
+                        if (await RefreshServersAsync(closing))
+                        {
+                            _refreshOnce = true;
+                            Wake();
+                        }
+                    }
+                    catch (OperationCanceledException) when (closing.IsCancellationRequested)
+                    {
+                        throw;
                     }
                     catch (Exception e)
                     {
                         Log.LogDebug(e, "Could not read the PB Limiter server list");
+                        _serversFailed = true;
                         if (PageShared.ReportReadFailures.IsNew("servers", e.Message))
                             Log.LogWarning(e, "Could not read the PB Limiter server list");
                     }
+                    // Paused, nothing else renders: a server list change, or a switch, shows now.
+                    await PageShared.RenderIfOpenAsync(_closing, () => InvokeAsync(StateHasChanged));
                 }
 
                 TimeSpan wait = visible ? TimeSpan.FromSeconds(_refreshSeconds) : TimeSpan.FromSeconds(2);
@@ -609,6 +854,7 @@
     private async Task RefreshAsync(CancellationToken closing)
     {
         _refreshing = true;
+        await PageShared.RenderIfOpenAsync(_closing, () => InvokeAsync(StateHasChanged));
 
         try
         {
@@ -616,7 +862,9 @@
             {
                 try
                 {
-                    await RefreshServersAsync(closing);
+                    // A switch drops the old server's view: shown at once, not after the new report arrives.
+                    if (await RefreshServersAsync(closing))
+                        await PageShared.RenderIfOpenAsync(_closing, () => InvokeAsync(StateHasChanged));
                 }
                 catch (OperationCanceledException) when (closing.IsCancellationRequested)
                 {
@@ -625,6 +873,7 @@
                 catch (Exception e)
                 {
                     Log.LogDebug(e, "Could not read the PB Limiter server list");
+                    _serversFailed = true;
                     if (_snapshot is null)
                         _error = "Could not read the server list: " + PageShared.ShortError(e);
                     if (PageShared.ReportReadFailures.IsNew("servers", e.Message))
@@ -654,17 +903,30 @@
                 if (serverId != _serverId) return;
 
                 bool changed = _snapshotServerId != serverId;
+                _previousSnapshot = _snapshot;
+                _previousSnapshotServerId = _snapshotServerId;
                 _snapshot = snapshot;
                 _snapshotServerId = serverId;
                 _lastUpdatedUtc = DateTime.UtcNow;
                 _error = null;
                 _stale = false;
                 _live.SetSnapshot(snapshot, resetHistory: changed);
+                _sessionChart = ChartSpecs.Session(_live.History);
+                if (changed)
+                    _history = new Dictionary<string, BlockHistoryRowView>();
 
+                // The dialog follows its block or player to the new figures, and closes when it has left the report.
                 if (_selectedBlock is not null)
+                {
                     _selectedBlock = snapshot.Blocks.FirstOrDefault(block => block.EntityId == _selectedBlock.EntityId);
+                    if (_selectedBlock is null) _blockChart = null;
+                }
                 if (_selectedPlayer is not null)
                     _selectedPlayer = snapshot.Players.FirstOrDefault(player => player.IdentityId == _selectedPlayer.IdentityId);
+
+                // The new report is drawn before its run history is read, so the rows on screen are the ones on show.
+                await PageShared.RenderIfOpenAsync(_closing, () => InvokeAsync(StateHasChanged));
+                await LoadHistoryAsync(serverId, closing);
             }
             catch (OperationCanceledException) when (closing.IsCancellationRequested)
             {
@@ -702,7 +964,8 @@
         }
     }
 
-    private async Task RefreshServersAsync(CancellationToken closing)
+    /// <summary>Reads the server list. True when the server on show changed, and its view was dropped.</summary>
+    private async Task<bool> RefreshServersAsync(CancellationToken closing)
     {
         ServerListResponse response = await SdkClient.RequestAsync<ServerListResponse>(
             JS, UiOperations.Servers, new EmptyPayload(), closing);
@@ -713,13 +976,21 @@
             .ToList();
 
         _lastServersRefreshUtc = DateTime.UtcNow;
+        _serversLoaded = true;
+        _serversFailed = false;
 
+        string? shownId = _serverId;
         if (_serverKey is null || _servers.All(server => server.PickKey != _serverKey))
             _serverKey = _servers.FirstOrDefault(server => server.Connected)?.PickKey
                          ?? _servers.FirstOrDefault()?.PickKey;
 
         ServerInfo? selected = _servers.FirstOrDefault(server => server.PickKey == _serverKey);
         _serverId = selected?.ServerId;
+        // The server on show changed: it left the list and another was picked, or a cluster node restarted in the same
+        // slot under a new id. Nothing of the old one may stay, not its rows, dialogs or owner filter.
+        if (shownId == _serverId) return false;
+        if (shownId is not null) ForgetServerView();
+        return _serverId is not null;
     }
 
     private void ApplyPreferenceSelection()
@@ -731,8 +1002,10 @@
             return;
         }
 
-        if (_serverKey is null || _servers.All(server => server.PickKey != _serverKey))
+        // The server remembered from the last visit, unless it is offline now and another is connected.
+        if (_serverKey is null || _servers.All(server => server.PickKey != _serverKey || !server.Connected))
             _serverKey = _servers.FirstOrDefault(server => server.Connected)?.PickKey
+                         ?? _servers.FirstOrDefault(server => server.PickKey == _serverKey)?.PickKey
                          ?? _servers.FirstOrDefault()?.PickKey;
 
         _serverId = _servers.FirstOrDefault(server => server.PickKey == _serverKey)?.ServerId;
@@ -755,10 +1028,23 @@
 
     private void ServerChanged(ChangeEventArgs args)
     {
+        // The picker is disabled while a turn-off is sending, so the dialog stays until the result.
+        if (_turnOffBusy) return;
         _serverKey = args.Value?.ToString();
         _serverId = _servers.FirstOrDefault(server => server.PickKey == _serverKey)?.ServerId;
+        ForgetServerView();
+        _refreshOnce = true;
+        _ = SavePreferencesAsync();
+        Wake();
+    }
+
+    /// <summary>Drops everything shown for the server before: its report, history, dialogs, messages and owner filter.</summary>
+    private void ForgetServerView()
+    {
         _snapshot = null;
         _snapshotServerId = null;
+        _previousSnapshot = null;
+        _previousSnapshotServerId = null;
         _error = null;
         _turnOffError = null;
         _notice = null;
@@ -768,9 +1054,28 @@
         _lastUpdatedUtc = null;
         _stale = false;
         _live.SetServer();
-        _refreshOnce = true;
-        _ = SavePreferencesAsync();
-        Wake();
+        _history = new Dictionary<string, BlockHistoryRowView>();
+        _historyError = null;
+        _blockChart = null;
+        _sessionChart = null;
+    }
+
+    /// <summary>What became of the runs over the run-time limit, from the outcomes kept as each came.</summary>
+    private static string OutcomeText(int forgiven, int counted, int notChecked)
+    {
+        List<string> parts = new(3);
+        if (forgiven > 0) parts.Add($"{forgiven} forgiven as {(forgiven == 1 ? "a spike" : "spikes")}");
+        if (counted > 0) parts.Add($"{counted} counted");
+        if (notChecked > 0) parts.Add($"{notChecked} not checked (grace after an offence, a pending punishment, sim speed, the limiter off, or the block instant-killed)");
+        return parts.Count == 0 ? "" : "· " + string.Join(", ", parts);
+    }
+
+    private static string LeftOutText(BlockHistoryRowView history)
+    {
+        int count = history.LeftOutOfAverage.Count;
+        return history.RunTimesMS.Count >= 10
+            ? $"the {InvariantText.Count(count, "slowest run is", "slowest runs are")} left out of it"
+            : $"{InvariantText.Count(count, "run forgiven as a spike is", "runs forgiven as spikes are")} left out of it";
     }
 
     private void RefreshChanged(ChangeEventArgs args)
@@ -787,31 +1092,62 @@
     private void TogglePaused()
     {
         _paused = !_paused;
+        _pausedAtUtc = _paused ? DateTime.UtcNow : null;
         Wake();
     }
 
-    private Task<bool> CanControlAsync() =>
-        SdkClient.AllowedAsync(JS, "CanControlServers", _closing.Token);
+    /// <summary>Holds or releases the rows' order; rows a release brings onto the page get their run history at once.</summary>
+    private Task HoldOrder(bool hold) => _live.SetHoldOrder(hold) ? LoadHistoryNowAsync() : Task.CompletedTask;
 
-    private void FilterChanged(ChangeEventArgs args) =>
-        _live.SetFilter(args.Value?.ToString() ?? "");
-
-    private void StateFilterChanged(BlockStateFilter filter) =>
-        _live.SetStateFilter(filter);
-
-    private void ClearFilters()
+    /// <summary>For a turn-off: asks whether the user may control servers, giving up after <see cref="RequestTimeout"/>.</summary>
+    private async Task<bool> CanControlAsync()
     {
-        _live.SetFilter("");
-        _live.SetStateFilter(BlockStateFilter.All);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_closing.Token);
+        timeout.CancelAfter(RequestTimeout);
+        return await SdkClient.AllowedAsync(JS, "CanControlServers", timeout.Token);
     }
 
-    private void SortBy(string column)
+    private Task FilterChanged(ChangeEventArgs args)
+    {
+        _live.SetFilter(args.Value?.ToString() ?? "");
+        _ = LoadHistoryAfterTypingAsync(++_filterEdits);
+        return SavePreferencesAsync();
+    }
+
+    /// <summary>Reads the run history of the rows the filter left once it has not changed for 300 ms, not on every key.</summary>
+    private async Task LoadHistoryAfterTypingAsync(int edit)
+    {
+        await Task.Delay(300);
+        if (edit != _filterEdits || _closing.IsClosed) return;
+        await LoadHistoryNowAsync();
+        await PageShared.RenderIfOpenAsync(_closing, () => InvokeAsync(StateHasChanged));
+    }
+
+    private Task ClearOwnerFilter()
+    {
+        _live.ClearOwnerFilter();
+        return LoadHistoryNowAsync();
+    }
+
+    private Task StateFilterChanged(BlockStateFilter filter)
+    {
+        _live.SetStateFilter(filter);
+        return ShownRowsChangedAsync();
+    }
+
+    private Task ClearFilters()
+    {
+        _live.ClearFilters();
+        return ShownRowsChangedAsync();
+    }
+
+    private Task SortBy(string column)
     {
         _live.SetSort(column);
-        _ = SavePreferencesAsync();
+        return ShownRowsChangedAsync();
     }
 
-    private void TabChanged(string key)
+    private Task TabChanged(string key)
     {
         _live.SetTab(key switch
         {
@@ -819,90 +1155,260 @@
             "players" => LiveTab.Players,
             _ => LiveTab.Overview
         });
-        _ = SavePreferencesAsync();
+        return ShownRowsChangedAsync();
     }
 
-    private void BlockPageChanged(int page) => _live.SetBlockPage(page);
+    private Task BlockPageChanged(int page)
+    {
+        _live.SetBlockPage(page);
+        return LoadHistoryNowAsync();
+    }
 
     private void PlayerPageChanged(int page) => _live.SetPlayerPage(page);
 
-    private void PageSizeChanged(int size)
+    private Task PageSizeChanged(int size)
     {
         _live.SetPageSize(size);
-        _ = SavePreferencesAsync();
+        return ShownRowsChangedAsync();
     }
 
-    private void ShowBlock(BlockRowView row)
+    private Task ShowBlocksOf(PlayerRowView player)
     {
         _selectedPlayer = null;
-        _selectedBlock = row;
-        _turnOffTarget = null;
+        _live.ShowBlocksOf(player);
+        return ShownRowsChangedAsync();
     }
 
-    private void ShowPlayer(PlayerRowView row)
+    /// <summary>The choices are saved, and the rows now on show get their run history without waiting for the next refresh.</summary>
+    private async Task ShownRowsChangedAsync()
     {
-        _selectedBlock = null;
-        _selectedPlayer = row;
+        await SavePreferencesAsync();
+        await LoadHistoryNowAsync();
+    }
+
+    private Task ShowBlock(BlockRowView row)
+    {
+        // A turn-off that is sending keeps its dialog until the result, as CancelTurnOff does.
+        if (TurnOffStillSending() || CurrentRow(row) is not { } current) return Task.CompletedTask;
+        _selectedPlayer = null;
+        _selectedBlock = current;
         _turnOffTarget = null;
+        RefreshBlockChart();
+        return LoadHistoryNowAsync();
+    }
+
+    private Task ShowPlayer(PlayerRowView row)
+    {
+        if (TurnOffStillSending() || CurrentRow(row) is not { } current) return Task.CompletedTask;
+        _selectedBlock = null;
+        _selectedPlayer = current;
+        _turnOffTarget = null;
+        _blockChart = null;
+        return LoadHistoryNowAsync();
     }
 
     private void CloseDetails()
     {
         _selectedBlock = null;
         _selectedPlayer = null;
+        _blockChart = null;
     }
 
+    /// <summary>
+    /// The blocks whose run history is on show, at most a request's worth: the dialog's first, then the rows. With each
+    /// block's owner, so the server looks it up there.
+    /// </summary>
+    private BlockHistoryUiRequest HistoryRequest(string serverId)
+    {
+        BlockHistoryUiRequest request = new() { ServerId = serverId };
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        void Add(BlockRowView row)
+        {
+            if (request.EntityIds.Count >= BlockHistoryResult.MaxBlocks || !seen.Add(row.EntityId)) return;
+            request.EntityIds.Add(row.EntityId);
+            request.OwnerIds.Add(row.OwnerIdentityId);
+        }
+
+        if (_selectedBlock is { } block) Add(block);
+        if (_selectedPlayer is { } player)
+        {
+            foreach (BlockRowView row in _live.BlocksOf(player).Take(PlayerBlocksShown)) Add(row);
+        }
+        IReadOnlyList<BlockRowView> rows = _live.Tab switch
+        {
+            LiveTab.Blocks => _live.PageBlocks,
+            LiveTab.Overview => _live.TopBlocks,
+            _ => Array.Empty<BlockRowView>()
+        };
+        foreach (BlockRowView row in rows) Add(row);
+        return request;
+    }
+
+    /// <summary>
+    /// Reads the run history of the blocks on show. A failure keeps the history read before, and its reason shows in the
+    /// block dialog: the table and the rest of the page do not depend on it.
+    /// </summary>
+    private async Task LoadHistoryAsync(string serverId, CancellationToken closing)
+    {
+        int request = ++_historyRequests;
+        BlockHistoryUiRequest wanted = HistoryRequest(serverId);
+        if (wanted.EntityIds.Count == 0)
+        {
+            _history = new Dictionary<string, BlockHistoryRowView>();
+            RefreshBlockChart();
+            return;
+        }
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(closing);
+        timeout.CancelAfter(RequestTimeout);
+        try
+        {
+            BlockHistoryView view = await SdkClient.RequestAsync<BlockHistoryView>(JS, UiOperations.BlockHistory,
+                wanted, timeout.Token);
+            if (request != _historyRequests || serverId != _serverId) return;
+
+            Dictionary<string, BlockHistoryRowView> history = new(StringComparer.Ordinal);
+            foreach (BlockHistoryRowView row in view.Blocks)
+                history[row.EntityId] = row;
+            _history = history;
+            _historyError = null;
+        }
+        catch (OperationCanceledException) when (closing.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception e)
+        {
+            if (request != _historyRequests || serverId != _serverId) return;
+            Log.LogDebug(e, "Could not read the PB Limiter run history of {Server}", ServerName(serverId));
+            _historyError = e is OperationCanceledException
+                ? "the server did not answer in time."
+                : PageShared.ShortError(e) + CompanionErrors.RestartHint(e);
+        }
+
+        RefreshBlockChart();
+    }
+
+    /// <summary>Reads the run history at once, for rows or a dialog the admin just brought up, and shows it.</summary>
+    private async Task LoadHistoryNowAsync()
+    {
+        if (_serverId is not { } serverId || _snapshot is null || _closing.IsClosed) return;
+        try
+        {
+            await LoadHistoryAsync(serverId, _closing.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // The page closed.
+        }
+    }
+
+    private void RefreshBlockChart()
+    {
+        _blockChart = _selectedBlock is { } block && _history.TryGetValue(block.EntityId, out BlockHistoryRowView? history) && history.RunTimesMS.Count > 0
+            ? ChartSpecs.Runs(history, $"Last {history.RunTimesMS.Count} run times of {block.BlockName}")
+            : null;
+    }
+
+    /// <summary>
+    /// The row a click on <paramref name="row"/> is for, in the report on show: the row itself, or, for a row still on screen
+    /// from the report before it of the same server, the same block in the report on show. Null, with a toast, for a row
+    /// of another server's report or a block no longer listed: nothing is done for it.
+    /// </summary>
+    private BlockRowView? CurrentRow(BlockRowView row)
+    {
+        if (_snapshot is not null && _snapshot.Blocks.Contains(row)) return row;
+        BlockRowView? current = FromPreviousReport() && _previousSnapshot!.Blocks.Contains(row)
+            ? _snapshot!.Blocks.Find(block => block.EntityId == row.EntityId)
+            : null;
+        if (current is null) ToastService.Show($"{row.BlockName} is not in the report on show any more.", ToastTone.Warning);
+        return current;
+    }
+
+    /// <inheritdoc cref="CurrentRow(BlockRowView)"/>
+    private PlayerRowView? CurrentRow(PlayerRowView row)
+    {
+        if (_snapshot is not null && _snapshot.Players.Contains(row)) return row;
+        PlayerRowView? current = FromPreviousReport() && _previousSnapshot!.Players.Contains(row)
+            ? _snapshot!.Players.Find(player => player.IdentityId == row.IdentityId)
+            : null;
+        if (current is null) ToastService.Show($"{row.Name} is not in the report on show any more.", ToastTone.Warning);
+        return current;
+    }
+
+    /// <summary>The report on show replaced one of the same server, whose rows may still be on screen.</summary>
+    private bool FromPreviousReport() =>
+        _snapshot is not null && _previousSnapshot is not null && _snapshotServerId is not null && _previousSnapshotServerId == _snapshotServerId;
+
+    // A turn-off is asked for the row in the report on show, and keeps that report's server. One at a time.
     private void AskTurnOffBlock(BlockRowView row)
     {
+        if (TurnOffStillSending() || CurrentRow(row) is not { } current) return;
         _selectedBlock = null;
         _selectedPlayer = null;
-        _turnOffTarget = new TurnOffTarget("block", row, null);
+        _turnOffTarget = new TurnOffTarget("block", current, null, _snapshotServerId!);
     }
 
     private void AskTurnOffPlayer(PlayerRowView row)
     {
+        if (TurnOffStillSending() || CurrentRow(row) is not { } current) return;
         _selectedBlock = null;
         _selectedPlayer = null;
-        _turnOffTarget = new TurnOffTarget("player", null, row);
+        _turnOffTarget = new TurnOffTarget("player", null, current, _snapshotServerId!);
     }
 
-    private void CancelTurnOff() => _turnOffTarget = null;
+    private bool TurnOffStillSending()
+    {
+        if (!_turnOffBusy) return false;
+        ToastService.Show("A turn-off is still being sent: wait for its result.", ToastTone.Warning);
+        return true;
+    }
+
+    // Once confirmed, a turn-off goes: the dialog stays until its result, as a request sent cannot be called back.
+    private void CancelTurnOff()
+    {
+        if (!_turnOffBusy) _turnOffTarget = null;
+    }
 
     private async Task ConfirmTurnOffAsync()
     {
+        // Checked and set before anything awaits: the page runs one event at a time, so a second click, however quick, sees it.
         TurnOffTarget? target = _turnOffTarget;
-        if (target is null) return;
+        if (target is null || _turnOffBusy) return;
 
         _turnOffBusy = true;
         try
         {
             if (target.Block is not null)
-                await TurnOffBlockAsync(target.Block);
+                await TurnOffBlockAsync(target.ServerId, target.Block);
             else if (target.Player is not null)
-                await TurnOffPlayerAsync(target.Player);
+                await TurnOffPlayerAsync(target.ServerId, target.Player);
         }
         finally
         {
             _turnOffBusy = false;
-            _turnOffTarget = null;
+            // Only this dialog: a server switch meanwhile may have closed it, and nothing newer opens while it runs.
+            if (ReferenceEquals(_turnOffTarget, target))
+                _turnOffTarget = null;
         }
     }
 
-    private Task TurnOffBlockAsync(BlockRowView row)
+    private Task TurnOffBlockAsync(string serverId, BlockRowView row)
     {
-        return RunTurnOffAsync($"{row.BlockName} on {row.GridName}",
+        return RunTurnOffAsync(serverId, $"{row.BlockName} on {row.GridName}",
             (serverId, token) => SdkClient.RequestAsync<TurnOffResult>(JS, UiOperations.TurnOffBlock,
                 new TurnOffBlockUiRequest { ServerId = serverId, EntityId = row.EntityId }, token));
     }
 
-    private Task TurnOffPlayerAsync(PlayerRowView row)
+    private Task TurnOffPlayerAsync(string serverId, PlayerRowView row)
     {
-        return RunTurnOffAsync($"all of {row.Name}'s blocks",
+        return RunTurnOffAsync(serverId, $"all of {row.Name}'s blocks",
             (serverId, token) => SdkClient.RequestAsync<TurnOffResult>(JS, UiOperations.TurnOffPlayer,
                 new TurnOffPlayerUiRequest { ServerId = serverId, IdentityId = row.IdentityId }, token));
     }
 
-    private async Task RunTurnOffAsync(string what, Func<string, CancellationToken, Task<TurnOffResult>> turnOff)
+    /// <param name="serverId">The server whose report the row came from: the request goes there, and only while it is still on show.</param>
+    private async Task RunTurnOffAsync(string serverId, string what, Func<string, CancellationToken, Task<TurnOffResult>> turnOff)
     {
         _notice = null;
         _turnOffError = null;
@@ -912,25 +1418,36 @@
         {
             canControl = await CanControlAsync();
         }
+        catch (OperationCanceledException) when (_closing.IsClosed)
+        {
+            return; // The page closed.
+        }
+        catch (OperationCanceledException)
+        {
+            PermissionError(serverId, "Could not check your permission in time, so nothing was turned off. Try again.", ToastTone.Warning);
+            return;
+        }
         catch (Exception e)
         {
             Log.LogWarning(e, "Could not check your permission to control PB Limiter servers");
-            _turnOffError = "Could not check your permission: " + e.Message;
-            ToastService.Show(_turnOffError, ToastTone.Danger);
+            PermissionError(serverId, "Could not check your permission: " + PageShared.ShortError(e), ToastTone.Danger);
             return;
         }
 
         if (!canControl)
         {
-            _turnOffError = "You do not have permission to control servers.";
-            ToastService.Show(_turnOffError, ToastTone.Danger);
+            PermissionError(serverId, "You do not have permission to control servers.", ToastTone.Danger);
             return;
         }
 
-        string? serverId = _serverId;
-        if (serverId is null) return;
-
         string serverName = ServerName(serverId);
+
+        // The page moved to another server while the permission was checked: the admin confirmed it for the other one.
+        if (serverId != _serverId)
+        {
+            ToastService.Show($"Nothing was turned off: the page moved from {serverName} before {what} was sent.", ToastTone.Warning);
+            return;
+        }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_closing.Token);
         timeout.CancelAfter(RequestTimeout);
@@ -940,13 +1457,14 @@
             Log.LogInformation("Turned off {What} on {Server}, {Count}", what, serverName,
                 InvariantText.Count(result.TurnedOff, "block", "blocks"));
 
+            string done = result.TurnedOff == 0
+                ? $"Nothing to turn off for {what} on {serverName}: already off, or no longer tracked."
+                : $"Turned off {what} on {serverName}: {InvariantText.Count(result.TurnedOff, "block", "blocks")}.";
+            ToastService.Show(done, result.TurnedOff == 0 ? ToastTone.Warning : ToastTone.Success);
             if (serverId != _serverId) return;
 
-            _notice = result.TurnedOff == 0
-                ? $"Nothing to turn off for {what}: already off, or no longer tracked."
-                : $"Turned off {what}: {InvariantText.Count(result.TurnedOff, "block", "blocks")}.";
+            _notice = done;
             _error = null;
-            ToastService.Show(_notice, result.TurnedOff == 0 ? ToastTone.Warning : ToastTone.Success);
             Wake();
         }
         catch (OperationCanceledException) when (_closing.IsClosed)
@@ -955,22 +1473,20 @@
         }
         catch (OperationCanceledException)
         {
+            string timedOut = $"{serverName} did not answer in time, so it may or may not have turned off {what}. Check its report to see which.";
+            ToastService.Show(timedOut, ToastTone.Warning);
             if (serverId == _serverId)
-            {
-                _turnOffError = $"The server did not answer in time, so it may or may not have turned off {what}. Check the report to see which.";
-                ToastService.Show(_turnOffError, ToastTone.Warning);
-            }
+                _turnOffError = timedOut;
 
             Wake();
         }
         catch (Exception e)
         {
             Log.LogWarning(e, "Could not turn off {What} on {Server}", what, serverName);
+            string failed = $"Could not confirm the result of turning off {what} on {serverName}: {PageShared.ShortError(e).TrimEnd('.')}. Check its report to see what is off.";
+            ToastService.Show(failed, ToastTone.Danger);
             if (serverId == _serverId)
-            {
-                _turnOffError = $"Could not confirm the result of turning off {what}: {PageShared.ShortError(e).TrimEnd('.')}. Check the report to see what is off.";
-                ToastService.Show(_turnOffError, ToastTone.Danger);
-            }
+                _turnOffError = failed;
 
             Wake();
         }
@@ -987,7 +1503,7 @@
         catch (Exception e)
         {
             Log.LogWarning(e, "Could not copy to the clipboard");
-            ToastService.Show("Could not copy: " + e.Message, ToastTone.Danger);
+            ToastService.Show("Could not copy: " + PageShared.ShortError(e), ToastTone.Danger);
         }
     }
 
@@ -999,19 +1515,27 @@
         {
             _download ??= await ImportAsync("download.js");
             string csv = CsvExport.ForBlocks(_snapshot, ServerName(_snapshotServerId ?? ""));
-            string fileName = $"pb-limiter-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv";
+            string fileName = $"pb-limiter-{FileNamePart(ServerName(_snapshotServerId ?? ""))}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv";
             await _download.InvokeVoidAsync("downloadText", fileName, "\uFEFF" + csv, "text/csv;charset=utf-8");
             ToastService.Show("CSV downloaded.", ToastTone.Success, 2);
         }
         catch (Exception e)
         {
             Log.LogWarning(e, "Could not save the PB Limiter CSV");
-            ToastService.Show("Could not save the CSV: " + e.Message, ToastTone.Danger);
+            ToastService.Show("Could not save the CSV: " + PageShared.ShortError(e), ToastTone.Danger);
         }
     }
 
     private void ClearError() => _error = null;
+    private void ClearControlCheckError() => _controlCheckError = null;
     private void ClearTurnOffError() => _turnOffError = null;
+
+    /// <summary>A failed confirm-time permission check: a toast, and the banner only while the server it was for is on show.</summary>
+    private void PermissionError(string serverId, string message, ToastTone tone)
+    {
+        if (serverId == _serverId) _turnOffError = message;
+        ToastService.Show(message, tone);
+    }
     private void ClearNotice() => _notice = null;
 
     private async Task LoadPreferencesAsync()
@@ -1020,7 +1544,8 @@
 
         try
         {
-            string? json = await _prefs.InvokeAsync<string?>("load", "ui.v1");
+            await _prefs.InvokeVoidAsync("remove", UiPreferences.OldKey);
+            string? json = await _prefs.InvokeAsync<string?>("load", UiPreferences.Key);
             if (string.IsNullOrWhiteSpace(json)) return;
 
             UiPreferences? preferences = JsonSerializer.Deserialize<UiPreferences>(json, JsonOptions);
@@ -1046,7 +1571,7 @@
             UiPreferences preferences = _live.ToPreferences();
             preferences.ServerKey = _serverKey;
             preferences.RefreshSeconds = _refreshSeconds;
-            await _prefs.InvokeVoidAsync("save", "ui.v1", JsonSerializer.Serialize(preferences, JsonOptions));
+            await _prefs.InvokeVoidAsync("save", UiPreferences.Key, JsonSerializer.Serialize(preferences, JsonOptions));
         }
         catch (Exception e)
         {
@@ -1059,6 +1584,19 @@
         string url = new Uri(new Uri(Navigation.BaseUri),
             $"_quasar/plugins/{SdkClient.PluginId}/{file}").ToString();
         return await JS.InvokeAsync<IJSObjectReference>("import", url);
+    }
+
+    /// <summary>A server name made safe for a file name: letters and digits, other runs as one dash.</summary>
+    private static string FileNamePart(string name)
+    {
+        System.Text.StringBuilder part = new(name.Length);
+        foreach (char c in name)
+        {
+            if (char.IsAsciiLetterOrDigit(c)) part.Append(char.ToLowerInvariant(c));
+            else if (part.Length > 0 && part[^1] != '-') part.Append('-');
+        }
+        string text = part.ToString().Trim('-');
+        return text.Length == 0 ? "server" : text.Length > 40 ? text[..40].TrimEnd('-') : text;
     }
 
     private static string BarPercent(double value, double max)
@@ -1116,5 +1654,5 @@
         }
     }
 
-    private sealed record TurnOffTarget(string Kind, BlockRowView? Block, PlayerRowView? Player);
+    private sealed record TurnOffTarget(string Kind, BlockRowView? Block, PlayerRowView? Player, string ServerId);
 }

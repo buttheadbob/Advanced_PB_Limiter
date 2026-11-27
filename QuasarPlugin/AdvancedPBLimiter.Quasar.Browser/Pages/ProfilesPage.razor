@@ -5,7 +5,7 @@
 @inject ILogger<ProfilesPage> Log
 @using System.Globalization
 
-<PageTitle>PB Limiter profiles</PageTitle>
+<PageTitle>PB Limiter · Profiles</PageTitle>
 
 @{
     // Read once per render from the last state the worker returned.
@@ -22,246 +22,357 @@
     {
         <PblNotice Tone="danger" Icon="alert">The profiles file could not be read when Quasar started, so nothing here is saved. Changes are lost when Quasar restarts. The Quasar log has the reason.</PblNotice>
     }
-    @if (_error is not null)
+    @if (HidesClusterNodes)
+    {
+        <p class="pbl-muted" style="margin-bottom: 10px;">@ClusterNodesNote</p>
+    }
+    @if (_error is not null && _state is not null)
     {
         <PblNotice Tone="danger" Icon="alert" Dismiss="ClearError">@_error</PblNotice>
     }
     @if (_notice is not null)
     {
-        <PblNotice Tone="success" Icon="check" Dismiss="ClearNotice">@_notice</PblNotice>
+        <PblNotice Tone="info" Icon="info" Dismiss="ClearNotice">@_notice</PblNotice>
     }
 
-    <div class="pbl-profiles-layout">
-        <div class="pbl-stack">
-            <PblCard Title="Save a profile" Subtitle="Copy the limiter settings and privileged players from a running server.">
-                @if (Connected.Count == 0)
-                {
-                    <PblEmptyState Icon="server" Title="No connected servers" Description="A profile is saved from a server that is running and connected to Quasar." />
-                }
-                else
-                {
-                    <div class="pbl-form-grid">
-                        <label class="pbl-field pbl-span-2">
-                            <span>Copy settings from</span>
-                            <select @bind="_sourceKey">
-                                <option value="">Choose a server</option>
-                                @foreach (ServerInfo server in Connected)
+    @if (_state is null && _error is not null)
+    {
+        <PblEmptyState Icon="wifi-off" Title="The profiles could not be loaded" Description="@_error">
+            <button type="button" class="pbl-btn pbl-btn-primary" @onclick="RetryAsync" disabled="@_retrying">
+                <PblIcon Name="refresh" Class="@(_retrying ? "pbl-spin" : null)" /> Try again
+            </button>
+        </PblEmptyState>
+    }
+    else if (_state is null)
+    {
+        <div class="pbl-profiles-layout">
+            <div class="pbl-card"><div class="pbl-card-body"><PblSkeleton Rows="4" /></div></div>
+            <div class="pbl-card"><div class="pbl-card-body"><PblSkeleton Rows="4" /></div></div>
+        </div>
+    }
+    else
+    {
+        <div class="pbl-profiles-layout">
+            <div class="pbl-stack">
+                <PblCard Title="Save a profile" Subtitle="Copy the limiter settings and privileged players from a running server.">
+                    @if (Connected.Count == 0)
+                    {
+                        <PblEmptyState Icon="server" Title="No connected servers" Description="A profile is saved from a server that is running and connected to Quasar." />
+                    }
+                    else
+                    {
+                        <div class="pbl-form-grid">
+                            <label class="pbl-field pbl-span-2">
+                                <span>Copy settings from</span>
+                                <select @bind="_sourceKey">
+                                    <option value="">Choose a server</option>
+                                    @foreach (ServerInfo server in Connected)
+                                    {
+                                        <option value="@server.PickKey" @key="server.ServerId">@server.DisplayName</option>
+                                    }
+                                </select>
+                            </label>
+
+                            <label class="pbl-field pbl-span-2">
+                                <span>Profile name</span>
+                                <input @bind="_newName" @bind:event="oninput" maxlength="@MaxNameLength" placeholder="For example Survival servers" />
+                            </label>
+
+                            <div class="pbl-span-2 pbl-buttons">
+                                <button type="button" class="pbl-btn pbl-btn-primary"
+                                        disabled="@(_busy || string.IsNullOrWhiteSpace(_newName) || string.IsNullOrEmpty(_sourceKey))"
+                                        @onclick="() => SaveOrAskAsync(profiles)">
+                                    @if (_busy && _saving)
+                                    {
+                                        <PblIcon Name="refresh" Class="pbl-spin" />
+                                        <span>Saving…</span>
+                                    }
+                                    else
+                                    {
+                                        <PblIcon Name="plus" />
+                                        @(NameExists(profiles) ? "Replace profile" : "Save profile")
+                                    }
+                                </button>
+                                <span class="pbl-muted">Saving under an existing name replaces that profile.</span>
+                            </div>
+                        </div>
+                    }
+                </PblCard>
+
+                <PblCard Title="Saved profiles" Subtitle="@($"{profiles.Count} saved")">
+                    @if (profiles.Count == 0)
+                    {
+                        <PblEmptyState Icon="layers" Title="No profiles yet" Description="Save a running server's settings to reuse them on the rest of your network." />
+                    }
+                    else
+                    {
+                        <div class="pbl-filterbar">
+                            <label class="pbl-search">
+                                <PblIcon Name="search" />
+                                <input type="search" placeholder="Filter profiles" value="@_profileFilter" @oninput="ProfileFilterChanged" />
+                            </label>
+                        </div>
+
+                        @if (filteredProfiles.Count == 0)
+                        {
+                            <PblEmptyState Icon="search" Title="No profiles match" Description="Try a different profile name or source server." />
+                        }
+                        else
+                        {
+                            <div class="pbl-profile-list">
+                                @foreach (SavedProfileRow profile in filteredProfiles)
                                 {
-                                    <option value="@server.PickKey" @key="server.ServerId">@server.DisplayName</option>
+                                    <div class="pbl-profile-row @(_applyProfile == profile.Name ? "selected" : "")" @key="profile.Name">
+                                        <button type="button" class="pbl-profile-main" @onclick="() => SelectProfileAsync(profile.Name)">
+                                            <strong>
+                                                @if (_applyProfile == profile.Name)
+                                                {
+                                                    <PblIcon Name="check" /><span class="pbl-visually-hidden">Selected:</span>
+                                                }
+                                                @profile.Name
+                                            </strong>
+                                            <span>@profile.SavedFrom · <span title="@TimeText.Utc(profile.SavedUtc)">saved @TimeText.Ago(profile.SavedUtc)</span></span>
+                                        </button>
+
+                                        <div class="pbl-profile-meta">
+                                            <PblBadge Text="@ProfileSettingsText(profile)" Tone="neutral" />
+                                            <PblBadge Text="@ProfilePrivilegedText(profile)" Tone="info" />
+                                        </div>
+
+                                        <div class="pbl-profile-actions">
+                                            <button type="button" class="pbl-btn pbl-btn-small" @onclick="() => ViewProfileAsync(profile.Name)">View</button>
+                                            <button type="button" class="pbl-btn pbl-btn-small" @onclick="() => SelectProfileAsync(profile.Name)">Apply…</button>
+                                            <button type="button" class="pbl-icon-btn pbl-icon-btn-danger" title="Delete" aria-label="Delete profile"
+                                                    @onclick="() => _deleting = profile.Name">
+                                                <PblIcon Name="trash" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                </PblCard>
+            </div>
+
+            <div class="pbl-stack">
+                <PblCard Title="Apply a profile" Subtitle="Apply one saved profile to one or more servers.">
+                    @if (profiles.Count == 0)
+                    {
+                        <p class="pbl-muted">Save a profile first.</p>
+                    }
+                    else if (knownServers.Count == 0)
+                    {
+                        <PblEmptyState Icon="server" Title="No servers yet" Description="A server is listed here once it has connected to Quasar." />
+                    }
+                    else
+                    {
+                        <label class="pbl-field">
+                            <span>Profile</span>
+                            <select @bind="_applyProfile" disabled="@_confirmingApply" @ref="_applySelect">
+                                <option value="">Choose a profile</option>
+                                @foreach (SavedProfileRow profile in profiles)
+                                {
+                                    <option value="@profile.Name" @key="profile.Name">@profile.Name</option>
                                 }
                             </select>
                         </label>
 
-                        <label class="pbl-field pbl-span-2">
-                            <span>Profile name</span>
-                            <input @bind="_newName" @bind:event="oninput" maxlength="@MaxNameLength" placeholder="For example Survival servers" />
-                        </label>
-
-                        <div class="pbl-span-2 pbl-buttons">
-                            <button type="button" class="pbl-btn pbl-btn-primary"
-                                    disabled="@(_busy || string.IsNullOrWhiteSpace(_newName) || string.IsNullOrEmpty(_sourceKey))"
-                                    @onclick="SaveProfileAsync">
-                                <PblIcon Name="plus" />
-                                @(NameExists(profiles) ? "Replace profile" : "Save profile")
-                            </button>
-                            <span class="pbl-muted">The name is replaced if it already exists.</span>
+                        <div style="margin-top: 10px;">
+                            <PblServerPicker Servers="knownServers" Selected="Picked.Ids" Changed="ServersPicked" Notes="LastApplied(recent, knownServers)" />
                         </div>
-                    </div>
-                }
-                @if (HidesClusterNodes)
-                {
-                    <p class="pbl-muted">@ClusterNodesNote</p>
-                }
-            </PblCard>
 
-            <PblCard Title="Saved profiles" Subtitle="@($"{profiles.Count} saved")">
-                @if (profiles.Count == 0)
-                {
-                    <PblEmptyState Icon="layers" Title="No profiles yet" Description="Save a running server's settings to reuse them on the rest of your network." />
-                }
-                else
-                {
-                    <div class="pbl-filterbar">
-                        <label class="pbl-search">
-                            <PblIcon Name="search" />
-                            <input type="search" placeholder="Filter profiles" value="@_profileFilter" @oninput="ProfileFilterChanged" />
-                        </label>
-                    </div>
+                        <div class="pbl-buttons" style="margin-top: 12px;">
+                            <button type="button" class="pbl-btn pbl-btn-primary"
+                                    disabled="@(string.IsNullOrEmpty(_applyProfile) || Picked.Ids.Count == 0)"
+                                    @onclick="() => _confirmingApply = true">
+                                <PblIcon Name="check" /> Apply
+                            </button>
+                            <span class="pbl-muted">A server that is offline or still loading gets the profile when it is ready.</span>
+                        </div>
+                    }
+                </PblCard>
 
-                    @if (filteredProfiles.Count == 0)
+                <PblCard Title="Waiting to apply" Subtitle="@($"{waiting.Count} queued")">
+                    @if (waiting.Count == 0)
                     {
-                        <PblEmptyState Icon="search" Title="No profiles match" Description="Try a different profile name or source server." />
+                        <p class="pbl-muted">Nothing is waiting to apply.</p>
                     }
                     else
                     {
-                        <div class="pbl-profile-list">
-                            @foreach (SavedProfileRow profile in filteredProfiles)
+                        <div class="pbl-timeline">
+                            @foreach (PendingApplyRow pending in waiting)
                             {
-                                <div class="pbl-profile-row @(_applyProfile == profile.Name ? "selected" : "")" @key="profile.Name">
-                                    <button type="button" class="pbl-profile-main" @onclick="() => SelectProfile(profile.Name)">
-                                        <strong>@profile.Name</strong>
-                                        <span>@profile.SavedFrom · @FormatTime(profile.SavedUtc)</span>
-                                    </button>
-
-                                    <div class="pbl-profile-meta">
-                                        <PblBadge Text="@ProfileSettingsText(profile)" Tone="neutral" />
-                                        <PblBadge Text="@ProfilePrivilegedText(profile)" Tone="info" />
+                                <div class="pbl-timeline-row" @key="pending.Id">
+                                    <span class="pbl-timeline-dot @StateTone(pending)"></span>
+                                    <div class="pbl-timeline-main">
+                                        <strong>@pending.ProfileName → @pending.ServerName</strong>
+                                            <small><span title="@TimeText.Utc(pending.QueuedUtc)">@TimeText.Ago(pending.QueuedUtc)</span> · @pending.QueuedBy</small>
+                                        <small>@StateText(pending)</small>
                                     </div>
-
-                                    <div class="pbl-profile-actions">
-                                        <button type="button" class="pbl-btn pbl-btn-small" @onclick="() => SelectProfile(profile.Name)">Select</button>
-                                        <button type="button" class="pbl-icon-btn pbl-icon-btn-danger" title="Delete" aria-label="Delete profile"
-                                                @onclick="() => _deleting = profile.Name">
-                                            <PblIcon Name="trash" />
-                                        </button>
+                                    <div class="pbl-timeline-actions">
+                                            @if (pending.Refused)
+                                        {
+                                            <button type="button" class="pbl-btn pbl-btn-small" @onclick="() => DismissAsync(pending)" disabled="@_dismissing.Contains(pending.Id)">Dismiss</button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="pbl-btn pbl-btn-small" @onclick="() => _cancelPending = pending">Cancel</button>
+                                        }
                                     </div>
                                 </div>
                             }
                         </div>
                     }
-                }
-            </PblCard>
-        </div>
+                </PblCard>
 
-        <div class="pbl-stack">
-            <PblCard Title="Apply a profile" Subtitle="Apply one saved profile to one or more servers.">
-                @if (profiles.Count == 0)
+                @if (offline.Count > 0)
                 {
-                    <p class="pbl-muted">Save a profile first.</p>
-                }
-                else if (knownServers.Count == 0)
-                {
-                    <PblEmptyState Icon="server" Title="No servers yet" Description="A server is listed here once it has connected to Quasar." />
-                }
-                else
-                {
-                    <label class="pbl-field">
-                        <span>Profile</span>
-                        <select @bind="_applyProfile" disabled="@_confirmingApply">
-                            <option value="">Choose a profile</option>
-                            @foreach (SavedProfileRow profile in profiles)
+                    <PblCard Title="Offline servers" Subtitle="@($"{offline.Count} known")">
+                        <p class="pbl-muted" style="margin-bottom: 8px;">Servers seen before that are not connected now. Forget one that is gone for good; anything waiting for it is dropped.</p>
+                        <div class="pbl-timeline">
+                            @foreach (ServerInfo server in offline)
                             {
-                                <option value="@profile.Name" @key="profile.Name">@profile.Name</option>
+                                <div class="pbl-timeline-row" @key="server.ServerId">
+                                    <span class="pbl-timeline-dot"></span>
+                                    <div class="pbl-timeline-main">
+                                        <strong>@server.DisplayName</strong>
+                                            <small title="@TimeText.Utc(server.LastSeenUtc)">Last seen @TimeText.Ago(server.LastSeenUtc)</small>
+                                    </div>
+                                    <div class="pbl-timeline-actions">
+                                        <button type="button" class="pbl-btn pbl-btn-small" @onclick="() => _forgetting = server.ServerId">Forget</button>
+                                    </div>
+                                </div>
                             }
-                        </select>
-                    </label>
-
-                    <div style="margin-top: 10px;">
-                        <PblServerPicker Servers="knownServers" Selected="Picked.Ids" Changed="ServersPicked" />
-                    </div>
-                    @if (HidesClusterNodes)
-                    {
-                        <p class="pbl-muted" style="margin-top: 8px;">@ClusterNodesNote</p>
-                    }
-
-                    <div class="pbl-buttons" style="margin-top: 12px;">
-                        <button type="button" class="pbl-btn pbl-btn-primary"
-                                disabled="@(string.IsNullOrEmpty(_applyProfile) || Picked.Ids.Count == 0)"
-                                @onclick="() => _confirmingApply = true">
-                            <PblIcon Name="check" /> Apply
-                        </button>
-                        <span class="pbl-muted">A server that is offline or still loading gets the profile when it is ready.</span>
-                    </div>
+                        </div>
+                    </PblCard>
                 }
-            </PblCard>
 
-            <PblCard Title="Waiting to apply" Subtitle="@($"{waiting.Count} queued")">
-                @if (waiting.Count == 0)
+                @if (recent.Count > 0)
                 {
-                    <p class="pbl-muted">Nothing is waiting to apply.</p>
+                    <PblCard Title="Recently applied" Subtitle="The newest applications are kept">
+                        <div class="pbl-timeline">
+                            @foreach (AppliedProfile applied in recent)
+                            {
+                                <div class="pbl-timeline-row" @key="@($"{applied.ServerName}:{applied.ProfileName}:{applied.AppliedUtc.Ticks}")">
+                                    <span class="pbl-timeline-dot success"></span>
+                                    <div class="pbl-timeline-main">
+                                        <strong>@applied.ProfileName → @applied.ServerName</strong>
+                                            <small><span title="@TimeText.Utc(applied.AppliedUtc)">@TimeText.Ago(applied.AppliedUtc)</span> · @applied.QueuedBy</small>
+                                        <small>@applied.Settings settings · @applied.PrivilegedPlayers privileged</small>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </PblCard>
                 }
-                else
-                {
-                    <div class="pbl-timeline">
-                        @foreach (PendingApplyRow pending in waiting)
-                        {
-                            <div class="pbl-timeline-row" @key="pending.Id">
-                                <span class="pbl-timeline-dot @StateTone(pending)"></span>
-                                <div class="pbl-timeline-main">
-                                    <strong>@pending.ProfileName → @pending.ServerName</strong>
-                                    <small>@FormatTime(pending.QueuedUtc) · @pending.QueuedBy</small>
-                                    <small>@StateText(pending)</small>
-                                </div>
-                                <div class="pbl-timeline-actions">
-                                    <button type="button" class="pbl-btn pbl-btn-small" @onclick="() => _cancelPending = pending">Cancel</button>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-            </PblCard>
-
-            @if (offline.Count > 0)
-            {
-                <PblCard Title="Offline servers" Subtitle="@($"{offline.Count} known")">
-                    <p class="pbl-muted" style="margin-bottom: 8px;">Servers seen before that are not connected now. Forget one that is gone for good; anything waiting for it is dropped.</p>
-                    <div class="pbl-timeline">
-                        @foreach (ServerInfo server in offline)
-                        {
-                            <div class="pbl-timeline-row" @key="server.ServerId">
-                                <span class="pbl-timeline-dot"></span>
-                                <div class="pbl-timeline-main">
-                                    <strong>@server.DisplayName</strong>
-                                    <small>Last seen @FormatTime(server.LastSeenUtc)</small>
-                                </div>
-                                <div class="pbl-timeline-actions">
-                                    <button type="button" class="pbl-btn pbl-btn-small" @onclick="() => _forgetting = server.ServerId">Forget</button>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                </PblCard>
-            }
-
-            @if (recent.Count > 0)
-            {
-                <PblCard Title="Recently applied" Subtitle="The newest applications are kept">
-                    <div class="pbl-timeline">
-                        @foreach (AppliedProfile applied in recent)
-                        {
-                            <div class="pbl-timeline-row" @key="@($"{applied.ServerName}:{applied.ProfileName}:{applied.AppliedUtc.Ticks}")">
-                                <span class="pbl-timeline-dot success"></span>
-                                <div class="pbl-timeline-main">
-                                    <strong>@applied.ProfileName → @applied.ServerName</strong>
-                                    <small>@FormatTime(applied.AppliedUtc) · @applied.QueuedBy</small>
-                                    <small>@applied.Settings settings · @applied.PrivilegedPlayers privileged</small>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                </PblCard>
-            }
+            </div>
         </div>
-    </div>
+    }
 
     <PblModal Open="_deleting is not null" Title="Delete profile" Subtitle="Anything already waiting to apply still goes ahead." Icon="trash"
               OnClose="CloseDelete" Class="pbl-modal-narrow">
         <p>Delete <strong>@_deleting</strong>? This cannot be undone.</p>
         <div class="pbl-buttons" style="margin-top: 14px; justify-content: flex-end;">
-            <button type="button" class="pbl-btn" @onclick="CloseDelete">Cancel</button>
+            <button type="button" class="pbl-btn" @onclick="CloseDelete" data-autofocus>Cancel</button>
             <button type="button" class="pbl-btn pbl-btn-danger" @onclick="ConfirmDeleteAsync" disabled="@_busy">
                 <PblIcon Name="trash" /> Delete
             </button>
         </div>
     </PblModal>
 
-    <PblModal Open="_confirmingApply" Title="Apply profile" Subtitle="This replaces the limiter settings and privileged players on the chosen servers." Icon="check"
+    <PblModal Open="_confirmingApply" Title="@($"Apply {_applyProfile}?")" Subtitle="This replaces every limiter setting and the privileged players on these servers." Icon="check"
               OnClose="CloseApply" Class="pbl-modal-narrow">
-        <p>Apply <strong>@_applyProfile</strong> to @InvariantText.Count(Picked.Ids.Count, "server", "servers")?</p>
-        <p class="pbl-muted" style="margin-top: 8px;">A server that is offline or still loading gets the profile when it is ready, as the profile was when you confirmed it.</p>
+        @{
+            List<ServerInfo> chosen = ServerInfos().Where(server => Picked.Ids.Contains(server.PickKey)).ToList();
+            List<ServerInfo> now = chosen.Where(server => server.Connected).ToList();
+            List<ServerInfo> later = chosen.Where(server => !server.Connected).ToList();
+        }
+        @if (now.Count > 0)
+        {
+            <h3 class="pbl-confirm-heading">Now (@now.Count)</h3>
+            <ul class="pbl-confirm-list">
+                @foreach (ServerInfo server in now)
+                {
+                    <li @key="server.PickKey">@server.DisplayName</li>
+                }
+            </ul>
+        }
+        @if (later.Count > 0)
+        {
+            <h3 class="pbl-confirm-heading">When they come online (@later.Count)</h3>
+            <ul class="pbl-confirm-list">
+                @foreach (ServerInfo server in later)
+                {
+                    <li @key="server.PickKey">@server.DisplayName <span class="pbl-muted" title="@TimeText.Utc(server.LastSeenUtc)">· last seen @TimeText.Ago(server.LastSeenUtc)</span></li>
+                }
+            </ul>
+        }
+        <p class="pbl-muted" style="margin-top: 8px;">Their current settings are not kept. Save one of them as a profile first if you may need it back. A server that is still loading gets the profile when it is ready.</p>
         <div class="pbl-buttons" style="margin-top: 14px; justify-content: flex-end;">
-            <button type="button" class="pbl-btn" @onclick="CloseApply">Cancel</button>
+            <button type="button" class="pbl-btn" @onclick="CloseApply" data-autofocus>Cancel</button>
             <button type="button" class="pbl-btn pbl-btn-primary" @onclick="ApplyAsync" disabled="@_busy">
                 <PblIcon Name="check" /> Apply
             </button>
         </div>
     </PblModal>
 
+    <PblModal Open="_replacing is not null" Title="@($"Replace {_replacing?.Name}?")" Subtitle="The saved profile is overwritten with the settings read now." Icon="layers"
+              OnClose="CloseReplace" Class="pbl-modal-narrow">
+        @if (_replacing is { } replaced)
+        {
+            <p><strong>@replaced.Name</strong> was saved from @replaced.SavedFrom @TimeText.Ago(replaced.SavedUtc) (@TimeText.Utc(replaced.SavedUtc)). Replace it with the settings of <strong>@SourceName</strong>?</p>
+        }
+        <div class="pbl-buttons" style="margin-top: 14px; justify-content: flex-end;">
+            <button type="button" class="pbl-btn" @onclick="CloseReplace" data-autofocus>Cancel</button>
+            <button type="button" class="pbl-btn pbl-btn-primary" @onclick="ConfirmReplaceAsync" disabled="@_busy">
+                <PblIcon Name="check" /> Replace
+            </button>
+        </div>
+    </PblModal>
+
+    <PblModal Open="_viewing is not null" Title="@(_viewing?.Name ?? "Profile")" Icon="layers" OnClose="CloseView" Class="pbl-modal-wide"
+              Subtitle="@(_viewing is { } shown ? $"Saved from {shown.SavedFrom} {TimeText.Ago(shown.SavedUtc)}" : null)">
+        @if (_viewing is { } view)
+        {
+            <h3 class="pbl-confirm-heading">Settings (@view.Settings.Count)</h3>
+            <dl class="pbl-settings-list">
+                @foreach (ProfileSettingView setting in view.Settings)
+                {
+                    <div @key="setting.Name">
+                        <dt>@SettingLabel(setting.Name)</dt>
+                        <dd>@setting.Value</dd>
+                    </div>
+                }
+            </dl>
+            <h3 class="pbl-confirm-heading">Privileged players (@view.PrivilegedPlayers.Count)</h3>
+            @if (view.PrivilegedPlayers.Count == 0)
+            {
+                <p class="pbl-muted">None.</p>
+            }
+            else
+            {
+                <ul class="pbl-confirm-list">
+                    @foreach (string player in view.PrivilegedPlayers)
+                    {
+                        <li>@player</li>
+                    }
+                </ul>
+            }
+            <div class="pbl-buttons" style="margin-top: 14px; justify-content: flex-end;">
+                <button type="button" class="pbl-btn" @onclick="CloseView" data-autofocus>Close</button>
+                <button type="button" class="pbl-btn pbl-btn-primary" @onclick="() => ApplyViewedAsync(view.Name)">
+                    <PblIcon Name="check" /> Apply…
+                </button>
+            </div>
+        }
+    </PblModal>
+
     <PblModal Open="_cancelPending is not null" Title="Cancel queued apply" Subtitle="If it is already being sent, it cannot be stopped." Icon="x"
               OnClose="CloseCancelPending" Class="pbl-modal-narrow">
         <p>Cancel <strong>@_cancelPending?.ProfileName</strong> for <strong>@_cancelPending?.ServerName</strong>?</p>
         <div class="pbl-buttons" style="margin-top: 14px; justify-content: flex-end;">
-            <button type="button" class="pbl-btn" @onclick="CloseCancelPending">Keep waiting</button>
+            <button type="button" class="pbl-btn" @onclick="CloseCancelPending" data-autofocus>Keep waiting</button>
             <button type="button" class="pbl-btn pbl-btn-danger" @onclick="ConfirmCancelPendingAsync" disabled="@_busy">
                 Cancel it
             </button>
@@ -272,7 +383,7 @@
               OnClose="CloseForget" Class="pbl-modal-narrow">
         <p>Forget <strong>@ForgetServerName</strong>? It comes back if it connects again.</p>
         <div class="pbl-buttons" style="margin-top: 14px; justify-content: flex-end;">
-            <button type="button" class="pbl-btn" @onclick="CloseForget">Cancel</button>
+            <button type="button" class="pbl-btn" @onclick="CloseForget" data-autofocus>Cancel</button>
             <button type="button" class="pbl-btn pbl-btn-danger" @onclick="ConfirmForgetAsync" disabled="@_busy">
                 Forget
             </button>
@@ -282,7 +393,7 @@
 
 @code {
     private const int MaxNameLength = 64;
-    private const string NotSavedText = " It was not saved to disk: unless a later change is saved, it is lost when Quasar restarts; the Quasar log has the reason.";
+    private const string NotSavedText = " Not written to disk: it is lost when Quasar restarts. See the Quasar log.";
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(20);
 
     private readonly PageClosing Closing = new();
@@ -299,6 +410,12 @@
     private string? _notice;
     private bool _confirmingApply;
     private bool _busy;
+    private bool _saving;
+    private bool _retrying;
+    private SavedProfileRow? _replacing;
+    private ProfileViewResponse? _viewing;
+    private readonly HashSet<Guid> _dismissing = new(); // Refused applies being dismissed, so a second click sends nothing.
+    private ElementReference _applySelect;
 
     private PickedServers Picked { get; } = new();
     // Quasar cluster nodes are left out: the limiter does not run on them, so a profile can neither be saved from nor applied to one.
@@ -311,6 +428,8 @@
 
     private const string ClusterNodesNote = "Quasar cluster nodes are not listed: Advanced PB Limiter does not run on them.";
     private bool CanSave => _state?.CanSave ?? true;
+
+    private string SourceName => Connected.FirstOrDefault(s => s.PickKey == _sourceKey)?.DisplayName ?? "the chosen server";
 
     private string ForgetServerName =>
         _forgetting is null ? "" :
@@ -438,7 +557,106 @@
     private void ProfileFilterChanged(ChangeEventArgs args) =>
         _profileFilter = args.Value?.ToString() ?? "";
 
-    private void SelectProfile(string name) => _applyProfile = name;
+    /// <summary>Chooses the profile in the Apply card and takes the admin there: below a narrow screen's other cards.</summary>
+    private async Task SelectProfileAsync(string name)
+    {
+        _applyProfile = name;
+        try
+        {
+            await _applySelect.FocusAsync();
+        }
+        catch (Exception e) when (e is InvalidOperationException or JSException)
+        {
+            // The Apply card is not on show, or no longer: no servers are known now.
+        }
+    }
+
+    private Task ApplyViewedAsync(string name)
+    {
+        _viewing = null;
+        return SelectProfileAsync(name);
+    }
+
+    private void CloseView() => _viewing = null;
+
+    private async Task ViewProfileAsync(string name)
+    {
+        try
+        {
+            ProfileViewResponse? view = await SdkClient.RequestAsync<ProfileViewResponse?>(JS, UiOperations.ProfileView,
+                new ProfileNameRequest { Name = name }, Closing.Token);
+            if (view is null)
+                _error = $"{name} was deleted meanwhile.";
+            _viewing = view;
+        }
+        catch (OperationCanceledException) when (Closing.IsClosed)
+        {
+            // The page closed.
+        }
+        catch (Exception e)
+        {
+            Log.LogWarning(e, "Could not read PB Limiter profile {Profile}", name);
+            _error = $"Could not show {name}: {PageShared.ShortError(e)}";
+        }
+    }
+
+    /// <summary>A setting's name as words: MaxRunTimeMSAvg reads Max run time ms avg.</summary>
+    private static string SettingLabel(string name)
+    {
+        System.Text.StringBuilder label = new(name.Length + 8);
+        for (int index = 0; index < name.Length; index++)
+        {
+            char c = name[index];
+            bool wordStart = index > 0 && char.IsUpper(c)
+                             && (char.IsLower(name[index - 1]) || (index + 1 < name.Length && char.IsLower(name[index + 1]) && char.IsUpper(name[index - 1])));
+            if (wordStart) label.Append(' ');
+            label.Append(index == 0 ? c : wordStart && index + 1 < name.Length && char.IsLower(name[index + 1]) ? char.ToLowerInvariant(c) : c);
+        }
+        return label.ToString();
+    }
+
+    /// <summary>
+    /// The profile each server last received, by server id, for the server cards. From the applies Quasar keeps, the last
+    /// 25 across all servers, so a server whose last one is older has no note. An apply recorded before the server id was
+    /// kept is matched by the server's name, when only one server has it.
+    /// </summary>
+    private static Dictionary<string, string> LastApplied(List<AppliedProfile> recent, List<ServerInfo> servers)
+    {
+        Dictionary<string, string> notes = new(StringComparer.Ordinal);
+        foreach (AppliedProfile applied in recent.OrderBy(a => a.AppliedUtc))
+        {
+            string? serverId = string.IsNullOrEmpty(applied.ServerId) ? OnlyServerNamed(servers, applied.ServerName) : applied.ServerId;
+            if (serverId is not null)
+                notes[serverId] = $"Last: {applied.ProfileName}, {TimeText.Ago(applied.AppliedUtc)}";
+        }
+        return notes;
+    }
+
+    /// <summary>The id of the one server with this name, or null when none or more than one has it.</summary>
+    private static string? OnlyServerNamed(List<ServerInfo> servers, string name)
+    {
+        string? found = null;
+        foreach (ServerInfo server in servers)
+        {
+            if (!string.Equals(server.DisplayName, name, StringComparison.Ordinal)) continue;
+            if (found is not null) return null;
+            found = server.ServerId;
+        }
+        return found;
+    }
+
+    private async Task DismissAsync(PendingApplyRow pending)
+    {
+        if (!_dismissing.Add(pending.Id)) return;
+        try
+        {
+            await CancelPendingAsync(pending, "dismiss");
+        }
+        finally
+        {
+            _dismissing.Remove(pending.Id);
+        }
+    }
 
     private void ClearError() => _error = null;
     private void ClearNotice() => _notice = null;
@@ -446,6 +664,38 @@
     private void CloseApply() => _confirmingApply = false;
     private void CloseCancelPending() => _cancelPending = null;
     private void CloseForget() => _forgetting = null;
+    private void CloseReplace() => _replacing = null;
+
+    private async Task RetryAsync()
+    {
+        _retrying = true;
+        try
+        {
+            await LoadStateAsync(Closing.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // The page closed.
+        }
+        finally
+        {
+            _retrying = false;
+        }
+    }
+
+    /// <summary>Saves at once under a new name; a name in use asks first, as the saved profile is overwritten.</summary>
+    private Task SaveOrAskAsync(List<SavedProfileRow> profiles)
+    {
+        string name = _newName.Trim();
+        _replacing = profiles.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+        return _replacing is null ? SaveProfileAsync() : Task.CompletedTask;
+    }
+
+    private Task ConfirmReplaceAsync()
+    {
+        _replacing = null;
+        return SaveProfileAsync();
+    }
 
     private async Task<bool> CanEditAsync()
     {
@@ -470,7 +720,12 @@
     {
         string name = _newName.Trim();
         string? sourceKey = string.IsNullOrEmpty(_sourceKey) ? null : _sourceKey;
-        if (name.Length == 0 || sourceKey == null) return;
+        if (name.Length == 0) return;
+        if (sourceKey == null)
+        {
+            _error = "That server is no longer connected. Choose another one.";
+            return;
+        }
         ServerInfo? source = Connected.FirstOrDefault(s => s.PickKey == sourceKey);
         if (source is null)
         {
@@ -487,6 +742,7 @@
         if (!await CanEditAsync()) return;
 
         _busy = true;
+        _saving = true;
         _error = null;
         _notice = null;
         string serverName = source.DisplayName;
@@ -521,6 +777,7 @@
         finally
         {
             _busy = false;
+            _saving = false;
         }
     }
 
@@ -613,7 +870,8 @@
         await CancelPendingAsync(pending);
     }
 
-    private async Task CancelPendingAsync(PendingApplyRow pending)
+    /// <param name="verb">"cancel" for a queued apply, "dismiss" for a refused one: the same request, named as the button names it.</param>
+    private async Task CancelPendingAsync(PendingApplyRow pending, string verb = "cancel")
     {
         if (!await CanEditAsync()) return;
 
@@ -623,12 +881,12 @@
                 new ProfileCancelRequest { Id = pending.Id }, Closing.Token);
             ApplyResult(result);
             if (result.Changed)
-                Log.LogInformation("Cancelled PB Limiter profile {Profile} for {Server}", pending.ProfileName, pending.ServerName);
+                Log.LogInformation("{Done} PB Limiter profile {Profile} for {Server}", verb == "dismiss" ? "Dismissed" : "Cancelled", pending.ProfileName, pending.ServerName);
         }
         catch (Exception e)
         {
-            Log.LogWarning(e, "Could not cancel PB Limiter profile {Profile} for {Server}", pending.ProfileName, pending.ServerName);
-            _error = "Could not cancel the request: " + PageShared.ShortError(e);
+            Log.LogWarning(e, "Could not {Verb} PB Limiter profile {Profile} for {Server}", verb, pending.ProfileName, pending.ServerName);
+            _error = $"Could not {verb} the request: {PageShared.ShortError(e)}";
             ToastService.Show(_error, ToastTone.Danger);
         }
     }
@@ -672,7 +930,7 @@
         ApplyState(result.State);
         if (result.Changed && result.Saved)
         {
-            _notice = result.Message;
+            _notice = null;
             _error = null;
             ToastService.Show(result.Message, ToastTone.Success);
         }
@@ -680,17 +938,13 @@
         {
             _notice = null;
             _error = result.Message + NotSavedText;
-            ToastService.Show(result.Message + " Not saved to disk.", ToastTone.Warning);
         }
         else
         {
-            _notice = null;
-            _error = result.Message;
-            ToastService.Show(result.Message, ToastTone.Danger);
+            _notice = result.Message;
+            _error = null;
         }
     }
-
-    private static string FormatTime(DateTime utc) => utc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC";
 
     public void Dispose()
     {

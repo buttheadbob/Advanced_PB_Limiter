@@ -20,6 +20,9 @@ namespace Advanced_PB_Limiter.QuasarContracts
         /// <summary><see cref="ReadSnapshotRequest"/> in, <see cref="ReportSnapshotView"/> out.</summary>
         public const string Snapshot = "report.read";
 
+        /// <summary><see cref="BlockHistoryUiRequest"/> in, <see cref="BlockHistoryView"/> out.</summary>
+        public const string BlockHistory = "block.history";
+
         /// <summary><see cref="TurnOffBlockUiRequest"/> in, <see cref="TurnOffResult"/> out.</summary>
         public const string TurnOffBlock = "block.turnoff";
 
@@ -34,6 +37,9 @@ namespace Advanced_PB_Limiter.QuasarContracts
 
         /// <summary><see cref="ProfileNameRequest"/> in, <see cref="ProfileActionResult"/> out.</summary>
         public const string ProfileDelete = "profiles.delete";
+
+        /// <summary><see cref="ProfileNameRequest"/> in, <see cref="ProfileViewResponse"/> out.</summary>
+        public const string ProfileView = "profiles.view";
 
         /// <summary><see cref="ProfileQueueRequest"/> in, <see cref="ProfileActionResult"/> out.</summary>
         public const string ProfileQueue = "profiles.queue";
@@ -126,6 +132,37 @@ namespace Advanced_PB_Limiter.QuasarContracts
         public string ServerId { get; set; } = "";
     }
 
+    public class BlockHistoryUiRequest
+    {
+        public string ServerId { get; set; } = "";
+
+        /// <summary>Decimal strings, as in <see cref="BlockRowView.EntityId"/>. The worker sends the first 100 on.</summary>
+        public List<string> EntityIds { get; set; } = new();
+
+        /// <summary>Each block's owner from the report, at the same index, as in <see cref="BlockRowView.OwnerIdentityId"/>.</summary>
+        public List<string> OwnerIds { get; set; } = new();
+    }
+
+    /// <summary>The blocks' last runs, see BlockHistory on the server's contract, with the ids as decimal strings.</summary>
+    public class BlockHistoryView
+    {
+        public List<BlockHistoryRowView> Blocks { get; set; } = new();
+    }
+
+    public class BlockHistoryRowView
+    {
+        public string EntityId { get; set; } = "";
+        public IReadOnlyList<double> RunTimesMS { get; set; } = Array.Empty<double>();
+        public IReadOnlyList<int> LeftOutOfAverage { get; set; } = Array.Empty<int>();
+        public IReadOnlyList<RunOutcome> Outcomes { get; set; } = Array.Empty<RunOutcome>();
+        public double AverageMS { get; set; }
+        public double RunTimeLimitMS { get; set; }
+        public double AverageLimitMS { get; set; }
+        public double InstantKillMS { get; set; }
+        public int InstantKillStrikes { get; set; }
+        public int InstantKillStrikeWindow { get; set; }
+    }
+
     public class TurnOffBlockUiRequest
     {
         public string ServerId { get; set; } = "";
@@ -175,6 +212,8 @@ namespace Advanced_PB_Limiter.QuasarContracts
 
     public class AppliedProfile
     {
+        /// <summary>Empty for an apply recorded before this field was kept.</summary>
+        public string ServerId { get; set; } = "";
         public string ServerName { get; set; } = "";
         public string ProfileName { get; set; } = "";
         public string QueuedBy { get; set; } = "";
@@ -264,6 +303,24 @@ namespace Advanced_PB_Limiter.QuasarContracts
     public class ProfileNameRequest
     {
         public string Name { get; set; } = "";
+    }
+
+    /// <summary>What a saved profile holds, to read before applying it. Null when there is no profile by that name.</summary>
+    public class ProfileViewResponse
+    {
+        public string Name { get; set; } = "";
+        public string SavedFrom { get; set; } = "";
+        public DateTime SavedUtc { get; set; }
+        public List<ProfileSettingView> Settings { get; set; } = new();
+
+        /// <summary>The privileged players, by name and Steam ID.</summary>
+        public List<string> PrivilegedPlayers { get; set; } = new();
+    }
+
+    public class ProfileSettingView
+    {
+        public string Name { get; set; } = "";
+        public string Value { get; set; } = "";
     }
 
     public class ProfileQueueRequest

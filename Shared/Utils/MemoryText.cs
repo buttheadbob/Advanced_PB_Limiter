@@ -12,16 +12,19 @@ namespace Advanced_PB_Limiter.Utils
         /// <summary>Shown for a block the memory check could not measure, see TrackedPBBlock.MemoryUnmeasured.</summary>
         public const string NotMeasurable = "not measurable";
 
-        public static string Kilobytes(long bytes) => (bytes / 1024d).ToString("N2", CultureInfo.InvariantCulture) + " KB";
+        /// <summary>In KB below a megabyte and in MB from there, to two places.</summary>
+        public static string Size(long bytes) => bytes >= 1024 * 1024
+            ? (bytes / (1024d * 1024d)).ToString("N2", CultureInfo.InvariantCulture) + " MB"
+            : (bytes / 1024d).ToString("N2", CultureInfo.InvariantCulture) + " KB";
 
         /// <summary>A block's memory, or <see cref="NotMeasurable"/> when the memory check could not measure it.</summary>
-        public static string Block(long bytes, bool unmeasured) => unmeasured ? NotMeasurable : Kilobytes(bytes);
+        public static string Block(long bytes, bool unmeasured) => unmeasured ? NotMeasurable : Size(bytes);
 
         /// <summary>A player's memory: the blocks that could be measured, marked when one could not, or only the mark.</summary>
         public static string Total(long bytes, bool anyUnmeasured)
         {
-            if (!anyUnmeasured) return Kilobytes(bytes);
-            return bytes > 0 ? Kilobytes(bytes) + " + " + NotMeasurable : NotMeasurable;
+            if (!anyUnmeasured) return Size(bytes);
+            return bytes > 0 ? Size(bytes) + " + " + NotMeasurable : NotMeasurable;
         }
     }
 }

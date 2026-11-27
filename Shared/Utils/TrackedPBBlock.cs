@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Threading;
 using ExtensionMethods;
 using Advanced_PB_Limiter.Manager;
+using Advanced_PB_Limiter.QuasarContracts;
 using Sandbox.Game.Entities.Blocks;
 
 namespace Advanced_PB_Limiter.Utils
@@ -13,21 +14,15 @@ namespace Advanced_PB_Limiter.Utils
     /// What is known about one programmable block. Updated on the game thread, once for every run of the script,
     /// so that path must not allocate. The few live values reports need (the names and whether the block is working)
     /// are cached here by the game thread, so reports read the block from any thread without touching game objects;
-    /// the sample array is read under its lock, so a recompile that clears it cannot be seen half done.
+    /// the run times are read under their lock, so a recompile that clears them cannot be seen half done.
     /// </summary>
     public sealed class TrackedPBBlock
     {
-        private const int MAX_SAMPLES = 50;
         private static IPbLimiterConfig Config => LimiterCore.Config;
 
-        // The last MAX_SAMPLES run times, twice: in run order, oldest at _nextSample once full, and kept sorted.
-        // Keeping them sorted costs one small array move per run, sorting a copy would allocate and sort on every run.
-        private readonly double[] _samples = new double[MAX_SAMPLES];
-        private readonly double[] _sorted = new double[MAX_SAMPLES];
-        private int _sampleCount;
-        private int _nextSample;
-        private double _filteredAverage;
-        private double _upperFence;
+        // The last runs, and the runs over the instant kill run time, both under _samplesLock.
+        private readonly RunTimeWindow _runs = new();
+        private readonly InstantKillStrikes _instantKillStrikes = new();
 
         // The live values reports need, cached on the game thread: at tracking start, and by the cleanup pass that
         // walks every tracked and resting block. Volatile: reports read them from other threads.
@@ -67,8 +62,15 @@ namespace Advanced_PB_Limiter.Utils
         private double _lastRunTimeMS;
         private double _peekRunTimeMS;
         private double _reportAverage;
+        private double _combinedLastRunTimeMS;
 
         public double LastRunTimeMS => Volatile.Read(ref _lastRunTimeMS);
+
+        /// <summary>
+        /// The last run as the combined run time counts it: the run, or the block's average when it was a spike, see
+        /// <see cref="RunTimeWindow.Add(double, double)"/>, so a spike does not count toward the combined limits.
+        /// </summary>
+        public double CombinedLastRunTimeMS => Volatile.Read(ref _combinedLastRunTimeMS);
         public double PeekRunTimeMS => Volatile.Read(ref _peekRunTimeMS);
         public long memoryUsage { get; private set; }
         public long LastOffenceTick { get; set; }
@@ -152,91 +154,75 @@ namespace Advanced_PB_Limiter.Utils
         // to them on the game thread. Uncontended in practice, a recompile is rare.
         private readonly object _samplesLock = new();
 
-        public void AddRuntimeData(double lastRunTimeMS)
+        /// <summary>
+        /// Adds a run and returns whether it is a spike, see <see cref="RunTimeWindow.Add(double, double)"/>. The caller passes
+        /// that, and <paramref name="runTimeLimit"/>, straight on to the punishment check, so the two decide on the same run
+        /// and limit even if a recompile clears the runs in between.
+        /// </summary>
+        /// <param name="runTimeLimit">The owner's run-time limit, 0 for none, by which the window decides whether the run is a spike.</param>
+        public bool AddRuntimeData(double lastRunTimeMS, double runTimeLimit)
         {
             lock (_samplesLock)
-                AddSample(lastRunTimeMS);
+                return AddSample(lastRunTimeMS, runTimeLimit);
         }
 
-        private void AddSample(double lastRunTimeMS)
+        private bool AddSample(double lastRunTimeMS, double runTimeLimit)
         {
             if (lastRunTimeMS > Volatile.Read(ref _peekRunTimeMS))
                 Volatile.Write(ref _peekRunTimeMS, lastRunTimeMS);
             Volatile.Write(ref _lastRunTimeMS, lastRunTimeMS);
-
-            if (_sampleCount == MAX_SAMPLES)
-                RemoveSorted(_samples[_nextSample], MAX_SAMPLES);
-            else
-                _sampleCount++;
-
-            InsertSorted(lastRunTimeMS, _sampleCount - 1);
-            _samples[_nextSample] = lastRunTimeMS;
-            _nextSample = (_nextSample + 1) % MAX_SAMPLES;
-
-            if (_sampleCount == MAX_SAMPLES)
-                RecomputeFilteredStats();
+            bool spike = _runs.Add(lastRunTimeMS, runTimeLimit);
+            double average = _runs.AverageWithoutSpikes;
+            Volatile.Write(ref _reportAverage, average);
+            Volatile.Write(ref _combinedLastRunTimeMS, spike ? average : lastRunTimeMS);
+            return spike;
         }
 
-        private void RemoveSorted(double value, int length)
+        /// <summary>
+        /// Counts a run over the instant kill run time. True when it is the one that kills: the <paramref name="needed"/>th
+        /// within <paramref name="windowSeconds"/> of the first, so a single hitch of the server does not kill the script.
+        /// </summary>
+        public bool InstantKillStrike(int needed, int windowSeconds)
         {
-            int index = Array.BinarySearch(_sorted, 0, length, value);
-            Array.Copy(_sorted, index + 1, _sorted, index, length - index - 1);
+            lock (_samplesLock)
+                return _instantKillStrikes.Strike(Stopwatch.GetTimestamp(), Stopwatch.Frequency, needed, windowSeconds);
         }
 
-        private void InsertSorted(double value, int length)
-        {
-            int index = Array.BinarySearch(_sorted, 0, length, value);
-            if (index < 0)
-                index = ~index;
-            Array.Copy(_sorted, index, _sorted, index + 1, length - index);
-            _sorted[index] = value;
-        }
-
-        private void RecomputeFilteredStats()
-        {
-            double q1 = _sorted[MAX_SAMPLES / 4];
-            double q3 = _sorted[MAX_SAMPLES * 3 / 4];
-            double upperFence = q3 + 1.5 * (q3 - q1);
-
-            double filteredSum = 0;
-            int filteredCount = 0;
-            while (filteredCount < MAX_SAMPLES && _sorted[filteredCount] <= upperFence)
-                filteredSum += _sorted[filteredCount++];
-
-            _upperFence = upperFence;
-            _filteredAverage = filteredCount > 0 ? filteredSum / filteredCount : 0;
-            Volatile.Write(ref _reportAverage, _filteredAverage);
-        }
-
-        public bool IsOutlier(double value)
+        /// <summary>
+        /// A copy of the run times, oldest first, with <see cref="RunTimeMSAvg"/>, which runs it leaves out and what became of
+        /// each run, read together, so a report shows exactly what the limits used, see
+        /// <see cref="RunTimeWindow.CopyLeftOutInRunOrder"/> and <see cref="RunTimeWindow.CopyOutcomesInRunOrder"/>.
+        /// </summary>
+        public double[] CopyRunTimes(out double averageMS, out bool[] leftOut, out RunOutcome[] outcomes)
         {
             lock (_samplesLock)
             {
-                if (_sampleCount < MAX_SAMPLES) return false;
-                return value > _upperFence;
-            }
-        }
-
-        /// <summary>A copy of the run times, oldest first.</summary>
-        public double[] GetRunTimesMS
-        {
-            get
-            {
-                lock (_samplesLock)
-                {
-                    int count = _sampleCount;
-                    double[] runTimes = new double[count];
-                    int first = count == MAX_SAMPLES ? _nextSample : 0;
-                    for (int index = 0; index < count; index++)
-                        runTimes[index] = _samples[(first + index) % MAX_SAMPLES];
-                    return runTimes;
-                }
+                averageMS = Volatile.Read(ref _reportAverage);
+                leftOut = _runs.CopyLeftOutInRunOrder();
+                outcomes = _runs.CopyOutcomesInRunOrder();
+                return _runs.CopyInRunOrder();
             }
         }
 
         /// <summary>
-        /// The filtered average of the last 50 runs, or 0 until there are 50. Updated under the sample lock and read
-        /// without it, so a report never waits on a run or a recompile.
+        /// Marks the run added last as counted or instant-killed, see <see cref="RunTimeWindow.MarkLast"/>: the punishment
+        /// check calls it when the run makes an offence or is the instant kill. Only then, so the per-run path takes no extra lock.
+        /// </summary>
+        public void MarkLastRun(RunOutcome outcome)
+        {
+            lock (_samplesLock)
+            {
+                _runs.MarkLast(outcome);
+                Volatile.Write(ref _reportAverage, _runs.AverageWithoutSpikes);
+                Volatile.Write(ref _combinedLastRunTimeMS, Volatile.Read(ref _lastRunTimeMS));
+            }
+        }
+
+        /// <summary>
+        /// The average of the last 50 runs, leaving out the 2 slowest once there are 10 and, below that, the runs that were
+        /// spikes, see <see cref="RunTimeWindow.AverageWithoutSpikes"/>: the figure the average limit, the combined limits and
+        /// the reports all use. Updated under the sample lock and read without it, so
+        /// a report never waits on a run or a recompile.
         /// </summary>
         public double RunTimeMSAvg => Volatile.Read(ref _reportAverage);
 
@@ -303,13 +289,12 @@ namespace Advanced_PB_Limiter.Utils
 
         private void ClearSamples()
         {
-            _sampleCount = 0;
-            _nextSample = 0;
-            _filteredAverage = 0;
-            _upperFence = 0;
+            _runs.Clear();
+            _instantKillStrikes.Clear();
             Volatile.Write(ref _lastRunTimeMS, 0);
             Volatile.Write(ref _peekRunTimeMS, 0);
             Volatile.Write(ref _reportAverage, 0);
+            Volatile.Write(ref _combinedLastRunTimeMS, 0);
             while (Offences.TryDequeue(out _))
             {
                 // ConcurrentQueue has no Clear on .NET Framework, which Legacy and Torch run on.

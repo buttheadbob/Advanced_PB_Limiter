@@ -25,6 +25,13 @@ public sealed class LimiterReports
             ReportOperations.Snapshot, new SnapshotRequest { TimeoutMs = Deadline(timeout), ExpiresUnixMs = Expires(timeout) }, cancellationToken);
     }
 
+    /// <summary>A read the companion answers on its own thread, with no deadline: it changes nothing, and runs at once.</summary>
+    public Task<BlockHistoryResult> GetBlockHistoryAsync(string serverId, List<long> entityIds, List<long> ownerIds, CancellationToken cancellationToken)
+    {
+        return _channel.SendAsync<BlockHistoryRequest, BlockHistoryResult>(serverId, ReportOperations.CompanionId,
+            ReportOperations.BlockHistory, new BlockHistoryRequest { EntityIds = entityIds, OwnerIds = ownerIds }, cancellationToken);
+    }
+
     // The requests carry a deadline shorter than the caller's timeout, counted from when the server receives them, so the
     // companion refuses work while Quasar still waits for the answer. The request's time on the way, which can include
     // waiting on the agent behind another request, is covered by the expiry on Quasar's clock sent with it.

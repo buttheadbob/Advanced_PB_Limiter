@@ -93,6 +93,10 @@ namespace AdvancedPBLimiter.QuasarCompanion
                             : await OnLoadedWorld(bridge => ApplyOnce(bridge, profile), DeadlineOf(profile.TimeoutMs, profile.ExpiresUnixMs), cancellationToken).ConfigureAwait(false);
                         break;
 
+                    case ReportOperations.BlockHistory:
+                        response.PayloadJson = GetBlockHistoryJson(Read<BlockHistoryRequest>(request));
+                        break;
+
                     default:
                         throw new InvalidOperationException($"Unknown operation '{request.Operation}'.");
                 }
@@ -122,6 +126,7 @@ namespace AdvancedPBLimiter.QuasarCompanion
                 case ReportOperations.TurnOffPlayer:
                 case ReportOperations.ProfileRead:
                 case ReportOperations.ProfileApply:
+                case ReportOperations.BlockHistory:
                     return operation;
                 default:
                     return "";
@@ -154,6 +159,18 @@ namespace AdvancedPBLimiter.QuasarCompanion
 
             // An older server plugin reads live block state here: it must run on the game thread.
             return await OnGameThread(() => (string)Invoke(bridge, "GetReportJson")!, deadline, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Read on this thread, as the server plugin reads the run times under each block's lock. No blocks before the world
+        /// has loaded, as nothing is tracked then.
+        /// </summary>
+        private string GetBlockHistoryJson(BlockHistoryRequest history)
+        {
+            var bridge = FindBridge() ?? throw new InvalidOperationException("Advanced PB Limiter is not loaded on this server.");
+            if (!(bool)Invoke(bridge, "IsOnline")!)
+                return JsonConvert.SerializeObject(new BlockHistoryResult(), Json);
+            return (string)Invoke(bridge, "GetBlockHistoryJson", history.EntityIds.ToArray(), history.OwnerIds.ToArray())!;
         }
 
         /// <summary>Refuses a request that has already waited past its own deadline, as OnGameThread does.</summary>

@@ -382,6 +382,7 @@ public sealed class ProfileStore : IDisposable
                 draft.Edit(server).LastAppliedSequence = pending.Sequence;
             state.Applied.Insert(0, new AppliedProfile
             {
+                ServerId = sent.ServerId,
                 ServerName = sent.ServerName,
                 ProfileName = sent.ProfileName,
                 QueuedBy = sent.QueuedBy,

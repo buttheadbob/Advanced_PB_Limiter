@@ -397,6 +397,11 @@
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--pbl-warning) 16%, transparent);
 }
 
+.pbl-live-dot.stale {
+    background: var(--pbl-danger);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--pbl-danger) 16%, transparent);
+}
+
 /* Cards, stats and tabs -------------------------------------------------------------------------------------- */
 
 .pbl-card {
@@ -494,19 +499,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.pbl-stat-help {
-    display: inline-flex;
-    margin-left: auto;
-    color: var(--pbl-muted);
-    opacity: 0.55;
-    cursor: help;
-}
-
-.pbl-stat-help .pbl-icon {
-    width: 13px;
-    height: 13px;
 }
 
 .pbl-stat-value {
@@ -962,9 +954,22 @@
 }
 
 .pbl-page-number {
-    min-width: 62px;
-    text-align: center;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     font-variant-numeric: tabular-nums;
+}
+
+.pbl-page-number input {
+    width: 56px;
+    min-height: 28px;
+    padding: 3px 6px;
+    border: 1px solid var(--pbl-line);
+    border-radius: 4px;
+    background: var(--pbl-surface);
+    color: var(--pbl-text);
+    font-size: 11px;
+    text-align: center;
 }
 
 /* Empty, skeleton and charts --------------------------------------------------------------------------------- */
@@ -1068,66 +1073,35 @@
 .pbl-sparkline-warning { color: var(--pbl-warning); }
 .pbl-sparkline-danger { color: var(--pbl-danger); }
 
-.pbl-trend-chart {
-    display: block;
+/* uPlot draws on a canvas; Quasar's uPlot stylesheet lays out the legend, these rules give it the page's look. */
+.pbl-uplot {
     width: 100%;
-    height: auto;
-    min-height: 170px;
-    color: var(--pbl-primary);
+    min-width: 0;
 }
 
-.pbl-chart-grid {
-    stroke: var(--pbl-line);
-    stroke-width: 1;
-    vector-effect: non-scaling-stroke;
+.pbl-uplot .uplot {
+    font-family: inherit;
 }
 
-.pbl-chart-label {
-    fill: var(--pbl-muted);
-    font-size: 10px;
-    font-variant-numeric: tabular-nums;
-}
-
-.pbl-chart-series {
-    color: var(--pbl-primary);
-}
-
-.pbl-stroke-primary { color: var(--pbl-primary); }
-.pbl-stroke-info { color: var(--pbl-info); }
-.pbl-stroke-success { color: var(--pbl-success); }
-.pbl-stroke-warning { color: var(--pbl-warning); }
-.pbl-stroke-danger { color: var(--pbl-danger); }
-
-.pbl-bg-primary { background: var(--pbl-primary); }
-.pbl-bg-info { background: var(--pbl-info); }
-.pbl-bg-success { background: var(--pbl-success); }
-.pbl-bg-warning { background: var(--pbl-warning); }
-.pbl-bg-danger { background: var(--pbl-danger); }
-
-.pbl-chart-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-top: 4px;
+.pbl-uplot .u-legend {
+    margin-top: 6px;
     color: var(--pbl-muted);
     font-size: 11px;
+    text-align: left;
 }
 
-.pbl-legend-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
+.pbl-uplot .u-legend .u-series {
+    padding: 2px 8px 2px 0;
+    cursor: pointer;
 }
 
-.pbl-legend-item strong {
+.pbl-uplot .u-legend .u-value {
     color: var(--pbl-text);
     font-variant-numeric: tabular-nums;
 }
 
-.pbl-legend-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
+.pbl-uplot .u-legend .u-off {
+    opacity: 0.4;
 }
 
 .pbl-chart-empty {
@@ -1403,7 +1377,7 @@
 
 .pbl-rank-row {
     display: grid;
-    grid-template-columns: 26px minmax(0, 1fr) auto;
+    grid-template-columns: 26px minmax(0, 1fr) 96px auto;
     align-items: center;
     gap: 7px 9px;
     width: 100%;
@@ -1483,12 +1457,28 @@
     transition: width 300ms var(--pbl-ease);
 }
 
+.pbl-rank-spark {
+    display: block;
+    width: 96px;
+    height: 24px;
+}
+
 .pbl-player-mini {
     display: flex;
     align-items: center;
     gap: 9px;
+    width: 100%;
     padding: 8px 0;
+    border: 0;
     border-bottom: 1px solid var(--pbl-line);
+    background: none;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.pbl-player-mini:hover .pbl-player-mini-main strong {
+    color: var(--pbl-primary);
 }
 
 .pbl-player-mini:last-child {
@@ -1522,6 +1512,174 @@
 }
 
 /* Detail view ------------------------------------------------------------------------------------------------ */
+
+.pbl-settings-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px 18px;
+    max-height: 46vh;
+    margin: 0;
+    overflow: auto;
+}
+
+.pbl-settings-list > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--pbl-line);
+    font-size: 12px;
+}
+
+.pbl-settings-list dt {
+    color: var(--pbl-muted);
+}
+
+.pbl-settings-list dd {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+    .pbl-settings-list {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* Holds the refresh bar's place, so the page does not move as it comes and goes. */
+.pbl-progress-slot {
+    height: 4px;
+    margin-bottom: 12px;
+}
+
+.pbl-progress-slot .pbl-progress {
+    margin: 0;
+}
+
+.pbl-confirm-heading {
+    margin: 10px 0 4px;
+    color: var(--pbl-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+}
+
+.pbl-confirm-list {
+    max-height: 180px;
+    margin: 0;
+    padding-left: 18px;
+    overflow: auto;
+}
+
+.pbl-history {
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--pbl-line);
+}
+
+.pbl-history:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+
+.pbl-history-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px 12px;
+    margin-bottom: 8px;
+}
+
+.pbl-history-head h3 {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.pbl-history-head .pbl-muted {
+    font-size: 11px;
+}
+
+.pbl-history-facts {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 12px;
+}
+
+.pbl-history-facts strong {
+    font-variant-numeric: tabular-nums;
+}
+
+.pbl-mini-rows {
+    display: flex;
+    flex-direction: column;
+}
+
+.pbl-mini-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 96px auto 27px;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--pbl-line);
+}
+
+.pbl-mini-row:last-child {
+    border-bottom: 0;
+}
+
+.pbl-mini-row-main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.pbl-mini-row-main strong {
+    overflow: hidden;
+    font-size: 12px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pbl-mini-row-main:hover strong {
+    color: var(--pbl-primary);
+}
+
+.pbl-mini-row-main small {
+    color: var(--pbl-muted);
+    font-size: 10px;
+}
+
+.pbl-mini-row .pbl-num {
+    font-size: 12px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.pbl-col-runs {
+    width: 112px;
+}
+
+.pbl-col-runs .pbl-sparkline {
+    width: 96px;
+    height: 24px;
+}
 
 .pbl-detail-grid {
     display: grid;
@@ -1638,6 +1796,13 @@
     font: inherit;
     text-align: left;
     cursor: pointer;
+}
+
+.pbl-profile-main strong .pbl-icon {
+    width: 14px;
+    height: 14px;
+    margin-right: 3px;
+    color: var(--pbl-primary);
 }
 
 .pbl-profile-main strong {
@@ -1766,6 +1931,7 @@
 
 .pbl-server-card {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 7px;
     min-width: 0;
@@ -1809,6 +1975,13 @@
 
 .pbl-server-dot.offline {
     background: var(--pbl-muted);
+}
+
+.pbl-server-note {
+    flex-basis: 100%;
+    padding-left: 22px;
+    color: var(--pbl-muted);
+    font-size: 10px;
 }
 
 .pbl-server-name {
@@ -1938,6 +2111,12 @@ body:has(.pbl-modal-backdrop) {
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
+    .pbl-col-peak,
+    .pbl-col-memory,
+    .pbl-col-recompiles {
+        display: none;
+    }
+
     .pbl-overview-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -2012,7 +2191,8 @@ body:has(.pbl-modal-backdrop) {
     .pbl-col-grid,
     .pbl-col-owner,
     .pbl-col-steam,
-    .pbl-col-avg,
+    .pbl-col-runs,
+    .pbl-col-peak,
     .pbl-col-offences,
     .pbl-col-recompiles,
     .pbl-col-memory {
@@ -2050,7 +2230,7 @@ body:has(.pbl-modal-backdrop) {
 
 @media (max-width: 520px) {
     .pbl-stat-grid {
-        grid-template-columns: minmax(0, 1fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .pbl-commandbar-actions,

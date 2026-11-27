@@ -97,8 +97,10 @@ namespace Advanced_PB_Limiter.Utils
             trackedPBBlock.MarkRun();
             if (trackedPBBlock.IsUnderGracePeriod(Privileged)) return;
 
-            trackedPBBlock.AddRuntimeData(data.RunTime);
-            PunishmentManager.CheckForPunishment(this, trackedPBBlock, data.RunTime, data.Collected);
+            // One limit and one spike decision for the run, read once and handed on.
+            double runTimeLimit = Privileged?.RuntimeAllowance ?? Config.MaxRunTimeMS;
+            bool spike = trackedPBBlock.AddRuntimeData(data.RunTime, runTimeLimit);
+            PunishmentManager.CheckForPunishment(this, trackedPBBlock, data.RunTime, data.Collected, runTimeLimit, spike);
         }
 
         /// <summary>
@@ -256,7 +258,7 @@ namespace Advanced_PB_Limiter.Utils
         {
             CombinedRunTimes combined = new();
             foreach (KeyValuePair<long, TrackedPBBlock> kvp in PBBlocks)
-                combined.Add(kvp.Value.LastRunTimeMS, kvp.Value.RunTimeMSAvg, CountsInCombined(kvp.Value, false));
+                combined.Add(kvp.Value.CombinedLastRunTimeMS, kvp.Value.RunTimeMSAvg, CountsInCombined(kvp.Value, false));
             return combined;
         }
 

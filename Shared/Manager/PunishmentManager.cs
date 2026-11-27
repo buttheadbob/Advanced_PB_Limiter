@@ -8,6 +8,7 @@ using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Advanced_PB_Limiter.Patches;
+using Advanced_PB_Limiter.QuasarContracts;
 using Advanced_PB_Limiter.Utils;
 using ExtensionMethods;
 using Sandbox;
@@ -77,9 +78,24 @@ namespace Advanced_PB_Limiter.Manager
             ExtremeUsage
         }
 
+        /// <summary>
+        /// True when this run over the instant kill run time is not yet the one that kills, see <see cref="TrackedPBBlock.InstantKillStrike"/>;
+        /// logged, as a run that long is worth knowing about either way.
+        /// </summary>
+        private static bool InstantKillSpike(TrackedPlayer player, TrackedPBBlock trackedPbBlock, double lastRunTimeMS)
+        {
+            int needed = Config.InstantKillStrikes;
+            if (trackedPbBlock.InstantKillStrike(needed, Config.InstantKillStrikeWindow)) return false;
+            Log.Warn($"Run of {InvariantText.Of(lastRunTimeMS, "0.0000")}ms over the instant kill limit by {player.PlayerName}'s block on grid {trackedPbBlock.CurrentGridName}, "
+                     + $"not punished as it may be a spike: the instant kill needs {InvariantText.Of(needed)} such runs within {InvariantText.Of(Config.InstantKillStrikeWindow)} seconds.");
+            return true;
+        }
+
         /// <summary>Called after every run of every tracked script. Nothing here may allocate until a limit is broken.</summary>
         /// <param name="collected">A garbage collection happened during the run, see RunClock.</param>
-        public static void CheckForPunishment(TrackedPlayer player, TrackedPBBlock trackedPbBlock, double lastRunTimeMS, bool collected)
+        /// <param name="runTimeLimit">The owner's run-time limit the run was added with, 0 for none.</param>
+        /// <param name="spike">The run was a spike, as decided when it was added, see TrackedPBBlock.AddRuntimeData.</param>
+        public static void CheckForPunishment(TrackedPlayer player, TrackedPBBlock trackedPbBlock, double lastRunTimeMS, bool collected, double runTimeLimit, bool spike)
         {
             if (!LimiterCore.Active) return;
             if (Config.EnforceOnlyBelowSimThreshold && Sync.ServerSimulationRatio >= Config.EnforceOnlyBelowSimRate) return;
@@ -91,10 +107,14 @@ namespace Advanced_PB_Limiter.Manager
             // see PunishPB.
             // InstaKill by run-time
             // Not for a run a collection paused, whose time may be mostly that pause: such a run is left to the run-time and
-            // average limits below, which it still counts for in full.
-            if (!collected && Config.InstantKillThreshold > 0 && lastRunTimeMS > Config.InstantKillThreshold)
+            // average limits below, which it still counts for in full. The game sometimes times a steady script's run far
+            // too long, once: only the InstantKillStrikes'th run over the threshold within the window kills. A run that does
+            // not is left to the limits below, which forgive one or two such runs.
+            if (!collected && Config.InstantKillThreshold > 0 && lastRunTimeMS > Config.InstantKillThreshold
+                && !InstantKillSpike(player, trackedPbBlock, lastRunTimeMS))
             {
                 trackedPbBlock.InstantKill.Set(TrackingManager.Batch);
+                trackedPbBlock.MarkLastRun(RunOutcome.InstantKilled);
                 Log.Error($"INSTANT-KILL TRIGGERED: {player.PlayerName} on grid {trackedPbBlock.CurrentGridName} with a run-time of {InvariantText.Of(lastRunTimeMS, "0.0000")}ms");
                 PunishPB(player, trackedPbBlock, PunishReason.ExtremeUsage, Config.InstantKillPunishment.ToPunishment(), $"[{InvariantText.Of(lastRunTimeMS, "0.0000")}ms]");
                 return;
@@ -105,7 +125,7 @@ namespace Advanced_PB_Limiter.Manager
             {
                 string usage = trackedPbBlock.MemoryUnmeasured
                     ? "not measurable (counted as over the limit)"
-                    : MemoryText.Kilobytes(trackedPbBlock.memoryUsage);
+                    : MemoryText.Size(trackedPbBlock.memoryUsage);
                 trackedPbBlock.InstantKill.Set(TrackingManager.Batch);
                 Log.Error($"INSTANT-KILL TRIGGERED: {player.PlayerName} on grid {trackedPbBlock.CurrentGridName} with memory use: {usage}");
                 PunishPB(player, trackedPbBlock, PunishReason.ExtremeUsage, Config.MemoryPunishment.ToPunishment(), $"[{usage}]");
@@ -115,7 +135,7 @@ namespace Advanced_PB_Limiter.Manager
             if (PunishmentPending(trackedPbBlock)) return;
 
             PrivilegedPlayer? privilegedPlayer = player.Privileged;
-            double allowedRunTime = privilegedPlayer?.RuntimeAllowance ?? Config.MaxRunTimeMS;
+            double allowedRunTime = runTimeLimit;
             double allowedRunTimeAvg = privilegedPlayer?.RuntimeAverageAllowance ?? Config.MaxRunTimeMSAvg;
             int allowedOffences = privilegedPlayer?.OffencesBeforePunishment ?? Config.MaxOffencesBeforePunishment;
 
@@ -125,13 +145,19 @@ namespace Advanced_PB_Limiter.Manager
             if (trackedPbBlock.IsInGraceAfterOffence)
                 return;
 
-            // A run over the run-time limit, unless it stands far out from the block's runs, a collection pausing it say.
-            if (allowedRunTime != 0 && lastRunTimeMS > allowedRunTime && !trackedPbBlock.IsOutlier(lastRunTimeMS))
+            // A run over the limit counts unless the window decided, as it was added, that it was a spike: at most 2 of any 50
+            // runs, see RunTimeWindow.Add. One offence a run, so the average is not checked as well.
+            if (allowedRunTime != 0 && lastRunTimeMS > allowedRunTime)
             {
-                Offence(player, trackedPbBlock, allowedOffences, PunishReason.SingleRuntimeOverLimit, allowedRunTime, lastRunTimeMS, lastRunTimeMS);
-                return; // One offence a run: the average is not checked as well.
+                if (!spike)
+                {
+                    trackedPbBlock.MarkLastRun(RunOutcome.Counted);
+                    Offence(player, trackedPbBlock, allowedOffences, PunishReason.SingleRuntimeOverLimit, allowedRunTime, lastRunTimeMS, lastRunTimeMS);
+                }
+                return;
             }
 
+            // Leaves out the spikes the run-time limit forgave, see TrackedPBBlock.RunTimeMSAvg.
             double runTimeMSAvg = trackedPbBlock.RunTimeMSAvg;
             if (allowedRunTimeAvg != 0 && runTimeMSAvg > allowedRunTimeAvg)
                 Offence(player, trackedPbBlock, allowedOffences, PunishReason.AverageRuntimeOverLimit, allowedRunTimeAvg, runTimeMSAvg, lastRunTimeMS);

@@ -26,6 +26,8 @@ namespace Advanced_PB_Limiter
         bool ClearHistoryOnRecompile { get; }
         int GracefulShutDownRequestDelay { get; }
         double InstantKillThreshold { get; }
+        int InstantKillStrikes { get; }
+        int InstantKillStrikeWindow { get; }
         Enums.InstantPunishment InstantKillPunishment { get; }
         int PunishDamageAmount { get; }
         int GraceAfterOffence { get; }
